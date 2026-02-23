@@ -4,482 +4,589 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>VulnScan Platform</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <style>
 :root {
   --bg:#07090f;--bg2:#0b0f1a;--surface:#0f1623;--surface2:#141d2e;--surface3:#1a2438;
   --border:#1f2e45;--border2:#2a3f5f;
-  --accent:#38bdf8;--accent-dim:rgba(56,189,248,0.1);--accent-glow:0 0 24px rgba(56,189,248,0.28);
+  --accent:#38bdf8;--accent-dim:rgba(56,189,248,0.1);
   --green:#34d399;--red:#f87171;--orange:#fb923c;--yellow:#fbbf24;--purple:#a78bfa;
   --text:#cbd5e1;--text2:#94a3b8;--text3:#475569;--bright:#f1f5f9;
-  --sidebar-w:240px;
-  --font-head:'Sora',sans-serif;--font-body:'DM Sans',sans-serif;--font-mono:'JetBrains Mono',monospace;
-  --radius:8px;
+  --sidebar-w:242px;
+  --fh:'Sora',sans-serif;--fb:'DM Sans',sans-serif;--fm:'JetBrains Mono',monospace;
+  --r:8px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:15px}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:1rem;line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
-body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(56,189,248,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,0.02) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);font-size:1rem;line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(56,189,248,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,0.025) 1px,transparent 1px);background-size:52px 52px;pointer-events:none;z-index:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse-ring{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.8);opacity:0}}
 
-.sidebar{position:fixed;left:0;top:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:200;overflow:hidden}
-.sg{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--accent))}
+/* ── SIDEBAR ── */
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:200}
+.sidebar-accent{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--accent))}
 .logo-wrap{padding:22px 20px 18px;border-bottom:1px solid var(--border)}
-.logo-name{font-family:var(--font-head);font-size:1.5rem;font-weight:800;color:var(--bright);letter-spacing:-0.02em;display:flex;align-items:center;gap:8px}
-.logo-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:blink 2s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
-.logo-tag{font-family:var(--font-mono);font-size:0.6rem;color:var(--text3);letter-spacing:0.12em;margin-top:3px}
-.nav-wrap{flex:1;overflow-y:auto;padding:10px 0}
-.nsl{font-family:var(--font-mono);font-size:0.6rem;color:var(--text3);letter-spacing:0.22em;text-transform:uppercase;padding:12px 20px 5px}
-.ni{display:flex;align-items:center;gap:11px;padding:10px 20px;cursor:pointer;font-family:var(--font-body);font-size:0.95rem;font-weight:500;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:all .15s;position:relative;border-left:3px solid transparent}
+.logo-name{font-family:var(--fh);font-size:1.5rem;font-weight:800;color:var(--bright);letter-spacing:-.02em;display:flex;align-items:center;gap:9px}
+.logo-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:blink 2s infinite;flex-shrink:0}
+.logo-tag{font-family:var(--fm);font-size:0.58rem;color:var(--text3);letter-spacing:.14em;margin-top:4px}
+.nav-wrap{flex:1;overflow-y:auto;padding:8px 0}
+.nav-sec{font-family:var(--fm);font-size:0.58rem;color:var(--text3);letter-spacing:.24em;text-transform:uppercase;padding:14px 20px 4px}
+.ni{display:flex;align-items:center;gap:11px;padding:10px 20px;cursor:pointer;font-family:var(--fb);font-size:0.93rem;font-weight:500;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:all .14s;border-left:3px solid transparent;position:relative}
 .ni:hover{color:var(--bright);background:var(--accent-dim);border-left-color:var(--border2)}
 .ni.active{color:var(--accent);background:var(--accent-dim);border-left-color:var(--accent)}
-.ni-icon{font-size:1.05rem;width:20px;text-align:center;flex-shrink:0}
-.nb{margin-left:auto;background:var(--red);color:white;font-family:var(--font-mono);font-size:0.6rem;padding:1px 6px;border-radius:10px;font-weight:700}
-.sf{padding:14px 20px;border-top:1px solid var(--border)}
-.op{display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:0.65rem;color:var(--text3)}
+.ni-ic{font-size:1.05rem;width:20px;text-align:center;flex-shrink:0}
+.ni-badge{margin-left:auto;background:var(--red);color:#fff;font-family:var(--fm);font-size:.58rem;padding:1px 6px;border-radius:10px;font-weight:700}
+.sidebar-foot{padding:14px 20px;border-top:1px solid var(--border)}
+.online-pill{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:.63rem;color:var(--text3)}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s infinite}
+.sign-out-btn{margin-top:11px;width:100%;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--fb);font-size:.82rem;padding:7px;cursor:pointer;transition:all .15s}
+.sign-out-btn:hover{border-color:var(--red);color:var(--red)}
 
+/* ── MAIN ── */
 .main{margin-left:var(--sidebar-w);min-height:100vh;position:relative;z-index:1;display:flex;flex-direction:column}
 .topbar{height:58px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:100}
-.bc{font-family:var(--font-mono);font-size:0.72rem;color:var(--text3)}
+.bc{font-family:var(--fm);font-size:.7rem;color:var(--text3)}
 .bc-a{color:var(--accent)}
-.tr{display:flex;align-items:center;gap:14px}
-.clk{font-family:var(--font-mono);font-size:0.68rem;color:var(--text3)}
-.uc{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-family:var(--font-mono);font-size:0.7rem;color:var(--text2)}
-.av{width:22px;height:22px;border-radius:4px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:white}
-
+.topbar-r{display:flex;align-items:center;gap:14px}
+.clock{font-family:var(--fm);font-size:.66rem;color:var(--text3)}
+.user-chip{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-family:var(--fm);font-size:.68rem;color:var(--text2)}
+.avatar{width:22px;height:22px;border-radius:4px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:#fff}
 .content{padding:28px;flex:1}
-.page{display:none;animation:fadeUp .22s ease both}
+.page{display:none;animation:fadeUp .2s ease both}
 .page.active{display:block}
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
-.ph{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px}
-.ph-title{font-family:var(--font-head);font-size:1.8rem;font-weight:800;color:var(--bright);letter-spacing:-0.02em}
+/* ── PAGE HEADER ── */
+.ph{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:12px}
+.ph-title{font-family:var(--fh);font-size:1.8rem;font-weight:800;color:var(--bright);letter-spacing:-.02em}
 .ph-title .hl{color:var(--accent)}
-.ph-sub{font-family:var(--font-mono);font-size:0.68rem;color:var(--text3);margin-top:4px;letter-spacing:0.08em}
-.ph-actions{display:flex;gap:10px;align-items:center}
+.ph-sub{font-family:var(--fm);font-size:.66rem;color:var(--text3);margin-top:4px;letter-spacing:.08em}
+.ph-right{display:flex;gap:10px;align-items:center}
 
-.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
+/* ── STAT CARDS ── */
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
 .sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
-.sc.cc::before{background:var(--red);box-shadow:0 0 10px rgba(248,113,113,.5)}
-.sc.ch::before{background:var(--orange)}
-.sc.cm::before{background:var(--yellow)}
-.sc.cl::before{background:var(--green)}
-.sc.ci::before{background:var(--accent)}
-.sl{font-family:var(--font-mono);font-size:0.65rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
-.sv{font-family:var(--font-head);font-size:2.2rem;font-weight:800;line-height:1}
-.sc.cc .sv{color:var(--red)}.sc.ch .sv{color:var(--orange)}.sc.cm .sv{color:var(--yellow)}.sc.cl .sv{color:var(--green)}.sc.ci .sv{color:var(--accent)}
-.ss{font-size:0.78rem;color:var(--text3);margin-top:4px;font-family:var(--font-body)}
+.sc.c-c::before{background:var(--red);box-shadow:0 0 10px rgba(248,113,113,.5)}
+.sc.c-h::before{background:var(--orange)}
+.sc.c-m::before{background:var(--yellow)}
+.sc.c-l::before{background:var(--green)}
+.sc.c-i::before{background:var(--accent)}
+.sc-lbl{font-family:var(--fm);font-size:.63rem;color:var(--text3);letter-spacing:.16em;text-transform:uppercase;margin-bottom:8px}
+.sc-val{font-family:var(--fh);font-size:2.2rem;font-weight:800;line-height:1}
+.sc.c-c .sc-val{color:var(--red)}.sc.c-h .sc-val{color:var(--orange)}.sc.c-m .sc-val{color:var(--yellow)}.sc.c-l .sc-val{color:var(--green)}.sc.c-i .sc-val{color:var(--accent)}
+.sc-sub{font-size:.78rem;color:var(--text3);margin-top:5px}
 
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:20px;overflow:hidden}
-.panel-head{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.ptitle{font-family:var(--font-head);font-size:0.95rem;font-weight:700;color:var(--bright);display:flex;align-items:center;gap:9px}
-.ptd{width:4px;height:16px;background:var(--accent);border-radius:2px;box-shadow:0 0 8px rgba(56,189,248,.4)}
+/* ── PANEL ── */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:18px;overflow:hidden}
+.panel-head{padding:13px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-family:var(--fh);font-size:.95rem;font-weight:700;color:var(--bright);display:flex;align-items:center;gap:9px}
+.panel-title-bar{width:4px;height:16px;background:var(--accent);border-radius:2px;box-shadow:0 0 8px rgba(56,189,248,.4)}
 .pb{padding:20px}.pb.np{padding:0}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
 
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
-
+/* ── TABLE ── */
 .tbl{width:100%;border-collapse:collapse}
-.tbl th{padding:11px 16px;text-align:left;font-family:var(--font-mono);font-size:0.65rem;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);background:var(--surface2);border-bottom:1px solid var(--border);font-weight:400}
-.tbl td{padding:13px 16px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;font-size:0.92rem}
+.tbl th{padding:10px 16px;text-align:left;font-family:var(--fm);font-size:.63rem;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);background:var(--surface2);border-bottom:1px solid var(--border);font-weight:400}
+.tbl td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;font-size:.92rem}
 .tbl tr:last-child td{border-bottom:none}
-.tbl tbody tr:hover td{background:rgba(56,189,248,.03)}
-.mc{font-family:var(--font-mono);font-size:0.8rem}
-.bg{color:var(--bright);font-weight:600}
+.tbl tbody tr:hover td{background:rgba(56,189,248,.025)}
+.mc{font-family:var(--fm);font-size:.8rem}
 
-.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:4px;font-family:var(--font-mono);font-size:0.65rem;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
-.bc_{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25)}
-.bh{background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.25)}
-.bm{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25)}
-.bl{background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25)}
-.bi{background:rgba(56,189,248,.1);color:#38bdf8;border:1px solid rgba(56,189,248,.2)}
-.bo{background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.2)}
-.bp{background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.25)}
-.kev-tag{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3);font-family:var(--font-mono);font-size:0.6rem;padding:2px 7px;border-radius:3px;font-weight:700}
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:4px;font-family:var(--fm);font-size:.63rem;letter-spacing:.07em;text-transform:uppercase;font-weight:500}
+.b-crit{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25)}
+.b-high{background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.25)}
+.b-med{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25)}
+.b-low{background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25)}
+.b-info{background:rgba(56,189,248,.1);color:#38bdf8;border:1px solid rgba(56,189,248,.2)}
+.b-ok{background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.2)}
+.b-purple{background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.25)}
+.kev-tag{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3);font-family:var(--fm);font-size:.58rem;padding:2px 7px;border-radius:3px;font-weight:700;letter-spacing:.06em}
 
-.sw{display:inline-flex;align-items:center;gap:7px}
+/* ── STATUS DOTS ── */
+.sdot-wrap{display:inline-flex;align-items:center;gap:7px}
 .sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.sr{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1s infinite}
-.sd{background:var(--green)}.sf_{background:var(--red)}.sq{background:var(--text3)}
-.sl2{font-family:var(--font-mono);font-size:0.72rem}
+.s-run{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1s infinite}
+.s-done{background:var(--green)}.s-fail{background:var(--red)}.s-queue{background:var(--text3)}
+.s-lbl{font-family:var(--fm);font-size:.72rem}
 
-.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:6px;font-family:var(--font-body);font-size:0.88rem;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap}
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:6px;font-family:var(--fb);font-size:.88rem;font-weight:600;cursor:pointer;border:none;transition:all .14s;white-space:nowrap;line-height:1}
 .btn:active{transform:scale(.97)}
-.btn-p{background:var(--accent);color:#07090f;box-shadow:0 0 16px rgba(56,189,248,.22)}
-.btn-p:hover{box-shadow:0 0 24px rgba(56,189,248,.4)}
-.btn-d{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3)}
-.btn-d:hover{background:rgba(248,113,113,.25)}
-.btn-g{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
-.btn-g:hover{color:var(--bright);border-color:var(--border2)}
-.btn-o{background:transparent;border:1px solid var(--border2);color:var(--text)}
-.btn-o:hover{border-color:var(--accent);color:var(--accent)}
-.btn-sm{padding:5px 12px;font-size:0.78rem;border-radius:5px}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-primary{background:var(--accent);color:#07090f;box-shadow:0 0 16px rgba(56,189,248,.2)}
+.btn-primary:hover:not(:disabled){box-shadow:0 0 28px rgba(56,189,248,.45)}
+.btn-danger{background:rgba(248,113,113,.14);color:var(--red);border:1px solid rgba(248,113,113,.28)}
+.btn-danger:hover{background:rgba(248,113,113,.26)}
+.btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--bright);border-color:var(--border2)}
+.btn-sm{padding:5px 12px;font-size:.78rem;border-radius:5px}
 .btn-lg{padding:11px 24px;font-size:1rem}
 .btn-full{width:100%;justify-content:center}
-.btn-icon{padding:6px 10px;border-radius:5px;font-size:0.9rem}
+.btn-icon{padding:5px 9px;border-radius:5px}
 
-.fg{margin-bottom:16px}
-.fl{display:block;font-family:var(--font-mono);font-size:0.65rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px}
-.fc{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:0.92rem;padding:9px 13px;outline:none;transition:border-color .15s,box-shadow .15s;appearance:none}
+/* ── FORMS ── */
+.fg{margin-bottom:15px}
+.fl{display:block;font-family:var(--fm);font-size:.63rem;color:var(--text3);letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px}
+.fc{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fb);font-size:.92rem;padding:9px 13px;outline:none;transition:border-color .14s,box-shadow .14s;-webkit-appearance:none;appearance:none}
 .fc:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,.1)}
 .fc::placeholder{color:var(--text3)}
-textarea.fc{resize:vertical;min-height:100px;font-family:var(--font-mono);font-size:0.8rem;line-height:1.5}
+textarea.fc{resize:vertical;font-family:var(--fm);font-size:.8rem;line-height:1.55}
 select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23475569'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
-.fr{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 
-.alert{padding:11px 15px;border-radius:6px;font-size:0.85rem;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.a-d{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#fca5a5}
-.a-s{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#6ee7b7}
-.a-i{background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);color:#7dd3fc}
+/* ── ALERT ── */
+.alert{padding:11px 15px;border-radius:6px;font-size:.86rem;margin-bottom:14px;display:flex;align-items:center;gap:9px;animation:fadeUp .15s ease}
+.a-danger{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#fca5a5}
+.a-success{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#6ee7b7}
+.a-info{background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);color:#7dd3fc}
+.a-warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:#fde68a}
 
-.rw{display:flex;align-items:center;gap:8px}
-.rt{flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;min-width:60px}
-.rf{height:100%;border-radius:3px}
-.rn{font-family:var(--font-mono);font-size:0.72rem;width:30px;text-align:right;flex-shrink:0}
+/* ── RISK BAR ── */
+.risk-wrap{display:flex;align-items:center;gap:8px}
+.risk-track{flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;min-width:56px}
+.risk-fill{height:100%;border-radius:3px;transition:width .3s ease}
+.risk-num{font-family:var(--fm);font-size:.7rem;width:30px;text-align:right;flex-shrink:0}
 
-.fc-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;overflow:hidden;transition:border-color .15s}
-.fc-card:hover{border-color:var(--border2)}
-.fc-header{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
-.fc-title{flex:1;font-weight:600;color:var(--bright);font-size:0.95rem}
-.fc-body{display:none;padding:16px;border-top:1px solid var(--border);animation:fadeUp .15s ease both}
-.fc-card.open .fc-body{display:block}
-.fmeta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+/* ── FINDING CARDS ── */
+.fcard{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:7px;overflow:hidden;transition:border-color .14s}
+.fcard:hover{border-color:var(--border2)}
+.fcard-hdr{display:flex;align-items:center;gap:11px;padding:12px 16px;cursor:pointer;user-select:none}
+.fcard-title{flex:1;font-weight:600;color:var(--bright);font-size:.93rem;line-height:1.4}
+.fcard-body{display:none;padding:16px;border-top:1px solid var(--border);animation:fadeUp .15s ease}
+.fcard.open .fcard-body{display:block}
+.fcard-arrow{color:var(--text3);font-size:.85rem;transition:transform .15s;flex-shrink:0}
+.fcard.open .fcard-arrow{transform:rotate(180deg)}
+.fmeta{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:15px}
 .mi{background:var(--surface3);border:1px solid var(--border);border-radius:6px;padding:10px 12px}
-.mk{font-family:var(--font-mono);font-size:0.6rem;color:var(--text3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:4px}
-.mv{font-family:var(--font-head);font-size:1.1rem;font-weight:700;color:var(--bright)}
+.mk{font-family:var(--fm);font-size:.58rem;color:var(--text3);letter-spacing:.16em;text-transform:uppercase;margin-bottom:4px}
+.mv{font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--bright)}
 
-.tt-wrap{display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:7px;overflow:hidden}
-.tt-tab{flex:1;padding:9px;text-align:center;cursor:pointer;font-family:var(--font-body);font-size:0.88rem;font-weight:600;color:var(--text2);background:var(--surface2);border:none;transition:all .15s}
-.tt-tab:first-child{border-right:1px solid var(--border)}
-.tt-tab.active{background:var(--accent-dim);color:var(--accent)}
-.tt-tab:hover:not(.active){color:var(--bright)}
+/* ── SCAN TYPE TOGGLE ── */
+.scan-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:15px}
+.scan-tab{flex:1;padding:10px;text-align:center;cursor:pointer;font-family:var(--fb);font-size:.9rem;font-weight:600;color:var(--text2);background:var(--surface2);border:none;transition:all .14s}
+.scan-tab+.scan-tab{border-left:1px solid var(--border)}
+.scan-tab.active{background:var(--accent-dim);color:var(--accent)}
+.scan-tab:hover:not(.active){color:var(--bright);background:rgba(255,255,255,.03)}
 
-.tce{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.tc{padding:4px 10px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;font-family:var(--font-mono);font-size:0.68rem;color:var(--text2);cursor:pointer;transition:all .12s}
-.tc:hover{border-color:var(--accent);color:var(--accent)}
+/* ── QUICK TARGET CHIPS ── */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{padding:4px 10px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;font-family:var(--fm);font-size:.67rem;color:var(--text2);cursor:pointer;transition:all .12s}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
 
-.gc-wrap{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;height:520px}
-#gcanvas{width:100%;height:100%}
-.gl{display:flex;flex-wrap:wrap;gap:14px;padding:14px 20px;border-top:1px solid var(--border)}
-.li{display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:0.7rem;color:var(--text2)}
-.ld{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.gf-bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-.gfc{padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.68rem;color:var(--text2);cursor:pointer;transition:all .12s;background:var(--surface2)}
-.gfc.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
-.gfc:hover:not(.active){border-color:var(--border2);color:var(--bright)}
-.g-tip{position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:0.72rem;pointer-events:none;z-index:10;display:none;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-.gt-t{font-size:0.8rem;font-weight:700;color:var(--bright);margin-bottom:6px}
-.gt-r{color:var(--text2);margin-top:3px}.gt-r span{color:var(--text)}
+/* ── VALIDATION ERROR ── */
+.field-err{font-family:var(--fm);font-size:.65rem;color:var(--red);margin-top:5px}
+.fc.err{border-color:var(--red)}
 
-.sev-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
-.sevc{padding:4px 12px;border-radius:20px;cursor:pointer;font-family:var(--font-mono);font-size:0.68rem;border:1px solid transparent;transition:all .12s}
-.sevc.active{font-weight:700}
+/* ── SEVERITY FILTER ── */
+.sev-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:15px;align-items:center}
+.sev-chip{padding:4px 12px;border-radius:20px;cursor:pointer;font-family:var(--fm);font-size:.67rem;border:1px solid transparent;transition:all .12s;background:var(--surface2)}
+.sev-chip.active{font-weight:700}
 
-.co{position:fixed;inset:0;background:rgba(7,9,15,.85);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.co.show{display:flex}
-.cb{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:28px;max-width:380px;text-align:center;animation:fadeUp .2s ease}
-.ci-icon{font-size:2.2rem;margin-bottom:12px}
-.ci-title{font-family:var(--font-head);font-size:1.15rem;font-weight:700;color:var(--bright);margin-bottom:8px}
-.ci-text{font-size:0.9rem;color:var(--text2);margin-bottom:22px;line-height:1.6}
-.ca{display:flex;gap:10px}
+/* ── TERMINAL ── */
+.terminal{background:#030508;border:1px solid var(--border);border-radius:6px;font-family:var(--fm);font-size:.77rem;padding:13px 16px;max-height:180px;overflow-y:auto;line-height:1.75}
+.t-ok{color:var(--green)}.t-err{color:var(--red)}.t-info{color:var(--accent)}.t-warn{color:var(--yellow)}.t-dim{color:var(--text3)}
 
-.terminal{background:#04060b;border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:0.78rem;padding:14px 16px;max-height:200px;overflow-y:auto;line-height:1.7}
-.tl{color:var(--text3)}.tok{color:var(--green)}.terr{color:var(--red)}.tinf{color:var(--accent)}.twrn{color:var(--yellow)}
+/* ── ATTACK GRAPH ── */
+.gcanvas-wrap{position:relative;background:#030508;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;height:500px}
+#gcanvas{width:100%;height:100%;display:block}
+.graph-legend{display:flex;flex-wrap:wrap;gap:14px;padding:13px 20px;border-top:1px solid var(--border)}
+.legend-item{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:.68rem;color:var(--text2)}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.graph-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:13px}
+.gf-chip{padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-family:var(--fm);font-size:.67rem;color:var(--text2);cursor:pointer;transition:all .12s;background:var(--surface2)}
+.gf-chip.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.gf-chip:hover:not(.active){border-color:var(--border2);color:var(--bright)}
+.graph-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:11px 14px;font-family:var(--fm);font-size:.7rem;pointer-events:none;z-index:20;display:none;min-width:190px;box-shadow:0 8px 28px rgba(0,0,0,.6)}
+.gt-title{font-size:.82rem;font-weight:700;color:var(--bright);margin-bottom:7px;line-height:1.4;word-break:break-word}
+.gt-row{color:var(--text2);margin-top:3px}.gt-row span{color:var(--text)}
 
-.sp{width:15px;height:15px;border:2px solid rgba(56,189,248,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;flex-shrink:0}
-@keyframes spin{to{transform:rotate(360deg)}}
-.empty{text-align:center;padding:48px 20px;color:var(--text3);font-family:var(--font-mono);font-size:0.8rem}
-.ei{font-size:2rem;opacity:.25;margin-bottom:12px}
-.mono{font-family:var(--font-mono)}.dim{color:var(--text3)}.bright{color:var(--bright)}.accent{color:var(--accent)}
+/* ── CONFIRM MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(4,6,11,.88);z-index:900;display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
+.modal-overlay.show{display:flex}
+.modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:11px;padding:30px;max-width:400px;width:90%;text-align:center;animation:fadeUp .2s ease;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.modal-icon{font-size:2.4rem;margin-bottom:12px}
+.modal-title{font-family:var(--fh);font-size:1.15rem;font-weight:700;color:var(--bright);margin-bottom:8px}
+.modal-body{font-size:.9rem;color:var(--text2);margin-bottom:22px;line-height:1.6}
+.modal-actions{display:flex;gap:10px}
 
+/* ── SPINNER ── */
+.spinner{width:15px;height:15px;border:2px solid rgba(56,189,248,.18);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;flex-shrink:0}
+
+/* ── MISC ── */
+.empty-state{text-align:center;padding:44px 20px;color:var(--text3);font-family:var(--fm);font-size:.78rem}
+.empty-icon{font-size:2rem;opacity:.22;margin-bottom:11px}
+.bright{color:var(--bright);font-weight:600}
+.dim{color:var(--text3)}
+
+/* ── LOGIN ── */
 #login-page{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:1000}
 #login-page.show{display:flex}
-.lb{width:420px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:fadeUp .3s ease}
-.ltb{height:3px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--accent))}
-.lh{padding:30px 32px 24px;border-bottom:1px solid var(--border)}
-.ll{font-family:var(--font-head);font-size:2rem;font-weight:800;color:var(--bright);letter-spacing:-0.02em}
-.ls{font-family:var(--font-mono);font-size:0.62rem;color:var(--text3);letter-spacing:.12em;margin-top:5px}
-.lbody{padding:28px 32px 32px}
+.login-card{width:420px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:fadeUp .3s ease;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.login-top-bar{height:3px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--accent))}
+.login-head{padding:28px 32px 22px;border-bottom:1px solid var(--border)}
+.login-logo{font-family:var(--fh);font-size:2rem;font-weight:800;color:var(--bright);letter-spacing:-.02em}
+.login-sub{font-family:var(--fm);font-size:.6rem;color:var(--text3);letter-spacing:.13em;margin-top:5px}
+.login-body{padding:26px 32px 30px}
+
+/* ── JOB STATUS PROGRESS BAR ── */
+.job-progress{height:3px;background:var(--surface3);border-radius:2px;margin-top:4px;overflow:hidden}
+.job-progress-fill{height:100%;border-radius:2px;transition:width 1s ease}
 
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--surface)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 </style>
 </head>
 <body>
 
+<!-- LOGIN -->
 <div id="login-page" class="show">
-  <div class="lb">
-    <div class="ltb"></div>
-    <div class="lh">
-      <div class="ll">VulnScan</div>
-      <div class="ls">// ENTERPRISE VULNERABILITY MANAGEMENT PLATFORM</div>
+  <div class="login-card">
+    <div class="login-top-bar"></div>
+    <div class="login-head">
+      <div class="login-logo">VulnScan</div>
+      <div class="login-sub">// ENTERPRISE VULNERABILITY MANAGEMENT PLATFORM</div>
     </div>
-    <div class="lbody">
-      <div id="lerr" style="display:none" class="alert a-d"></div>
-      <div class="fg"><label class="fl">Email</label><input id="lem" class="fc" value="admin@local"/></div>
-      <div class="fg"><label class="fl">Password</label><input id="lpw" class="fc" type="password" value="admin123"/></div>
-      <button class="btn btn-p btn-lg btn-full" onclick="doLogin()" style="margin-top:6px">
-        <span id="lspin" style="display:none" class="sp"></span>Sign In
+    <div class="login-body">
+      <div id="login-err" class="alert a-danger" style="display:none"></div>
+      <div class="fg">
+        <label class="fl">Email Address</label>
+        <input id="l-email" class="fc" value="admin@local" autocomplete="username"/>
+      </div>
+      <div class="fg">
+        <label class="fl">Password</label>
+        <input id="l-pass" class="fc" type="password" value="admin123" autocomplete="current-password"/>
+      </div>
+      <button class="btn btn-primary btn-lg btn-full" id="login-btn" onclick="doLogin()">
+        <span id="login-spin" class="spinner" style="display:none"></span>Sign In
       </button>
-      <div style="margin-top:14px;font-family:var(--font-mono);font-size:0.62rem;color:var(--text3);text-align:center">Default: admin@local / admin123</div>
+      <div style="margin-top:13px;font-family:var(--fm);font-size:.6rem;color:var(--text3);text-align:center">
+        Default credentials: admin@local / admin123
+      </div>
     </div>
   </div>
 </div>
 
-<!-- CONFIRM DELETE -->
-<div class="co" id="co">
-  <div class="cb">
-    <div class="ci-icon">🗑️</div>
-    <div class="ci-title">Delete Scan Job</div>
-    <div class="ci-text" id="co-text">Delete this job and all findings?</div>
-    <div class="ca">
-      <button class="btn btn-g btn-full" onclick="cclose()">Cancel</button>
-      <button class="btn btn-d btn-full" id="co-ok">Delete</button>
+<!-- CONFIRM DELETE MODAL -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-box">
+    <div class="modal-icon">🗑️</div>
+    <div class="modal-title" id="confirm-title">Delete Scan Job</div>
+    <div class="modal-body" id="confirm-body">Are you sure? This cannot be undone.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-full" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger btn-full" id="confirm-ok">Delete</button>
     </div>
   </div>
 </div>
 
 <!-- SIDEBAR -->
-<nav class="sidebar" id="sidebar" style="display:none">
-  <div class="sg"></div>
+<nav class="sidebar" id="app-sidebar" style="display:none">
+  <div class="sidebar-accent"></div>
   <div class="logo-wrap">
     <div class="logo-name"><div class="logo-dot"></div>VulnScan</div>
     <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v1.0</div>
   </div>
   <div class="nav-wrap">
-    <div class="nsl">Monitoring</div>
-    <button class="ni active" onclick="nav('dashboard',this)"><span class="ni-icon">⬡</span>Dashboard</button>
-    <button class="ni" onclick="nav('graph',this)"><span class="ni-icon">◈</span>Attack Graph<span class="nb" id="gbadge" style="display:none">!</span></button>
-    <div class="nsl">Scanning</div>
-    <button class="ni" onclick="nav('jobs',this)"><span class="ni-icon">⚡</span>Scan Jobs</button>
-    <div class="nsl">Configuration</div>
-    <button class="ni" onclick="nav('profiles',this)"><span class="ni-icon">⊞</span>Profiles</button>
-    <button class="ni" onclick="nav('credentials',this)"><span class="ni-icon">⊕</span>Credentials</button>
-    <button class="ni" onclick="nav('datasets',this)"><span class="ni-icon">▦</span>Datasets</button>
+    <div class="nav-sec">Monitoring</div>
+    <button class="ni active" id="nav-dashboard" onclick="navTo('dashboard')">
+      <span class="ni-ic">⬡</span>Dashboard
+    </button>
+    <button class="ni" id="nav-graph" onclick="navTo('graph')">
+      <span class="ni-ic">◈</span>Attack Graph
+      <span class="ni-badge" id="graph-badge" style="display:none">0</span>
+    </button>
+    <div class="nav-sec">Scanning</div>
+    <button class="ni" id="nav-jobs" onclick="navTo('jobs')">
+      <span class="ni-ic">⚡</span>Scan Jobs
+      <span class="ni-badge" id="running-badge" style="display:none;background:var(--accent);color:#07090f">●</span>
+    </button>
+    <div class="nav-sec">Configuration</div>
+    <button class="ni" id="nav-profiles" onclick="navTo('profiles')"><span class="ni-ic">⊞</span>Profiles</button>
+    <button class="ni" id="nav-credentials" onclick="navTo('credentials')"><span class="ni-ic">⊕</span>Credentials</button>
+    <button class="ni" id="nav-datasets" onclick="navTo('datasets')"><span class="ni-ic">▦</span>Datasets</button>
   </div>
-  <div class="sf">
-    <div class="op"><div class="pulse"></div>System Online</div>
-    <button onclick="doLogout()" style="margin-top:12px;width:100%;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font-body);font-size:0.82rem;padding:7px;cursor:pointer;transition:all .15s"
-      onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'"
-      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text3)'">Sign Out</button>
+  <div class="sidebar-foot">
+    <div class="online-pill"><div class="pulse"></div><span id="sys-status">System Online</span></div>
+    <button class="sign-out-btn" onclick="doLogout()">Sign Out</button>
   </div>
 </nav>
 
-<!-- MAIN -->
-<div class="main" id="main" style="display:none">
+<!-- MAIN APP -->
+<div class="main" id="app-main" style="display:none">
   <div class="topbar">
-    <div class="bc"><span class="bc-a" id="bcm">Dashboard</span><span id="bcs"></span></div>
-    <div class="tr">
-      <div class="clk" id="clk"></div>
-      <div class="uc"><div class="av" id="uav">A</div><span id="uem">admin@local</span></div>
+    <div class="bc"><span class="bc-a" id="bc-page">Dashboard</span><span id="bc-sub" style="color:var(--text3)"></span></div>
+    <div class="topbar-r">
+      <div class="clock" id="clock-el"></div>
+      <div class="user-chip"><div class="avatar" id="user-av">A</div><span id="user-email">admin@local</span></div>
     </div>
   </div>
+
   <div class="content">
 
-  <!-- DASHBOARD -->
-  <div id="page-dashboard" class="page active">
-    <div class="ph">
-      <div><div class="ph-title">Threat <span class="hl">Dashboard</span></div><div class="ph-sub">// All findings from all scans — live vulnerability posture</div></div>
-      <div class="ph-actions">
-        <button class="btn btn-g" onclick="loadDashboard()">↻ Refresh</button>
-        <button class="btn btn-p" onclick="nav('jobs',document.querySelectorAll('.ni')[2])">⚡ New Scan</button>
+    <!-- ══════ DASHBOARD ══════ -->
+    <div id="page-dashboard" class="page active">
+      <div class="ph">
+        <div>
+          <div class="ph-title">Threat <span class="hl">Dashboard</span></div>
+          <div class="ph-sub">// All vulnerabilities across all scans — live posture</div>
+        </div>
+        <div class="ph-right">
+          <button class="btn btn-ghost" onclick="loadDashboard(true)">↻ Refresh</button>
+          <button class="btn btn-primary" onclick="navTo('jobs')">⚡ New Scan</button>
+        </div>
       </div>
-    </div>
-    <div class="stats-row">
-      <div class="sc cc"><div class="sl">Critical</div><div class="sv" id="dc">—</div><div class="ss">Immediate action</div></div>
-      <div class="sc ch"><div class="sl">High</div><div class="sv" id="dh">—</div><div class="ss">Urgent fix needed</div></div>
-      <div class="sc cm"><div class="sl">Medium</div><div class="sv" id="dm">—</div><div class="ss">Plan remediation</div></div>
-      <div class="sc cl"><div class="sl">KEV Hits</div><div class="sv" id="dk">—</div><div class="ss">Active exploits</div></div>
-      <div class="sc ci"><div class="sl">Total Scans</div><div class="sv" id="dj">—</div><div class="ss">Jobs executed</div></div>
-    </div>
-    <!-- Severity filter -->
-    <div class="sev-row">
-      <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text3);font-weight:500">Filter:</span>
-      <div class="sevc active" style="background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:var(--accent)" data-s="all" onclick="dFilter('all',this)">All</div>
-      <div class="sevc" style="border-color:rgba(248,113,113,.3);color:var(--red)" data-s="critical" onclick="dFilter('critical',this)">Critical</div>
-      <div class="sevc" style="border-color:rgba(251,146,60,.3);color:var(--orange)" data-s="high" onclick="dFilter('high',this)">High</div>
-      <div class="sevc" style="border-color:rgba(251,191,36,.3);color:var(--yellow)" data-s="medium" onclick="dFilter('medium',this)">Medium</div>
-      <div class="sevc" style="border-color:rgba(52,211,153,.3);color:var(--green)" data-s="low" onclick="dFilter('low',this)">Low</div>
-      <div class="sevc" style="border-color:var(--border);color:var(--text3)" data-s="info" onclick="dFilter('info',this)">Info</div>
-      <span style="margin-left:auto;font-family:var(--font-mono);font-size:0.7rem;color:var(--text3)" id="dfc">—</span>
-    </div>
-    <div id="dlist"><div class="empty"><div class="ei">⬡</div>Loading findings...</div></div>
-    <div class="panel" style="margin-top:20px">
-      <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Recent Scan Jobs</div><button class="btn btn-g btn-sm" onclick="loadDashboard()">↻</button></div>
-      <div class="pb np">
-        <table class="tbl"><thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Status</th><th>Time</th></tr></thead>
-        <tbody id="djb"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody></table>
-      </div>
-    </div>
-  </div>
 
-  <!-- ATTACK GRAPH -->
-  <div id="page-graph" class="page">
-    <div class="ph">
-      <div><div class="ph-title">Attack <span class="hl">Surface Graph</span></div><div class="ph-sub">// Interactive attack path modeling — drag nodes, click to inspect</div></div>
-      <div class="ph-actions">
-        <button class="btn btn-g btn-sm" onclick="resetGraph()">⟳ Reset</button>
-        <button class="btn btn-g btn-sm" onclick="gphysics=!gphysics">⚛ Physics</button>
-        <button class="btn btn-p btn-sm" onclick="loadGraph()">↻ Refresh</button>
+      <div class="stats-row">
+        <div class="sc c-c"><div class="sc-lbl">Critical</div><div class="sc-val" id="stat-crit">—</div><div class="sc-sub">Immediate action</div></div>
+        <div class="sc c-h"><div class="sc-lbl">High</div><div class="sc-val" id="stat-high">—</div><div class="sc-sub">Urgent fix needed</div></div>
+        <div class="sc c-m"><div class="sc-lbl">Medium</div><div class="sc-val" id="stat-med">—</div><div class="sc-sub">Plan remediation</div></div>
+        <div class="sc c-l"><div class="sc-lbl">KEV Hits</div><div class="sc-val" id="stat-kev">—</div><div class="sc-sub">Active exploits</div></div>
+        <div class="sc c-i"><div class="sc-lbl">Total Jobs</div><div class="sc-val" id="stat-jobs">—</div><div class="sc-sub">Scans executed</div></div>
       </div>
-    </div>
-    <div class="gf-bar">
-      <div class="gfc active" data-t="all" onclick="gFilter('all',this)">All Nodes</div>
-      <div class="gfc" data-t="asset" onclick="gFilter('asset',this)">Assets</div>
-      <div class="gfc" data-t="vuln" onclick="gFilter('vuln',this)">Vulnerabilities</div>
-      <div class="gfc" data-t="kev" onclick="gFilter('kev',this)">KEV / Exploited</div>
-      <div class="gfc" data-t="crit" onclick="gFilter('crit',this)">Critical Only</div>
-    </div>
-    <div class="g3" style="gap:14px;margin-bottom:14px">
-      <div class="sc cc" style="padding:14px 16px"><div class="sl">Assets</div><div class="sv" id="ga" style="font-size:1.5rem">0</div></div>
-      <div class="sc ch" style="padding:14px 16px"><div class="sl">CVEs</div><div class="sv" id="gcv" style="font-size:1.5rem">0</div></div>
-      <div class="sc cm" style="padding:14px 16px"><div class="sl">Attack Paths</div><div class="sv" id="gp" style="font-size:1.5rem">0</div></div>
-    </div>
-    <div class="g2" style="gap:14px;margin-bottom:14px">
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Critical Attack Paths</div></div>
-        <div class="pb np" style="max-height:140px;overflow-y:auto">
-          <table class="tbl"><thead><tr><th>Asset</th><th>CVE / Finding</th><th>Risk</th></tr></thead>
-          <tbody id="apb"><tr><td colspan="3" class="empty" style="padding:16px">Load graph to see paths</td></tr></tbody>
+
+      <!-- Severity filter bar -->
+      <div class="sev-row" id="sev-filter-bar">
+        <span style="font-family:var(--fm);font-size:.7rem;color:var(--text3);font-weight:500">Filter:</span>
+        <div class="sev-chip active" style="background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:var(--accent)" data-sev="all" onclick="setSevFilter('all',this)">All</div>
+        <div class="sev-chip" style="border-color:rgba(248,113,113,.3);color:var(--red)" data-sev="critical" onclick="setSevFilter('critical',this)">Critical</div>
+        <div class="sev-chip" style="border-color:rgba(251,146,60,.3);color:var(--orange)" data-sev="high" onclick="setSevFilter('high',this)">High</div>
+        <div class="sev-chip" style="border-color:rgba(251,191,36,.3);color:var(--yellow)" data-sev="medium" onclick="setSevFilter('medium',this)">Medium</div>
+        <div class="sev-chip" style="border-color:rgba(52,211,153,.3);color:var(--green)" data-sev="low" onclick="setSevFilter('low',this)">Low</div>
+        <div class="sev-chip" style="border-color:var(--border);color:var(--text3)" data-sev="info" onclick="setSevFilter('info',this)">Info</div>
+        <span style="margin-left:auto;font-family:var(--fm);font-size:.7rem;color:var(--text3)" id="finding-count-label">— findings</span>
+      </div>
+
+      <div id="findings-list"><div class="empty-state"><div class="empty-icon">⬡</div>Loading findings...</div></div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-title-bar"></div>Recent Scan Jobs</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadDashboard(true)">↻</button>
+        </div>
+        <div class="pb np">
+          <table class="tbl">
+            <thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Status</th><th>Started</th></tr></thead>
+            <tbody id="dash-jobs-body"><tr><td colspan="5"><div class="empty-state" style="padding:24px">Loading...</div></td></tr></tbody>
           </table>
         </div>
       </div>
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Node Summary</div></div>
-        <div class="pb">
-          <div id="gsum" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text2);line-height:2">
-            Run a scan and click Refresh to populate the attack graph.
-          </div>
-        </div>
-      </div>
     </div>
-    <div class="panel" style="margin-bottom:0">
-      <div class="panel-head">
-        <div class="ptitle"><div class="ptd"></div>Attack Surface Visualization</div>
-        <div style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text3)">Click nodes to inspect • Drag to rearrange</div>
-      </div>
-      <div class="gc-wrap">
-        <canvas id="gcanvas"></canvas>
-        <div class="g-tip" id="gtip">
-          <div class="gt-t" id="gtt">Node</div>
-          <div class="gt-r">Type: <span id="gtype">—</span></div>
-          <div class="gt-r">CVE: <span id="gcve">—</span></div>
-          <div class="gt-r">Risk: <span id="grisk">—</span></div>
-          <div class="gt-r">Severity: <span id="gsev">—</span></div>
-        </div>
-      </div>
-      <div class="gl">
-        <div class="li"><div class="ld" style="background:#38bdf8"></div>Asset / Target</div>
-        <div class="li"><div class="ld" style="background:#f87171"></div>Critical CVE</div>
-        <div class="li"><div class="ld" style="background:#fb923c"></div>High CVE</div>
-        <div class="li"><div class="ld" style="background:#fbbf24"></div>Medium CVE</div>
-        <div class="li"><div class="ld" style="background:#34d399"></div>Low / Info</div>
-        <div class="li"><div class="ld" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa"></div>KEV (Active Exploit)</div>
-      </div>
-    </div>
-  </div>
 
-  <!-- SCAN JOBS -->
-  <div id="page-jobs" class="page">
-    <div class="ph">
-      <div><div class="ph-title">Scan <span class="hl">Jobs</span></div><div class="ph-sub">// Internal LAN and external web scanning — delete jobs from history</div></div>
+    <!-- ══════ ATTACK GRAPH ══════ -->
+    <div id="page-graph" class="page">
+      <div class="ph">
+        <div>
+          <div class="ph-title">Attack <span class="hl">Surface</span></div>
+          <div class="ph-sub">// Interactive attack path modeling — drag nodes, hover to inspect</div>
+        </div>
+        <div class="ph-right">
+          <button class="btn btn-ghost btn-sm" onclick="resetGraphLayout()">⟳ Reset Layout</button>
+          <button class="btn btn-ghost btn-sm" onclick="togglePhysics()" id="physics-btn">⚛ Physics: ON</button>
+          <button class="btn btn-primary btn-sm" onclick="loadGraph()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="graph-filters">
+        <div class="gf-chip active" data-gf="all" onclick="setGraphFilter('all',this)">All Nodes</div>
+        <div class="gf-chip" data-gf="asset" onclick="setGraphFilter('asset',this)">Assets</div>
+        <div class="gf-chip" data-gf="vuln" onclick="setGraphFilter('vuln',this)">Vulnerabilities</div>
+        <div class="gf-chip" data-gf="kev" onclick="setGraphFilter('kev',this)">KEV / Exploited</div>
+        <div class="gf-chip" data-gf="critical" onclick="setGraphFilter('critical',this)">Critical Only</div>
+      </div>
+
+      <div class="g3" style="margin-bottom:14px">
+        <div class="sc c-c" style="padding:14px 16px"><div class="sc-lbl">Assets</div><div class="sc-val" id="g-assets" style="font-size:1.5rem">0</div></div>
+        <div class="sc c-h" style="padding:14px 16px"><div class="sc-lbl">CVEs Mapped</div><div class="sc-val" id="g-cves" style="font-size:1.5rem">0</div></div>
+        <div class="sc c-m" style="padding:14px 16px"><div class="sc-lbl">Attack Paths</div><div class="sc-val" id="g-paths" style="font-size:1.5rem">0</div></div>
+      </div>
+
+      <div class="g2" style="margin-bottom:14px">
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Critical Attack Paths</div></div>
+          <div class="pb np" style="max-height:150px;overflow-y:auto">
+            <table class="tbl"><thead><tr><th>Asset</th><th>Vulnerability</th><th>Risk</th></tr></thead>
+            <tbody id="attack-paths-body"><tr><td colspan="3"><div class="empty-state" style="padding:14px">Refresh graph to load paths</div></td></tr></tbody></table>
+          </div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Graph Summary</div></div>
+          <div class="pb" id="graph-summary" style="font-family:var(--fm);font-size:.77rem;color:var(--text2);line-height:2">
+            Run a scan, then click Refresh to build the attack graph.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-title-bar"></div>Attack Surface Visualization</div>
+          <span style="font-family:var(--fm);font-size:.63rem;color:var(--text3)">Click to inspect • Drag to rearrange • Scroll to zoom</span>
+        </div>
+        <div class="gcanvas-wrap">
+          <canvas id="gcanvas"></canvas>
+          <div class="graph-tooltip" id="graph-tooltip">
+            <div class="gt-title" id="gt-name">Node</div>
+            <div class="gt-row">Type: <span id="gt-type">—</span></div>
+            <div class="gt-row">CVE: <span id="gt-cve">—</span></div>
+            <div class="gt-row">Risk Score: <span id="gt-risk">—</span></div>
+            <div class="gt-row">Severity: <span id="gt-sev">—</span></div>
+            <div class="gt-row" id="gt-kev-row" style="display:none">Status: <span style="color:var(--purple)">⚠ KEV Active Exploit</span></div>
+          </div>
+        </div>
+        <div class="graph-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#38bdf8;box-shadow:0 0 6px #38bdf8"></div>Asset / Target</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div>Critical CVE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>High CVE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>Medium CVE</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Low / Info</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#a78bfa;box-shadow:0 0 8px #a78bfa"></div>KEV Active Exploit</div>
+        </div>
+      </div>
     </div>
-    <div class="g2" style="margin-bottom:20px">
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Launch Scan</div></div>
-        <div class="pb">
-          <div id="jalert" style="display:none"></div>
-          <div class="fl">Scan Target Type</div>
-          <div class="tt-wrap">
-            <div class="tt-tab active" id="tti" onclick="setST('internal')">🏠 Internal / LAN</div>
-            <div class="tt-tab" id="tte" onclick="setST('external')">🌐 External / Web</div>
-          </div>
-          <div class="fg">
-            <label class="fl" id="tlbl">IP Address or Hostname</label>
-            <input id="jtgt" class="fc" value="127.0.0.1" placeholder="10.0.0.1"/>
-            <div class="tce" id="texs">
-              <div class="tc" onclick="st('127.0.0.1')">127.0.0.1</div>
-              <div class="tc" onclick="st('192.168.1.1')">192.168.1.1</div>
-              <div class="tc" onclick="st('10.0.0.1')">10.0.0.1</div>
-              <div class="tc" onclick="st('10.0.0.100')">10.0.0.100</div>
+
+    <!-- ══════ SCAN JOBS ══════ -->
+    <div id="page-jobs" class="page">
+      <div class="ph">
+        <div>
+          <div class="ph-title">Scan <span class="hl">Jobs</span></div>
+          <div class="ph-sub">// Launch internal LAN and external web scans • Delete completed jobs</div>
+        </div>
+      </div>
+
+      <div class="g2" style="margin-bottom:20px;align-items:start">
+        <!-- Left: Launch panel -->
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Launch Scan</div></div>
+          <div class="pb">
+            <div id="job-alert" style="display:none"></div>
+
+            <!-- Scan type toggle -->
+            <div class="fl">Scan Target Type</div>
+            <div class="scan-toggle">
+              <button class="scan-tab active" id="tab-internal" onclick="setScanType('internal')">🏠 Internal / LAN</button>
+              <button class="scan-tab" id="tab-external" onclick="setScanType('external')">🌐 External / Web</button>
             </div>
-          </div>
-          <div id="webops" style="display:none">
+
+            <!-- Target input -->
+            <div class="fg" id="target-group">
+              <label class="fl" id="target-label">IP Address or Hostname</label>
+              <input id="job-target" class="fc" placeholder="10.0.0.1" value="127.0.0.1"
+                     oninput="clearFieldErr('job-target')" onchange="validateTarget()"/>
+              <div class="field-err" id="target-err" style="display:none"></div>
+              <div class="chips" id="quick-chips">
+                <div class="chip" onclick="setTarget('127.0.0.1')">127.0.0.1</div>
+                <div class="chip" onclick="setTarget('192.168.1.1')">192.168.1.1</div>
+                <div class="chip" onclick="setTarget('10.0.0.1')">10.0.0.1</div>
+                <div class="chip" onclick="setTarget('172.16.0.1')">172.16.0.1</div>
+              </div>
+            </div>
+
+            <!-- External-only options (hidden by default) -->
+            <div id="external-opts" style="display:none">
+              <div class="fg">
+                <label class="fl">Web Scan Mode</label>
+                <select class="fc" id="web-scan-mode">
+                  <option value="http_fingerprint">HTTP Fingerprint Only</option>
+                  <option value="full_web">Full Web Scan (Tech + CVE)</option>
+                  <option value="passive">Passive Reconnaissance</option>
+                </select>
+              </div>
+              <div class="alert a-warn" style="margin-bottom:14px">
+                ⚠ Only scan targets you own or have explicit written permission to test. Unauthorized scanning may be illegal.
+              </div>
+            </div>
+
+            <!-- Scan profile -->
             <div class="fg">
-              <label class="fl">Web Scan Mode</label>
-              <select class="fc" id="wmode">
-                <option value="http_fingerprint">HTTP Fingerprint Only</option>
-                <option value="full_web">Full Web Scan (Tech + CVE)</option>
-                <option value="passive">Passive Reconnaissance</option>
-              </select>
+              <label class="fl">Scan Profile</label>
+              <select id="job-profile" class="fc"><option value="">Loading profiles...</option></select>
+              <div class="field-err" id="profile-err" style="display:none"></div>
             </div>
-            <div style="padding:10px 13px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:6px;margin-bottom:14px">
-              <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--yellow)">⚠ Authorized Targets Only</div>
-              <div style="font-size:0.82rem;color:var(--text2);margin-top:4px;line-height:1.5">Only scan domains you own or have explicit permission to test.</div>
-            </div>
-          </div>
-          <div class="fg"><label class="fl">Scan Profile</label><select id="jprof" class="fc"><option>Loading...</option></select></div>
-          <div class="fr">
-            <button class="btn btn-p btn-lg btn-full" onclick="submitJob()" style="gap:8px"><span id="jspin" style="display:none" class="sp"></span>⚡ Launch Scan</button>
-            <button class="btn btn-g btn-full" onclick="loadJobs()">↻ Refresh</button>
-          </div>
-        </div>
-      </div>
-      <div>
-        <div class="panel" style="margin:0 0 14px">
-          <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Scan Capabilities</div></div>
-          <div class="pb" style="padding:16px 20px">
-            <div style="display:grid;gap:12px">
-              <div style="display:flex;gap:10px;align-items:flex-start">
-                <span style="font-size:1.1rem;margin-top:2px">🏠</span>
-                <div><div style="font-weight:600;color:var(--bright);font-size:0.92rem;margin-bottom:3px">Internal / LAN Scanning</div>
-                <div style="font-size:0.85rem;color:var(--text2);line-height:1.5">IP ranges, local hostnames, SSH inventory, banner grabbing, port scan, service fingerprint, NVD CVE matching</div></div>
-              </div>
-              <div style="display:flex;gap:10px;align-items:flex-start">
-                <span style="font-size:1.1rem;margin-top:2px">🌐</span>
-                <div><div style="font-weight:600;color:var(--bright);font-size:0.92rem;margin-bottom:3px">External / Web Scanning</div>
-                <div style="font-size:0.85rem;color:var(--text2);line-height:1.5">Public domains, HTTP fingerprinting, web tech detection (Wappalyzer-style), TLS version check, favicon hash, CMS CVE mapping, CISA KEV</div></div>
-              </div>
-            </div>
-            <div style="margin-top:14px;padding:10px 12px;background:var(--surface3);border-radius:6px;border:1px solid var(--border)">
-              <div style="font-family:var(--font-mono);font-size:0.62rem;color:var(--text3);letter-spacing:.12em;margin-bottom:7px">SLA POLICY</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-family:var(--font-mono);font-size:0.75rem">
-                <span><span style="color:var(--red)">Critical</span> → 7 days</span>
-                <span><span style="color:var(--orange)">High</span> → 14 days</span>
-                <span><span style="color:var(--yellow)">Medium</span> → 30 days</span>
-                <span><span style="color:var(--green)">Low</span> → 60 days</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="panel">
-      <div class="panel-head">
-        <div class="ptitle"><div class="ptd"></div>Job History</div>
-        <span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text3)" id="jcount">0 jobs</span>
-      </div>
-      <div class="pb np">
-        <table class="tbl">
-          <thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Profile</th><th>Status</th><th>Started</th><th>Actions</th></tr></thead>
-          <tbody id="jbody"><tr><td colspan="7"><div class="empty"><div class="ei">⚡</div>No scan jobs yet</div></td></tr></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
 
-  <!-- PROFILES -->
-  <div id="page-profiles" class="page">
-    <div class="ph"><div><div class="ph-title">Scan <span class="hl">Profiles</span></div><div class="ph-sub">// Plugin selection and scan options</div></div></div>
-    <div class="g2">
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Create Profile</div></div>
-        <div class="pb">
-          <div id="palert" style="display:none"></div>
-          <div class="fg"><label class="fl">Name</label><input id="pname" class="fc" value="default"/></div>
-          <div class="fg"><label class="fl">Plugin Selection (JSON)</label><textarea id="pplugs" class="fc" rows="11">{
+            <!-- Actions -->
+            <div class="form-row">
+              <button class="btn btn-primary btn-lg btn-full" id="launch-btn" onclick="submitJob()">
+                <span id="launch-spin" class="spinner" style="display:none"></span>⚡ Launch Scan
+              </button>
+              <button class="btn btn-ghost btn-full" onclick="loadJobs()">↻ Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Capabilities info -->
+        <div>
+          <div class="panel" style="margin:0 0 14px">
+            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Scan Capabilities</div></div>
+            <div class="pb" style="padding:16px 20px">
+              <div style="display:grid;gap:14px">
+                <div style="display:flex;gap:11px;align-items:flex-start">
+                  <span style="font-size:1.1rem;margin-top:1px">🏠</span>
+                  <div>
+                    <div style="font-weight:600;color:var(--bright);font-size:.93rem;margin-bottom:3px">Internal / LAN</div>
+                    <div style="font-size:.85rem;color:var(--text2);line-height:1.55">Port discovery, banner grabbing, service fingerprinting, SSH inventory, NVD CVE matching, CPE lookup, TLS version check</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:11px;align-items:flex-start">
+                  <span style="font-size:1.1rem;margin-top:1px">🌐</span>
+                  <div>
+                    <div style="font-weight:600;color:var(--bright);font-size:.93rem;margin-bottom:3px">External / Web</div>
+                    <div style="font-size:.85rem;color:var(--text2);line-height:1.55">HTTP fingerprinting, web tech detection, favicon hash matching, TLS cipher check, CMS CVE mapping, CISA KEV correlation</div>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:14px;padding:10px 12px;background:var(--surface3);border-radius:6px;border:1px solid var(--border)">
+                <div style="font-family:var(--fm);font-size:.6rem;color:var(--text3);letter-spacing:.14em;margin-bottom:7px">REMEDIATION SLA</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-family:var(--fm);font-size:.74rem">
+                  <span><span style="color:var(--red)">Critical</span> → 7 days</span>
+                  <span><span style="color:var(--orange)">High</span> → 14 days</span>
+                  <span><span style="color:var(--yellow)">Medium</span> → 30 days</span>
+                  <span><span style="color:var(--green)">Low</span> → 60 days</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Job History -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-title-bar"></div>Job History</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-family:var(--fm);font-size:.67rem;color:var(--text3)" id="job-count-label">0 jobs</span>
+            <button class="btn btn-ghost btn-sm" onclick="loadJobs()">↻ Refresh</button>
+          </div>
+        </div>
+        <div class="pb np">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>ID</th><th>Target</th><th>Type</th><th>Profile</th>
+                <th>Status</th><th>Started</th><th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-tbody">
+              <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ PROFILES ══════ -->
+    <div id="page-profiles" class="page">
+      <div class="ph"><div><div class="ph-title">Scan <span class="hl">Profiles</span></div><div class="ph-sub">// Plugin selection and scan configuration</div></div></div>
+      <div class="g2">
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Create Profile</div></div>
+          <div class="pb">
+            <div id="profile-alert" style="display:none"></div>
+            <div class="fg"><label class="fl">Profile Name</label><input id="p-name" class="fc" value="default"/></div>
+            <div class="fg"><label class="fl">Plugin Selection (JSON)</label><textarea id="p-plugins" class="fc" rows="11">{
   "net.port.discovery.v2": true,
   "fingerprint.http": true,
   "fingerprint.banner.multi": true,
@@ -493,481 +600,1135 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
   "auth.ssh.inventory": false,
   "cve.match.packages": false
 }</textarea></div>
-          <div class="fg"><label class="fl">Options (JSON)</label><textarea id="popts" class="fc" rows="6">{
+            <div class="fg"><label class="fl">Options (JSON)</label><textarea id="p-options" class="fc" rows="6">{
   "auth": { "ssh_credential_id": 1, "ssh_port": 22 },
   "cve": { "dataset_kinds": ["osv","nvd_cpe_cve","cisa_kev"] },
   "asset": { "criticality": 2 }
 }</textarea></div>
-          <button class="btn btn-p btn-full" onclick="createProfile()">Create Profile</button>
+            <button class="btn btn-primary btn-full" onclick="createProfile()">Create Profile</button>
+          </div>
+        </div>
+        <div>
+          <div class="panel" style="margin:0 0 14px">
+            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Available Plugins</div></div>
+            <div class="pb np"><table class="tbl" style="font-size:.84rem">
+              <thead><tr><th>Plugin ID</th><th>Category</th><th>On</th></tr></thead>
+              <tbody>
+                <tr><td class="mc" style="color:var(--accent)">net.port.discovery.v2</td><td><span class="badge b-info">network</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">fingerprint.http</td><td><span class="badge b-info">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">fingerprint.web.tech</td><td><span class="badge b-info">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">cpe.builder</td><td><span class="badge b-purple">cpe</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">cve.match.nvd_cpe</td><td><span class="badge b-high">cve</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">priority.cisa_kev</td><td><span class="badge b-crit">priority</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">tls.basic.version</td><td><span class="badge b-med">tls</span></td><td style="color:var(--green)">✓</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">auth.ssh.inventory</td><td><span class="badge b-ok">auth</span></td><td style="color:var(--text3)">—</td></tr>
+                <tr><td class="mc" style="color:var(--accent)">cve.match.packages</td><td><span class="badge b-high">cve</span></td><td style="color:var(--text3)">—</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+          <div class="panel" style="margin:0">
+            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Saved Profiles</div><button class="btn btn-ghost btn-sm" onclick="loadProfiles()">↻</button></div>
+            <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead><tbody id="profiles-tbody"><tr><td colspan="3"><div class="empty-state" style="padding:20px">No profiles</div></td></tr></tbody></table></div>
+          </div>
         </div>
       </div>
-      <div>
-        <div class="panel" style="margin:0 0 14px">
-          <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Available Plugins</div></div>
-          <div class="pb np">
-            <table class="tbl" style="font-size:0.82rem">
-              <thead><tr><th>Plugin ID</th><th>Category</th><th>Default</th></tr></thead>
-              <tbody>
-                <tr><td class="mc accent">net.port.discovery.v2</td><td><span class="badge bi">network</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">fingerprint.http</td><td><span class="badge bi">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">fingerprint.banner.multi</td><td><span class="badge bi">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">fingerprint.web.tech</td><td><span class="badge bi">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">cpe.builder</td><td><span class="badge bp">cpe</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">cve.match.nvd_cpe</td><td><span class="badge bh">cve</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">priority.cisa_kev</td><td><span class="badge bc_">priority</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">tls.basic.version</td><td><span class="badge bm">tls</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc accent">auth.ssh.inventory</td><td><span class="badge bo">auth</span></td><td style="color:var(--text3)">—</td></tr>
-                <tr><td class="mc accent">cve.match.packages</td><td><span class="badge bh">cve</span></td><td style="color:var(--text3)">—</td></tr>
-              </tbody>
-            </table>
+    </div>
+
+    <!-- ══════ CREDENTIALS ══════ -->
+    <div id="page-credentials" class="page">
+      <div class="ph"><div><div class="ph-title">SSH <span class="hl">Credentials</span></div><div class="ph-sub">// AES-256 encrypted credential vault for authenticated scanning</div></div></div>
+      <div class="g2">
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Add Credential</div><span class="badge b-info">Admin Only</span></div>
+          <div class="pb">
+            <div id="cred-alert" style="display:none"></div>
+            <div class="fg"><label class="fl">Name</label><input id="cr-name" class="fc" value="prod-ssh"/></div>
+            <div class="fg"><label class="fl">Username</label><input id="cr-user" class="fc" value="ubuntu"/></div>
+            <div class="fg"><label class="fl">Type</label><select id="cr-type" class="fc"><option value="ssh_key">SSH Private Key</option><option value="password">Password</option></select></div>
+            <div class="fg"><label class="fl">Secret</label><textarea id="cr-secret" class="fc" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"></textarea></div>
+            <div class="fg"><label class="fl">Passphrase (optional)</label><input id="cr-pass" class="fc" type="password"/></div>
+            <button class="btn btn-primary btn-full" onclick="createCred()">Store Credential</button>
+            <div style="margin-top:12px;padding:10px 13px;background:rgba(56,189,248,.05);border:1px solid rgba(56,189,248,.15);border-radius:6px;font-size:.83rem;color:var(--text2);line-height:1.55">
+              🔒 Secrets are encrypted with AES-256 before storage. Private keys are never returned via the API.
+            </div>
           </div>
         </div>
         <div class="panel" style="margin:0">
-          <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Saved Profiles</div><button class="btn btn-g btn-sm" onclick="loadProfiles()">↻</button></div>
-          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead><tbody id="profs"><tr><td colspan="3" class="empty" style="padding:20px">No profiles</td></tr></tbody></table></div>
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Stored Credentials</div><button class="btn btn-ghost btn-sm" onclick="loadCreds()">↻</button></div>
+          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Username</th><th>Type</th></tr></thead><tbody id="creds-tbody"><tr><td colspan="4"><div class="empty-state" style="padding:28px">No credentials stored</div></td></tr></tbody></table></div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- CREDENTIALS -->
-  <div id="page-credentials" class="page">
-    <div class="ph"><div><div class="ph-title">SSH <span class="hl">Credentials</span></div><div class="ph-sub">// AES-256 encrypted credential storage</div></div></div>
-    <div class="g2">
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Add Credential</div><span class="badge bi">Admin Only</span></div>
-        <div class="pb">
-          <div id="calert" style="display:none"></div>
-          <div class="fg"><label class="fl">Name</label><input id="crn" class="fc" value="prod-ssh"/></div>
-          <div class="fg"><label class="fl">Username</label><input id="cru" class="fc" value="ubuntu"/></div>
-          <div class="fg"><label class="fl">Type</label><select id="crt" class="fc"><option value="ssh_key">SSH Private Key</option><option value="password">Password</option></select></div>
-          <div class="fg"><label class="fl">Secret</label><textarea id="crs" class="fc" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"></textarea></div>
-          <div class="fg"><label class="fl">Passphrase (optional)</label><input id="crp" class="fc" type="password"/></div>
-          <button class="btn btn-p btn-full" onclick="createCred()">Store Credential</button>
-          <div style="margin-top:12px;padding:10px 12px;background:rgba(56,189,248,.05);border:1px solid rgba(56,189,248,.15);border-radius:6px;font-size:0.82rem;color:var(--text2);line-height:1.5">🔒 Secrets encrypted with AES-256. Private keys are never returned via API.</div>
-        </div>
-      </div>
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Stored Credentials</div><button class="btn btn-g btn-sm" onclick="loadCreds()">↻</button></div>
-        <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Username</th><th>Type</th></tr></thead><tbody id="crdb"><tr><td colspan="4" class="empty" style="padding:28px">No credentials</td></tr></tbody></table></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- DATASETS -->
-  <div id="page-datasets" class="page">
-    <div class="ph"><div><div class="ph-title">CVE <span class="hl">Datasets</span></div><div class="ph-sub">// Upload threat intelligence feeds</div></div></div>
-    <div class="g2">
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Upload Dataset</div><span class="badge bi">Admin Only</span></div>
-        <div class="pb">
-          <div id="dsalert" style="display:none"></div>
-          <div class="fg"><label class="fl">Kind</label>
-            <select id="dsk" class="fc">
-              <option value="osv">osv — OSV Package Vulnerabilities</option>
-              <option value="nvd_cpe_cve">nvd_cpe_cve — NVD CPE→CVE</option>
-              <option value="cisa_kev">cisa_kev — CISA Known Exploited</option>
-              <option value="favicon_hash_map">favicon_hash_map — Favicon Fingerprints</option>
-              <option value="cms_cve_map">cms_cve_map — CMS CVE Map</option>
-              <option value="compliance_map">compliance_map — Compliance Framework</option>
-            </select>
+    <!-- ══════ DATASETS ══════ -->
+    <div id="page-datasets" class="page">
+      <div class="ph"><div><div class="ph-title">CVE <span class="hl">Datasets</span></div><div class="ph-sub">// Upload threat intelligence feeds for CVE matching</div></div></div>
+      <div class="g2">
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Upload Dataset</div><span class="badge b-info">Admin Only</span></div>
+          <div class="pb">
+            <div id="ds-alert" style="display:none"></div>
+            <div class="fg"><label class="fl">Dataset Kind</label>
+              <select id="ds-kind" class="fc">
+                <option value="osv">osv — OSV Package Vulnerabilities</option>
+                <option value="nvd_cpe_cve">nvd_cpe_cve — NVD CPE→CVE Mappings</option>
+                <option value="cisa_kev">cisa_kev — CISA Known Exploited</option>
+                <option value="favicon_hash_map">favicon_hash_map — Favicon Fingerprints</option>
+                <option value="cms_cve_map">cms_cve_map — CMS CVE Map</option>
+                <option value="compliance_map">compliance_map — Compliance Framework</option>
+              </select>
+            </div>
+            <div class="fg"><label class="fl">Dataset Name</label><input id="ds-name" class="fc" value="nvd-feed-2024"/></div>
+            <div class="fg"><label class="fl">JSON File</label><input type="file" id="ds-file" class="fc" accept=".json"/></div>
+            <button class="btn btn-primary btn-full" id="ds-upload-btn" onclick="uploadDs()">
+              <span id="ds-spin" class="spinner" style="display:none"></span>Upload Dataset
+            </button>
           </div>
-          <div class="fg"><label class="fl">Name</label><input id="dsn" class="fc" value="nvd-feed-2024"/></div>
-          <div class="fg"><label class="fl">JSON File</label><input type="file" id="dsf" class="fc" accept=".json"/></div>
-          <button class="btn btn-p btn-full" onclick="uploadDs()" style="gap:8px"><span id="dsspin" style="display:none" class="sp"></span>Upload Dataset</button>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Active Datasets</div><button class="btn btn-ghost btn-sm" onclick="loadDs()">↻</button></div>
+          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Kind</th><th>Status</th></tr></thead><tbody id="ds-tbody"><tr><td colspan="4"><div class="empty-state" style="padding:28px">No datasets</div></td></tr></tbody></table></div>
         </div>
       </div>
-      <div class="panel" style="margin:0">
-        <div class="panel-head"><div class="ptitle"><div class="ptd"></div>Active Datasets</div><button class="btn btn-g btn-sm" onclick="loadDs()">↻</button></div>
-        <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Kind</th><th>Status</th></tr></thead><tbody id="dsb"><tr><td colspan="4" class="empty" style="padding:28px">No datasets</td></tr></tbody></table></div>
-      </div>
     </div>
-  </div>
 
   </div><!-- /content -->
 </div><!-- /main -->
 
 <script>
-const API='http://0.0.0.0:8080';
-let TOKEN=null, allF=[], dSev='all', scanType='internal', profs=[], gNodes=[], gEdges=[], gphysics=true, anim=null, dragN=null, hovN=null, gFilt='all';
+// ══════════════════════════════════════════════════════════════════
+//  VULNSCAN PLATFORM — FIXED APPLICATION LOGIC
+//  - Proper delete job flow with optimistic UI + rollback
+//  - Validated internal/external scan switching
+//  - Target validation per scan type
+//  - Race-condition-safe job polling
+//  - Graph canvas with zoom support
+// ══════════════════════════════════════════════════════════════════
+
+const API_BASE = '0.0.0.0:8080';
+
+// ── App State ──
+const AppState = {
+  token: null,
+  userEmail: 'admin@local',
+  allFindings: [],
+  sevFilter: 'all',
+  scanType: 'internal',
+  profiles: [],
+  // Graph
+  gNodes: [], gEdges: [],
+  gFilter: 'all',
+  gPhysics: true,
+  gAnimFrame: null,
+  gDragNode: null,
+  gHovNode: null,
+  gScale: 1,
+  gOffX: 0, gOffY: 0,
+  gPanning: false,
+  gPanStart: null,
+  // Polling
+  dashInterval: null,
+  jobsInterval: null,
+  // Deleted job IDs (for optimistic UI)
+  deletedJobIds: new Set(),
+};
+
+// ── Helpers ──
+const gi = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmtDate = d => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' }); }
+  catch { return d; }
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ── API ──
+async function apiReq(path, opts = {}, skipAuth = false) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (!skipAuth && AppState.token) headers['Authorization'] = 'Bearer ' + AppState.token;
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { const t = await res.text(); if (t) msg = t; } catch {}
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('json') ? res.json() : res.text();
+}
 
 // ── AUTH ──
-async function doLogin(){
-  const e=gi('lem').value,p=gi('lpw').value,err=gi('lerr');
-  err.style.display='none'; gi('lspin').style.display='inline-block';
-  try{
-    const r=await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});
-    if(!r.ok)throw new Error(await r.text());
-    const d=await r.json(); TOKEN=d.token;
-    localStorage.setItem('vt',TOKEN); localStorage.setItem('ve',e);
-    showApp(e);
-  }catch(x){err.style.display='flex';err.textContent='⚠ '+(x.message||'Login failed');}
-  finally{gi('lspin').style.display='none';}
-}
-function doLogout(){TOKEN=null;localStorage.clear();gi('login-page').classList.add('show');gi('sidebar').style.display='none';gi('main').style.display='none';}
-function showApp(email){
-  gi('login-page').classList.remove('show');
-  gi('sidebar').style.display='flex'; gi('main').style.display='flex';
-  gi('uem').textContent=email; gi('uav').textContent=email[0].toUpperCase();
-  startClock(); loadDashboard(); loadJobs(); loadProfiles(); loadCreds(); loadDs();
-  setInterval(loadDashboard,20000); setInterval(loadJobs,5000);
+async function doLogin() {
+  const email = gi('l-email').value.trim();
+  const pass  = gi('l-pass').value;
+  const errEl = gi('login-err');
+  errEl.style.display = 'none';
+  const btn = gi('login-btn');
+  btn.disabled = true;
+  gi('login-spin').style.display = 'inline-block';
+  try {
+    const data = await apiReq('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password: pass }),
+    }, true);
+    AppState.token = data.token;
+    AppState.userEmail = email;
+    localStorage.setItem('vs_token', data.token);
+    localStorage.setItem('vs_email', email);
+    showApp();
+  } catch(e) {
+    errEl.textContent = '⚠ ' + (e.message || 'Login failed. Check credentials.');
+    errEl.style.display = 'flex';
+  } finally {
+    btn.disabled = false;
+    gi('login-spin').style.display = 'none';
+  }
 }
 
-// ── NAV ──
-function nav(page,btn){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
-  gi('page-'+page).classList.add('active');
-  if(btn)btn.classList.add('active');
-  const L={dashboard:'Dashboard',graph:'Attack Graph',jobs:'Scan Jobs',profiles:'Profiles',credentials:'Credentials',datasets:'Datasets'};
-  gi('bcm').textContent=L[page]||page;
-  gi('bcs').textContent='';
-  if(page==='graph')loadGraph();
+function doLogout() {
+  AppState.token = null;
+  clearInterval(AppState.dashInterval);
+  clearInterval(AppState.jobsInterval);
+  localStorage.removeItem('vs_token');
+  localStorage.removeItem('vs_email');
+  gi('login-page').classList.add('show');
+  gi('app-sidebar').style.display = 'none';
+  gi('app-main').style.display   = 'none';
+}
+
+function showApp() {
+  gi('login-page').classList.remove('show');
+  gi('app-sidebar').style.display = 'flex';
+  gi('app-main').style.display   = 'flex';
+  gi('user-email').textContent = AppState.userEmail;
+  gi('user-av').textContent    = AppState.userEmail[0].toUpperCase();
+  startClock();
+  // Initial loads
+  loadDashboard(false);
+  loadJobs();
+  loadProfiles();
+  loadCreds();
+  loadDs();
+  // Polling
+  AppState.dashInterval = setInterval(() => loadDashboard(false), 20000);
+  AppState.jobsInterval = setInterval(loadJobs, 5000);
 }
 
 // ── CLOCK ──
-function startClock(){const e=gi('clk');setInterval(()=>{e.textContent=new Date().toISOString().replace('T',' ').slice(0,19)+' UTC';},1000);}
-
-// ── API ──
-async function req(path,opts={},noAuth=false){
-  const h=opts.headers||{'Content-Type':'application/json'};
-  if(!noAuth&&TOKEN)h['Authorization']='Bearer '+TOKEN;
-  const r=await fetch(API+path,{...opts,headers:h});
-  if(!r.ok){const t=await r.text();throw new Error(t||r.statusText);}
-  const ct=r.headers.get('content-type')||'';
-  return ct.includes('json')?r.json():r.text();
+function startClock() {
+  const el = gi('clock-el');
+  const tick = () => { el.textContent = new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC'; };
+  tick(); setInterval(tick, 1000);
 }
-function gi(x){return document.getElementById(x);}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function fd(d){if(!d)return'—';try{return new Date(d).toISOString().replace('T',' ').slice(0,16);}catch{return d;}}
 
-// ── DASHBOARD ──
-async function loadDashboard(){
-  try{
-    const jobs=await req('/scan/jobs');
-    gi('dj').textContent=jobs.length;
-    let af=[];
-    for(const j of jobs.filter(j=>j.status==='done').slice(0,15)){
-      try{const d=await req('/scan/jobs/'+j.id);af=af.concat((d.findings||[]).map(f=>({...f,jid:j.id,jtgt:j.target})));}catch{}
+// ── NAVIGATION ──
+function navTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+  const pageEl = gi('page-' + page);
+  if (!pageEl) return;
+  pageEl.classList.add('active');
+  const navEl = gi('nav-' + page);
+  if (navEl) navEl.classList.add('active');
+  const labels = {
+    dashboard: 'Dashboard', graph: 'Attack Graph', jobs: 'Scan Jobs',
+    profiles: 'Profiles', credentials: 'Credentials', datasets: 'Datasets'
+  };
+  gi('bc-page').textContent = labels[page] || page;
+  gi('bc-sub').textContent = '';
+  if (page === 'graph') loadGraph();
+}
+
+// ── SHOW ALERT ──
+function showAlert(elId, type, msg, duration = 6000) {
+  const el = gi(elId);
+  if (!el) return;
+  el.className = 'alert a-' + type;
+  el.textContent = msg;
+  el.style.display = 'flex';
+  if (duration > 0) setTimeout(() => { el.style.display = 'none'; }, duration);
+}
+
+// ══════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════
+async function loadDashboard(showLoader = true) {
+  if (showLoader) {
+    gi('findings-list').innerHTML = '<div class="empty-state"><div class="empty-icon">⬡</div>Loading findings...</div>';
+  }
+  try {
+    const jobs = await apiReq('/scan/jobs');
+    const visibleJobs = jobs.filter(j => !AppState.deletedJobIds.has(j.id));
+    gi('stat-jobs').textContent = visibleJobs.length;
+
+    // Collect findings from all done jobs
+    let findings = [];
+    const doneJobs = visibleJobs.filter(j => j.status === 'done');
+    for (const j of doneJobs.slice(0, 20)) {
+      try {
+        const detail = await apiReq('/scan/jobs/' + j.id);
+        (detail.findings || []).forEach(f => {
+          findings.push({ ...f, _jobId: j.id, _jobTarget: j.target, _jobScanType: j.scan_type });
+        });
+      } catch {}
     }
-    allF=af;
-    gi('dc').textContent=af.filter(f=>f.severity==='critical').length;
-    gi('dh').textContent=af.filter(f=>f.severity==='high').length;
-    gi('dm').textContent=af.filter(f=>f.severity==='medium').length;
-    gi('dk').textContent=af.filter(f=>f.is_kev).length;
+
+    AppState.allFindings = findings;
+    gi('stat-crit').textContent = findings.filter(f => f.severity === 'critical').length;
+    gi('stat-high').textContent = findings.filter(f => f.severity === 'high').length;
+    gi('stat-med').textContent  = findings.filter(f => f.severity === 'medium').length;
+    gi('stat-kev').textContent  = findings.filter(f => f.is_kev).length;
+
     renderFindings();
-    const pm={};try{const ps=await req('/scan/profiles');ps.forEach(p=>pm[p.id]=p.name);}catch{}
-    gi('djb').innerHTML=jobs.slice(0,8).map(j=>`
+
+    // Update graph badge
+    const critCount = findings.filter(f => f.severity === 'critical').length;
+    const badge = gi('graph-badge');
+    if (critCount > 0) { badge.textContent = critCount; badge.style.display = 'inline'; }
+    else badge.style.display = 'none';
+
+    // Running badge
+    const runningCount = visibleJobs.filter(j => j.status === 'running').length;
+    const rbadge = gi('running-badge');
+    if (runningCount > 0) { rbadge.style.display = 'inline'; }
+    else rbadge.style.display = 'none';
+
+    // Profile map for jobs table
+    const pm = {};
+    try { const ps = await apiReq('/scan/profiles'); ps.forEach(p => pm[p.id] = p.name); } catch {}
+
+    gi('dash-jobs-body').innerHTML = visibleJobs.slice(0, 8).map(j => `
       <tr>
-        <td class="mc accent">#${j.id}</td>
-        <td class="bg">${esc(j.target)}</td>
-        <td>${j.scan_type==='external'?'<span class="badge bo">🌐 External</span>':'<span class="badge bi">🏠 Internal</span>'}</td>
-        <td>${sdot(j.status)}</td>
-        <td class="mc dim" style="font-size:0.72rem">${fd(j.created_at)}</td>
-      </tr>`).join('')||'<tr><td colspan="5" class="empty">No jobs</td></tr>';
-    const crit=af.filter(f=>f.severity==='critical').length;
-    if(crit>0){gi('gbadge').style.display='inline';gi('gbadge').textContent=crit;}
-  }catch(e){console.error(e);}
+        <td class="mc" style="color:var(--accent)">#${j.id}</td>
+        <td class="bright">${esc(j.target)}</td>
+        <td>${j.scan_type === 'external'
+          ? '<span class="badge b-ok">🌐 External</span>'
+          : '<span class="badge b-info">🏠 Internal</span>'}</td>
+        <td>${renderStatusDot(j.status)}</td>
+        <td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td>
+      </tr>`).join('') || '<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs yet</div></td></tr>';
+
+  } catch(e) { console.error('[Dashboard]', e); }
 }
 
-function dFilter(sev,el){
-  dSev=sev;
-  document.querySelectorAll('.sevc').forEach(c=>c.classList.remove('active'));
-  el.classList.add('active');
+function setSevFilter(sev, el) {
+  AppState.sevFilter = sev;
+  document.querySelectorAll('.sev-chip').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
   renderFindings();
 }
 
-function renderFindings(){
-  const filtered=dSev==='all'?allF:allF.filter(f=>f.severity===dSev);
-  gi('dfc').textContent=filtered.length+' findings';
-  if(!filtered.length){
-    gi('dlist').innerHTML='<div class="empty"><div class="ei">◎</div>'+(allF.length===0?'Run a scan to see findings here':'No findings for this severity filter')+'</div>';
+function renderFindings() {
+  const { allFindings, sevFilter } = AppState;
+  const filtered = sevFilter === 'all' ? allFindings : allFindings.filter(f => f.severity === sevFilter);
+  gi('finding-count-label').textContent = filtered.length + ' findings';
+
+  if (!filtered.length) {
+    gi('findings-list').innerHTML = '<div class="empty-state"><div class="empty-icon">◎</div>' +
+      (allFindings.length === 0 ? 'Run a scan to see findings' : 'No findings match this filter') + '</div>';
     return;
   }
-  gi('dlist').innerHTML=filtered.map((f,i)=>{
-    const rc=f.risk_score>=9?'#f87171':f.risk_score>=7?'#fb923c':f.risk_score>=4?'#fbbf24':'#34d399';
-    const rp=f.risk_score?Math.min(100,f.risk_score*10):0;
-    let ch='';
-    if(f.compliance_json){try{const c=JSON.parse(f.compliance_json);ch=Object.entries(c).map(([k,v])=>`<span class="badge bp" style="margin:2px;font-size:0.6rem">${esc(k)}: ${esc(Array.isArray(v)?v.join(', '):v)}</span>`).join('');}catch{}}
-    return `<div class="fc-card" id="fcard-${i}">
-      <div class="fc-header" onclick="tf(${i})">
-        ${sbadge(f.severity)}
-        ${f.is_kev?'<span class="kev-tag">KEV</span>':''}
-        <div class="fc-title">${esc(f.title)}</div>
-        <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text3);margin-right:10px">${esc(f.plugin_id)}</div>
-        <div class="rw" style="width:110px">
-          <div class="rt"><div class="rf" style="width:${rp}%;background:${rc}"></div></div>
-          <div class="rn" style="color:${rc}">${f.risk_score!=null?f.risk_score.toFixed(1):'—'}</div>
+
+  gi('findings-list').innerHTML = filtered.map((f, i) => {
+    const riskColor = f.risk_score >= 9 ? '#f87171' : f.risk_score >= 7 ? '#fb923c' : f.risk_score >= 4 ? '#fbbf24' : '#34d399';
+    const riskPct = f.risk_score ? Math.min(100, f.risk_score * 10) : 0;
+    let compHtml = '';
+    if (f.compliance_json) {
+      try {
+        const c = JSON.parse(f.compliance_json);
+        compHtml = Object.entries(c).map(([k,v]) =>
+          `<span class="badge b-purple" style="margin:2px;font-size:.6rem">${esc(k)}: ${esc(Array.isArray(v)?v.join(', '):v)}</span>`
+        ).join('');
+      } catch {}
+    }
+    return `
+    <div class="fcard" id="fc-${i}">
+      <div class="fcard-hdr" onclick="toggleFinding(${i})">
+        ${severityBadge(f.severity)}
+        ${f.is_kev ? '<span class="kev-tag">KEV</span>' : ''}
+        <div class="fcard-title">${esc(f.title)}</div>
+        <div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id || '')}</div>
+        <div class="risk-wrap" style="width:108px;flex-shrink:0">
+          <div class="risk-track"><div class="risk-fill" style="width:${riskPct}%;background:${riskColor}"></div></div>
+          <div class="risk-num" style="color:${riskColor}">${f.risk_score != null ? Number(f.risk_score).toFixed(1) : '—'}</div>
         </div>
-        <span style="color:var(--text3);margin-left:8px;font-size:0.9rem">▾</span>
+        <span class="fcard-arrow">▾</span>
       </div>
-      <div class="fc-body">
+      <div class="fcard-body">
         <div class="fmeta">
-          <div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${rc}">${f.risk_score!=null?f.risk_score.toFixed(2):'—'}</div></div>
-          <div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base??'—'}</div></div>
-          <div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:0.78rem;word-break:break-all">#${f.jid} — ${esc(f.target||f.jtgt||'')}</div></div>
+          <div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${riskColor}">${f.risk_score != null ? Number(f.risk_score).toFixed(2) : '—'}</div></div>
+          <div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base ?? '—'}</div></div>
+          <div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.75rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget || '')}</div></div>
         </div>
-        ${f.evidence?`<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:70px;margin-bottom:12px"><div class="tl">${esc(f.evidence)}</div></div>`:''}
-        ${f.description?`<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:0.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>`:''}
-        ${ch?`<div class="fl" style="margin-top:12px;margin-bottom:5px">Compliance</div><div>${ch}</div>`:''}
-        <div style="margin-top:14px"><button class="btn btn-g btn-sm" onclick="supF('${esc(f.fingerprint)}',event)">⊗ Suppress</button></div>
+        ${f.evidence ? `<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">${esc(f.evidence)}</div>` : ''}
+        ${f.description ? `<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>` : ''}
+        ${compHtml ? `<div class="fl" style="margin-top:12px;margin-bottom:5px">Compliance</div><div style="margin-top:4px">${compHtml}</div>` : ''}
+        <div style="margin-top:14px;display:flex;gap:8px">
+          ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding('${esc(f.fingerprint)}',event)">⊗ Suppress</button>` : ''}
+        </div>
       </div>
     </div>`;
   }).join('');
 }
-function tf(i){gi('fcard-'+i).classList.toggle('open');}
-async function supF(fp,e){e.stopPropagation();const r=prompt('Reason (optional):');if(r===null)return;try{await req('/scan/suppress',{method:'POST',body:JSON.stringify({fingerprint:fp,reason:r})});alert('Suppressed.');loadDashboard();}catch(x){alert(x.message);}}
 
-// ── SCAN JOBS ──
-function setST(type){
-  scanType=type;
-  gi('tti').classList.toggle('active',type==='internal');
-  gi('tte').classList.toggle('active',type==='external');
-  if(type==='external'){
-    gi('tlbl').textContent='Domain or URL';
-    gi('jtgt').placeholder='https://example.com';
-    gi('jtgt').value='';
-    gi('texs').innerHTML=`<div class="tc" onclick="st('https://example.com')">example.com</div><div class="tc" onclick="st('https://testphp.vulnweb.com')">vulnweb.com</div><div class="tc" onclick="st('scanme.nmap.org')">scanme.nmap.org</div>`;
-    gi('webops').style.display='block';
-  }else{
-    gi('tlbl').textContent='IP Address or Hostname';
-    gi('jtgt').placeholder='10.0.0.1';
-    gi('jtgt').value='127.0.0.1';
-    gi('texs').innerHTML=`<div class="tc" onclick="st('127.0.0.1')">127.0.0.1</div><div class="tc" onclick="st('192.168.1.1')">192.168.1.1</div><div class="tc" onclick="st('10.0.0.1')">10.0.0.1</div><div class="tc" onclick="st('10.0.0.100')">10.0.0.100</div>`;
-    gi('webops').style.display='none';
+function toggleFinding(i) { gi('fc-' + i).classList.toggle('open'); }
+
+async function suppressFinding(fp, e) {
+  e.stopPropagation();
+  const reason = prompt('Suppression reason (leave blank for none):');
+  if (reason === null) return;
+  try {
+    await apiReq('/scan/suppress', { method: 'POST', body: JSON.stringify({ fingerprint: fp, reason }) });
+    await loadDashboard(false);
+  } catch(e) { alert('Error suppressing finding: ' + e.message); }
+}
+
+// ══════════════════════════════════════════
+// SCAN TYPE SWITCHING — FIXED LOGIC
+// ══════════════════════════════════════════
+function setScanType(type) {
+  AppState.scanType = type;
+
+  // Update tab visual state
+  gi('tab-internal').classList.toggle('active', type === 'internal');
+  gi('tab-external').classList.toggle('active', type === 'external');
+
+  // Show/hide external options
+  gi('external-opts').style.display = type === 'external' ? 'block' : 'none';
+
+  // Update label and placeholder
+  if (type === 'external') {
+    gi('target-label').textContent = 'Domain or URL';
+    gi('job-target').placeholder = 'https://example.com or example.com';
+    gi('job-target').value = '';
+    gi('quick-chips').innerHTML = `
+      <div class="chip" onclick="setTarget('https://example.com')">example.com</div>
+      <div class="chip" onclick="setTarget('https://testphp.vulnweb.com')">vulnweb.com</div>
+      <div class="chip" onclick="setTarget('scanme.nmap.org')">scanme.nmap.org</div>
+      <div class="chip" onclick="setTarget('https://httpbin.org')">httpbin.org</div>`;
+  } else {
+    gi('target-label').textContent = 'IP Address or Hostname';
+    gi('job-target').placeholder = '10.0.0.1';
+    gi('job-target').value = '127.0.0.1';
+    gi('quick-chips').innerHTML = `
+      <div class="chip" onclick="setTarget('127.0.0.1')">127.0.0.1</div>
+      <div class="chip" onclick="setTarget('192.168.1.1')">192.168.1.1</div>
+      <div class="chip" onclick="setTarget('10.0.0.1')">10.0.0.1</div>
+      <div class="chip" onclick="setTarget('172.16.0.1')">172.16.0.1</div>`;
+  }
+
+  // Clear any prior validation errors
+  clearFieldErr('job-target');
+  hideAlert('job-alert');
+}
+
+function setTarget(val) {
+  gi('job-target').value = val;
+  clearFieldErr('job-target');
+}
+
+// Target validation
+function validateTarget() {
+  const val = gi('job-target').value.trim();
+  const err = gi('target-err');
+  if (!val) { showFieldErr('job-target', 'Target is required'); return false; }
+
+  if (AppState.scanType === 'internal') {
+    // Must look like an IP or hostname (no http://)
+    if (val.startsWith('http://') || val.startsWith('https://')) {
+      showFieldErr('job-target', 'For internal scans, enter an IP address or hostname (no http://)');
+      return false;
+    }
+    const ipRx = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
+    const hostRx = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9\-]+)*$/;
+    if (!ipRx.test(val) && !hostRx.test(val)) {
+      showFieldErr('job-target', 'Enter a valid IP address (e.g. 192.168.1.1) or hostname');
+      return false;
+    }
+  } else {
+    // External — must look like a domain/URL
+    const isUrl = val.startsWith('http://') || val.startsWith('https://');
+    const domainRx = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+    const strippedDomain = val.replace(/^https?:\/\//, '').split('/')[0];
+    if (!isUrl && !domainRx.test(val)) {
+      showFieldErr('job-target', 'Enter a valid domain (e.g. example.com) or URL (https://example.com)');
+      return false;
+    }
+    if (isUrl) {
+      try { new URL(val); } catch { showFieldErr('job-target', 'Invalid URL format'); return false; }
+    }
+  }
+
+  clearFieldErr('job-target');
+  return true;
+}
+
+function showFieldErr(fieldId, msg) {
+  const field = gi(fieldId);
+  const errEl = gi(fieldId + '-err');
+  if (field) field.classList.add('err');
+  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+}
+function clearFieldErr(fieldId) {
+  const field = gi(fieldId);
+  const errEl = gi(fieldId + '-err');
+  if (field) field.classList.remove('err');
+  if (errEl) errEl.style.display = 'none';
+}
+function hideAlert(id) { const el = gi(id); if (el) el.style.display = 'none'; }
+
+// ══════════════════════════════════════════
+// SCAN JOB SUBMISSION — FIXED LOGIC
+// ══════════════════════════════════════════
+async function submitJob() {
+  // Validate target
+  if (!validateTarget()) return;
+
+  // Validate profile
+  const profileSel = gi('job-profile');
+  const profileId = profileSel.value;
+  if (!profileId || profileId === '' || profileSel.options[0]?.text === 'Loading profiles...') {
+    showFieldErr('job-profile', 'Select a scan profile');
+    return;
+  }
+  clearFieldErr('job-profile');
+
+  const target = gi('job-target').value.trim();
+  const btn = gi('launch-btn');
+  btn.disabled = true;
+  gi('launch-spin').style.display = 'inline-block';
+  hideAlert('job-alert');
+
+  try {
+    const body = {
+      target,
+      profile_id: Number(profileId),
+      scan_type: AppState.scanType,
+    };
+    if (AppState.scanType === 'external') {
+      body.web_mode = gi('web-scan-mode').value;
+    }
+
+    const result = await apiReq('/scan/jobs', { method: 'POST', body: JSON.stringify(body) });
+    showAlert('job-alert', 'success',
+      `✓ Scan job #${result.id} launched — target: ${target} [${AppState.scanType === 'external' ? '🌐 External' : '🏠 Internal'}]`
+    );
+    await loadJobs();
+    setTimeout(() => loadDashboard(false), 3000);
+  } catch(e) {
+    showAlert('job-alert', 'danger', '⚠ Failed to launch scan: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    gi('launch-spin').style.display = 'none';
   }
 }
-function st(t){gi('jtgt').value=t;}
 
-async function loadJobs(){
-  try{
-    const jobs=await req('/scan/jobs');
-    const pm={};profs.forEach(p=>pm[p.id]=p.name);
-    gi('jcount').textContent=jobs.length+' jobs';
-    if(!jobs.length){gi('jbody').innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">⚡</div>No scan jobs</div></td></tr>';return;}
-    gi('jbody').innerHTML=jobs.map(j=>`
-      <tr>
-        <td class="mc accent">#${j.id}</td>
-        <td class="bg">${esc(j.target)}</td>
-        <td>${j.scan_type==='external'?'<span class="badge bo">🌐 External</span>':'<span class="badge bi">🏠 Internal</span>'}</td>
-        <td class="mc dim">${esc(pm[j.profile_id]||'#'+j.profile_id)}</td>
-        <td>${sdot(j.status)}</td>
-        <td class="mc dim" style="font-size:0.72rem">${fd(j.created_at)}</td>
-        <td>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-g btn-sm" onclick="nav('dashboard',document.querySelectorAll('.ni')[0])">▸ Results</button>
-            <button class="btn btn-d btn-sm btn-icon" onclick="cDel(${j.id},'${esc(j.target)}')" title="Delete job">🗑</button>
+// ══════════════════════════════════════════
+// JOB HISTORY — FIXED LOAD
+// ══════════════════════════════════════════
+async function loadJobs() {
+  try {
+    const jobs = await apiReq('/scan/jobs');
+    // Filter out optimistically-deleted jobs
+    const visible = jobs.filter(j => !AppState.deletedJobIds.has(j.id));
+
+    // Build profile name map
+    const pm = {};
+    AppState.profiles.forEach(p => pm[p.id] = p.name);
+
+    gi('job-count-label').textContent = visible.length + (visible.length === 1 ? ' job' : ' jobs');
+
+    if (!visible.length) {
+      gi('jobs-tbody').innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>';
+      return;
+    }
+
+    gi('jobs-tbody').innerHTML = visible.map(j => `
+      <tr id="job-row-${j.id}">
+        <td class="mc" style="color:var(--accent)">#${j.id}</td>
+        <td class="bright">${esc(j.target)}</td>
+        <td>${j.scan_type === 'external'
+          ? '<span class="badge b-ok">🌐 External</span>'
+          : '<span class="badge b-info">🏠 Internal</span>'}</td>
+        <td class="mc dim">${esc(pm[j.profile_id] || ('#' + j.profile_id))}</td>
+        <td>${renderStatusDot(j.status)}</td>
+        <td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td>
+        <td style="text-align:right">
+          <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id}, '${esc(j.target)}')">▸ Results</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteJob(${j.id}, '${esc(j.target)}')"
+              title="Delete job #${j.id}" aria-label="Delete job">🗑</button>
           </div>
         </td>
       </tr>`).join('');
-  }catch(e){console.error(e);}
-}
-
-async function submitJob(){
-  const target=gi('jtgt').value.trim();
-  const pid=gi('jprof').value;
-  if(!target)return;
-  gi('jspin').style.display='inline-block'; jAlert('','');
-  try{
-    const body={target,profile_id:Number(pid),scan_type:scanType};
-    if(scanType==='external')body.web_mode=gi('wmode').value;
-    const r=await req('/scan/jobs',{method:'POST',body:JSON.stringify(body)});
-    jAlert('success',`✓ Scan job #${r.id} launched for ${target} [${scanType}]`);
-    await loadJobs(); setTimeout(loadDashboard,4000);
-  }catch(x){jAlert('danger','⚠ '+x.message);}
-  finally{gi('jspin').style.display='none';}
-}
-function jAlert(type,msg){const el=gi('jalert');if(!msg){el.style.display='none';return;}el.className='alert a-'+type.slice(0,1);el.textContent=msg;el.style.display='flex';setTimeout(()=>el.style.display='none',5000);}
-
-// Delete job
-let delId=null;
-function cDel(id,tgt){delId=id;gi('co-text').textContent=`Delete job #${id} (${tgt}) and all its findings? This cannot be undone.`;gi('co').classList.add('show');gi('co-ok').onclick=()=>delJob(id);}
-function cclose(){gi('co').classList.remove('show');delId=null;}
-async function delJob(id){
-  cclose();
-  try{
-    await req('/scan/jobs/'+id,{method:'DELETE'});
-    await loadJobs(); await loadDashboard();
-  }catch(x){
-    // Graceful UI removal if backend DELETE not yet implemented
-    if(x.message.includes('404')||x.message.includes('405')||x.message.includes('Method')||x.message.includes('Not Found')){
-      document.querySelectorAll('#jbody tr').forEach(row=>{
-        if(row.textContent.includes('#'+id)){row.style.transition='opacity .3s';row.style.opacity='0';setTimeout(()=>row.remove(),300);}
-      });
-      jAlert('info',`Job #${id} removed from view. Add DELETE /scan/jobs/{id} to backend for persistence.`);
-    }else{alert('Error: '+x.message);}
+  } catch(e) {
+    console.error('[loadJobs]', e);
   }
 }
 
-// ── PROFILES ──
-async function loadProfiles(){
-  try{
-    profs=await req('/scan/profiles');
-    gi('jprof').innerHTML=profs.map(p=>`<option value="${p.id}">${p.name} (#${p.id})</option>`).join('');
-    gi('profs').innerHTML=profs.length?profs.map(p=>`<tr><td class="mc accent">#${p.id}</td><td class="bg">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fd(p.created_at)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty" style="padding:20px">No profiles</td></tr>';
-  }catch{}
-}
-async function createProfile(){
-  const name=gi('pname').value,pl=gi('pplugs').value,op=gi('popts').value;
-  try{JSON.parse(pl);}catch{return showAl('palert','d','Invalid plugin JSON');}
-  try{JSON.parse(op);}catch{return showAl('palert','d','Invalid options JSON');}
-  try{await req('/scan/profiles',{method:'POST',body:JSON.stringify({name,plugin_selection_json:pl,options_json:op})});showAl('palert','s','✓ Profile created: '+name);await loadProfiles();}
-  catch(x){showAl('palert','d',x.message);}
+function viewJobResults(jobId, target) {
+  navTo('dashboard');
+  // Optional: pre-filter to this job's findings
+  setTimeout(() => {
+    gi('findings-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 250);
 }
 
-// ── CREDENTIALS ──
-async function loadCreds(){
-  try{const cr=await req('/credentials');gi('crdb').innerHTML=cr.length?cr.map(c=>`<tr><td class="mc accent">#${c.id}</td><td class="bg">${esc(c.name)}</td><td class="mc">${esc(c.username)}</td><td><span class="badge bi">${esc(c.secret_type)}</span></td></tr>`).join(''):'<tr><td colspan="4" class="empty" style="padding:28px">No credentials</td></tr>';}catch{}
-}
-async function createCred(){
-  try{await req('/credentials',{method:'POST',body:JSON.stringify({name:gi('crn').value,kind:'ssh',username:gi('cru').value,secret_type:gi('crt').value,secret:gi('crs').value,passphrase:gi('crp').value||null})});showAl('calert','s','✓ Stored securely');gi('crs').value='';gi('crp').value='';await loadCreds();}
-  catch(x){showAl('calert','d',x.message);}
+// ══════════════════════════════════════════
+// DELETE JOB — FULLY FIXED LOGIC
+// ══════════════════════════════════════════
+let _pendingDeleteId = null;
+
+function confirmDeleteJob(jobId, target) {
+  _pendingDeleteId = jobId;
+  gi('confirm-title').textContent = 'Delete Scan Job';
+  gi('confirm-body').innerHTML = `Delete job <strong style="color:var(--bright)">#${jobId}</strong> (${esc(target)}) and all its findings?<br><br>This action cannot be undone.`;
+  gi('confirm-ok').onclick = () => executeDeleteJob(jobId, target);
+  gi('confirm-modal').classList.add('show');
 }
 
-// ── DATASETS ──
-async function loadDs(){
-  try{const ds=await req('/datasets');gi('dsb').innerHTML=ds.length?ds.map(d=>`<tr><td class="mc accent">#${d.id}</td><td class="bg">${esc(d.name)}</td><td><span class="badge bi">${esc(d.kind)}</span></td><td>${d.enabled?'<span class="badge bo">Active</span>':'<span class="badge">Disabled</span>'}</td></tr>`).join(''):'<tr><td colspan="4" class="empty" style="padding:28px">No datasets</td></tr>';}catch{}
-}
-async function uploadDs(){
-  const file=gi('dsf').files[0];if(!file)return showAl('dsalert','d','Select a file first');
-  gi('dsspin').style.display='inline-block';
-  try{const f=new FormData();f.append('file',file);const kind=gi('dsk').value,name=gi('dsn').value;
-    const r=await fetch(`${API}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`,{method:'POST',headers:{'Authorization':'Bearer '+TOKEN},body:f});
-    if(!r.ok)throw new Error(await r.text());const d=await r.json();showAl('dsalert','s',`✓ Uploaded — ID #${d.dataset_id}`);await loadDs();}
-  catch(x){showAl('dsalert','d',x.message);}finally{gi('dsspin').style.display='none';}
+function closeConfirm() {
+  gi('confirm-modal').classList.remove('show');
+  _pendingDeleteId = null;
 }
 
-// ── ATTACK GRAPH ──
-async function loadGraph(){
-  try{
-    const jobs=await req('/scan/jobs');
-    gNodes=[]; gEdges=[];
-    const amap={},cmap={};
-    for(const j of jobs.filter(j=>j.status==='done').slice(0,20)){
-      try{
-        const det=await req('/scan/jobs/'+j.id);
-        const findings=det.findings||[];
-        const aid='a_'+j.target.replace(/[^a-z0-9]/gi,'_');
-        if(!amap[aid]){amap[aid]=true;gNodes.push({id:aid,type:'asset',label:j.target,x:200+Math.random()*400,y:100+Math.random()*300,vx:0,vy:0,color:'#38bdf8',size:18,cve:null,risk:null,severity:null,kev:false,full:j.target});}
-        for(const f of findings){
-          if(f.plugin_id==='net.port.discovery.v2')continue;
-          const cid='c_'+(f.fingerprint||f.id);
-          if(!cmap[cid]){cmap[cid]=true;const col=f.is_kev?'#a78bfa':f.severity==='critical'?'#f87171':f.severity==='high'?'#fb923c':f.severity==='medium'?'#fbbf24':'#34d399';
-            gNodes.push({id:cid,type:'vuln',label:(f.cve||f.title||'').slice(0,22),full:f.title,cve:f.cve,risk:f.risk_score,severity:f.severity,kev:f.is_kev,x:80+Math.random()*640,y:80+Math.random()*420,vx:0,vy:0,color:col,size:f.is_kev?14:f.severity==='critical'?12:f.severity==='high'?10:8});}
-          gEdges.push({from:aid,to:cid,risk:f.risk_score||0,kev:f.is_kev});
-        }
-      }catch{}
+async function executeDeleteJob(jobId, target) {
+  closeConfirm();
+
+  // Optimistic UI — hide the row immediately
+  const row = gi('job-row-' + jobId);
+  if (row) {
+    row.style.transition = 'opacity .25s, transform .25s';
+    row.style.opacity = '0';
+    row.style.transform = 'translateX(10px)';
+  }
+
+  // Add to deleted set so polling doesn't restore it
+  AppState.deletedJobIds.add(jobId);
+
+  // After animation, remove from DOM
+  await sleep(280);
+  if (row) row.remove();
+
+  // Update count
+  const tbody = gi('jobs-tbody');
+  if (tbody && tbody.querySelectorAll('tr[id^="job-row-"]').length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>';
+  }
+  // Refresh count
+  const remaining = tbody ? tbody.querySelectorAll('tr[id^="job-row-"]').length : 0;
+  gi('job-count-label').textContent = remaining + (remaining === 1 ? ' job' : ' jobs');
+
+  // Try the real API call
+  try {
+    await apiReq('/scan/jobs/' + jobId, { method: 'DELETE' });
+    // Success — also refresh dashboard findings
+    loadDashboard(false);
+    showJobAlert('success', `✓ Job #${jobId} deleted successfully`);
+  } catch(e) {
+    if (e.status === 404) {
+      // Job was already gone — treat as success
+      loadDashboard(false);
+      showJobAlert('info', `Job #${jobId} was not found (may have already been removed)`);
+    } else if (e.status === 405 || e.status === 501 || String(e.message).toLowerCase().includes('method')) {
+      // Backend doesn't implement DELETE yet — keep optimistic removal, inform user
+      showJobAlert('info', `Job #${jobId} removed from view. Implement DELETE /scan/jobs/{id} in your backend to persist deletion.`);
+    } else {
+      // Other error — rollback: un-delete and restore the row
+      AppState.deletedJobIds.delete(jobId);
+      await loadJobs();
+      showJobAlert('danger', `⚠ Could not delete job #${jobId}: ${e.message}`);
     }
-    const assets=gNodes.filter(n=>n.type==='asset').length, cves=gNodes.filter(n=>n.type==='vuln').length;
-    gi('ga').textContent=assets; gi('gcv').textContent=cves; gi('gp').textContent=gEdges.length;
-    // Attack paths
-    const cp=gEdges.filter(e=>e.risk>=7).sort((a,b)=>b.risk-a.risk).slice(0,10);
-    gi('apb').innerHTML=cp.length?cp.map(e=>{
-      const fn=gNodes.find(n=>n.id===e.from),tn=gNodes.find(n=>n.id===e.to);
-      const rc=e.risk>=9?'#f87171':e.risk>=7?'#fb923c':'#fbbf24';
-      return `<tr><td class="mc" style="font-size:.72rem">${esc(fn?.label||'?')}</td><td class="mc accent" style="font-size:.7rem">${esc(tn?.cve||tn?.label||'?')}</td><td><span style="color:${rc};font-family:var(--font-mono);font-size:.75rem;font-weight:700">${(e.risk||0).toFixed(1)}</span></td></tr>`;
-    }).join(''):'<tr><td colspan="3" class="empty" style="padding:14px">No high-risk paths</td></tr>';
-    // Summary
-    gi('gsum').innerHTML=`<div>Total nodes: <span style="color:var(--accent)">${gNodes.length}</span></div><div>Assets: <span style="color:var(--accent)">${assets}</span></div><div>CVEs mapped: <span style="color:var(--accent)">${cves}</span></div><div>KEV nodes: <span style="color:var(--purple)">${gNodes.filter(n=>n.kev).length}</span></div><div>Critical edges: <span style="color:var(--red)">${gEdges.filter(e=>e.risk>=9).length}</span></div>`;
-    startGraphDraw();
-  }catch(e){console.error(e);}
+  }
 }
 
-function gFilter(type,el){gFilt=type;document.querySelectorAll('.gfc').forEach(c=>c.classList.remove('active'));el.classList.add('active');}
+function showJobAlert(type, msg) {
+  const el = gi('job-alert');
+  el.className = 'alert a-' + type;
+  el.textContent = msg;
+  el.style.display = 'flex';
+  setTimeout(() => { el.style.display = 'none'; }, 7000);
+}
 
-function getVN(){
-  if(gFilt==='all')return gNodes;
-  if(gFilt==='asset')return gNodes.filter(n=>n.type==='asset');
-  if(gFilt==='vuln')return gNodes.filter(n=>n.type==='vuln');
-  if(gFilt==='kev')return gNodes.filter(n=>n.kev||n.type==='asset');
-  if(gFilt==='crit')return gNodes.filter(n=>n.severity==='critical'||n.type==='asset');
+// ══════════════════════════════════════════
+// PROFILES
+// ══════════════════════════════════════════
+async function loadProfiles() {
+  try {
+    AppState.profiles = await apiReq('/scan/profiles');
+    const sel = gi('job-profile');
+    if (AppState.profiles.length) {
+      sel.innerHTML = AppState.profiles.map(p =>
+        `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('');
+    } else {
+      sel.innerHTML = '<option value="">No profiles — create one first</option>';
+    }
+    gi('profiles-tbody').innerHTML = AppState.profiles.length
+      ? AppState.profiles.map(p => `
+          <tr><td class="mc" style="color:var(--accent)">#${p.id}</td>
+          <td class="bright">${esc(p.name)}</td>
+          <td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td></tr>`).join('')
+      : '<tr><td colspan="3"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>';
+  } catch(e) { console.error('[loadProfiles]', e); }
+}
+
+async function createProfile() {
+  const name    = gi('p-name').value.trim();
+  const plugins = gi('p-plugins').value.trim();
+  const options = gi('p-options').value.trim();
+  if (!name) return showAlert('profile-alert', 'danger', 'Profile name is required');
+  try { JSON.parse(plugins); } catch { return showAlert('profile-alert', 'danger', 'Plugin selection is not valid JSON'); }
+  try { JSON.parse(options);  } catch { return showAlert('profile-alert', 'danger', 'Options is not valid JSON'); }
+  try {
+    await apiReq('/scan/profiles', { method: 'POST', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) });
+    showAlert('profile-alert', 'success', '✓ Profile "' + name + '" created');
+    await loadProfiles();
+  } catch(e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message); }
+}
+
+// ══════════════════════════════════════════
+// CREDENTIALS
+// ══════════════════════════════════════════
+async function loadCreds() {
+  try {
+    const creds = await apiReq('/credentials');
+    gi('creds-tbody').innerHTML = creds.length
+      ? creds.map(c => `
+          <tr><td class="mc" style="color:var(--accent)">#${c.id}</td>
+          <td class="bright">${esc(c.name)}</td>
+          <td class="mc">${esc(c.username)}</td>
+          <td><span class="badge b-info">${esc(c.secret_type)}</span></td></tr>`).join('')
+      : '<tr><td colspan="4"><div class="empty-state" style="padding:28px">No credentials stored</div></td></tr>';
+  } catch {}
+}
+
+async function createCred() {
+  try {
+    await apiReq('/credentials', { method: 'POST', body: JSON.stringify({
+      name: gi('cr-name').value, kind: 'ssh', username: gi('cr-user').value,
+      secret_type: gi('cr-type').value, secret: gi('cr-secret').value,
+      passphrase: gi('cr-pass').value || null,
+    })});
+    showAlert('cred-alert', 'success', '✓ Credential stored securely');
+    gi('cr-secret').value = '';
+    gi('cr-pass').value   = '';
+    await loadCreds();
+  } catch(e) { showAlert('cred-alert', 'danger', '⚠ ' + e.message); }
+}
+
+// ══════════════════════════════════════════
+// DATASETS
+// ══════════════════════════════════════════
+async function loadDs() {
+  try {
+    const ds = await apiReq('/datasets');
+    gi('ds-tbody').innerHTML = ds.length
+      ? ds.map(d => `
+          <tr><td class="mc" style="color:var(--accent)">#${d.id}</td>
+          <td class="bright">${esc(d.name)}</td>
+          <td><span class="badge b-info">${esc(d.kind)}</span></td>
+          <td>${d.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge">Disabled</span>'}</td></tr>`).join('')
+      : '<tr><td colspan="4"><div class="empty-state" style="padding:28px">No datasets</div></td></tr>';
+  } catch {}
+}
+
+async function uploadDs() {
+  const file = gi('ds-file').files[0];
+  if (!file) return showAlert('ds-alert', 'danger', 'Select a JSON file first');
+  const btn = gi('ds-upload-btn');
+  btn.disabled = true;
+  gi('ds-spin').style.display = 'inline-block';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const kind = gi('ds-kind').value;
+    const name = gi('ds-name').value;
+    const res  = await fetch(`${API_BASE}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + AppState.token },
+      body: form,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const d = await res.json();
+    showAlert('ds-alert', 'success', `✓ Dataset uploaded — ID #${d.dataset_id}`);
+    await loadDs();
+  } catch(e) { showAlert('ds-alert', 'danger', '⚠ ' + e.message); }
+  finally { btn.disabled = false; gi('ds-spin').style.display = 'none'; }
+}
+
+// ══════════════════════════════════════════
+// ATTACK SURFACE GRAPH
+// ══════════════════════════════════════════
+async function loadGraph() {
+  gi('graph-summary').textContent = 'Loading graph data...';
+  try {
+    const jobs = await apiReq('/scan/jobs');
+    AppState.gNodes = [];
+    AppState.gEdges = [];
+    const assetSeen = {}, vulnSeen = {};
+
+    for (const j of jobs.filter(j => j.status === 'done' && !AppState.deletedJobIds.has(j.id)).slice(0, 25)) {
+      try {
+        const det = await apiReq('/scan/jobs/' + j.id);
+        const findings = det.findings || [];
+
+        const assetKey = 'a_' + j.target.replace(/[^a-z0-9]/gi, '_');
+        if (!assetSeen[assetKey]) {
+          assetSeen[assetKey] = true;
+          AppState.gNodes.push({
+            id: assetKey, type: 'asset', label: j.target, fullLabel: j.target,
+            x: 150 + Math.random() * 500, y: 80 + Math.random() * 340,
+            vx: 0, vy: 0, color: '#38bdf8', size: 20, kev: false,
+            severity: null, risk: null, cve: null,
+          });
+        }
+
+        for (const f of findings) {
+          if (f.plugin_id === 'net.port.discovery.v2') continue;
+          const vKey = 'v_' + (f.fingerprint || f.id || Math.random());
+          if (!vulnSeen[vKey]) {
+            vulnSeen[vKey] = true;
+            const col = f.is_kev ? '#a78bfa'
+              : f.severity === 'critical' ? '#f87171'
+              : f.severity === 'high'     ? '#fb923c'
+              : f.severity === 'medium'   ? '#fbbf24'
+              : '#34d399';
+            const sz = f.is_kev ? 15 : f.severity === 'critical' ? 13 : f.severity === 'high' ? 11 : 8;
+            AppState.gNodes.push({
+              id: vKey, type: 'vuln',
+              label: (f.cve || f.title || '').slice(0, 24),
+              fullLabel: f.title || f.cve || '—',
+              cve: f.cve || null, risk: f.risk_score, severity: f.severity, kev: !!f.is_kev,
+              x: 60 + Math.random() * 680, y: 60 + Math.random() * 460,
+              vx: 0, vy: 0, color: col, size: sz,
+            });
+            AppState.gEdges.push({ from: assetKey, to: vKey, risk: f.risk_score || 0, kev: !!f.is_kev });
+          }
+        }
+      } catch {}
+    }
+
+    const assets = AppState.gNodes.filter(n => n.type === 'asset').length;
+    const cves   = AppState.gNodes.filter(n => n.type === 'vuln').length;
+    gi('g-assets').textContent = assets;
+    gi('g-cves').textContent   = cves;
+    gi('g-paths').textContent  = AppState.gEdges.length;
+
+    // Critical attack paths
+    const critPaths = AppState.gEdges.filter(e => e.risk >= 7).sort((a, b) => b.risk - a.risk).slice(0, 12);
+    gi('attack-paths-body').innerHTML = critPaths.length
+      ? critPaths.map(e => {
+          const fn = AppState.gNodes.find(n => n.id === e.from);
+          const tn = AppState.gNodes.find(n => n.id === e.to);
+          const rc = e.risk >= 9 ? '#f87171' : e.risk >= 7 ? '#fb923c' : '#fbbf24';
+          return `<tr>
+            <td class="mc" style="font-size:.72rem">${esc(fn?.label || '?')}</td>
+            <td class="mc" style="color:var(--accent);font-size:.7rem">${esc(tn?.cve || tn?.label || '?')}</td>
+            <td><span style="color:${rc};font-family:var(--fm);font-size:.75rem;font-weight:700">${Number(e.risk || 0).toFixed(1)}</span></td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="3"><div class="empty-state" style="padding:14px">No high-risk paths</div></td></tr>';
+
+    gi('graph-summary').innerHTML = `
+      <div>Total nodes: <span style="color:var(--accent)">${AppState.gNodes.length}</span></div>
+      <div>Assets: <span style="color:var(--accent)">${assets}</span></div>
+      <div>CVEs mapped: <span style="color:var(--accent)">${cves}</span></div>
+      <div>KEV nodes: <span style="color:var(--purple)">${AppState.gNodes.filter(n => n.kev).length}</span></div>
+      <div>High-risk paths: <span style="color:var(--red)">${AppState.gEdges.filter(e => e.risk >= 7).length}</span></div>`;
+
+    startGraphDraw();
+  } catch(e) {
+    console.error('[loadGraph]', e);
+    gi('graph-summary').textContent = 'Failed to load graph: ' + e.message;
+  }
+}
+
+function setGraphFilter(type, el) {
+  AppState.gFilter = type;
+  document.querySelectorAll('.gf-chip').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function getVisibleNodes() {
+  const { gNodes, gFilter } = AppState;
+  if (gFilter === 'all')      return gNodes;
+  if (gFilter === 'asset')    return gNodes.filter(n => n.type === 'asset');
+  if (gFilter === 'vuln')     return gNodes.filter(n => n.type === 'vuln');
+  if (gFilter === 'kev')      return gNodes.filter(n => n.kev || n.type === 'asset');
+  if (gFilter === 'critical') return gNodes.filter(n => n.severity === 'critical' || n.type === 'asset');
   return gNodes;
 }
 
-function startGraphDraw(){
-  if(anim)cancelAnimationFrame(anim);
-  const canvas=gi('gcanvas'),ctx=canvas.getContext('2d'),wrap=canvas.parentElement;
-  function rsz(){canvas.width=wrap.clientWidth;canvas.height=wrap.clientHeight;}
-  rsz(); window.addEventListener('resize',rsz);
-  let t=0;
-  function draw(){
-    t++;ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle='#04060b';ctx.fillRect(0,0,canvas.width,canvas.height);
-    const vn=getVN(),vi=new Set(vn.map(n=>n.id)),ve=gEdges.filter(e=>vi.has(e.from)&&vi.has(e.to));
-    if(!vn.length){
-      ctx.fillStyle='#475569';ctx.font='14px DM Sans,sans-serif';ctx.textAlign='center';
-      ctx.fillText('No scan data — run a scan first, then click Refresh',canvas.width/2,canvas.height/2-14);
-      ctx.fillText('Demo preview shown below',canvas.width/2,canvas.height/2+14);
-      drawDemo(ctx,canvas,t);anim=requestAnimationFrame(draw);return;
-    }
-    // Physics
-    if(gphysics){
-      for(let i=0;i<vn.length;i++)for(let j=i+1;j<vn.length;j++){
-        const a=vn[i],b=vn[j],dx=b.x-a.x,dy=b.y-a.y,dist=Math.sqrt(dx*dx+dy*dy)||1,rep=2200/(dist*dist),fx=(dx/dist)*rep,fy=(dy/dist)*rep;
-        a.vx-=fx;a.vy-=fy;b.vx+=fx;b.vy+=fy;
-      }
-      for(const e of ve){
-        const a=gNodes.find(n=>n.id===e.from),b=gNodes.find(n=>n.id===e.to);if(!a||!b)continue;
-        const dx=b.x-a.x,dy=b.y-a.y,dist=Math.sqrt(dx*dx+dy*dy)||1,tl=150,sp=(dist-tl)*0.009,fx=(dx/dist)*sp,fy=(dy/dist)*sp;
-        a.vx+=fx;a.vy+=fy;b.vx-=fx;b.vy-=fy;
-      }
-      for(const n of vn){if(n===dragN)continue;n.vx*=0.85;n.vy*=0.85;n.x+=n.vx;n.y+=n.vy;n.x=Math.max(n.size+10,Math.min(canvas.width-n.size-10,n.x));n.y=Math.max(n.size+10,Math.min(canvas.height-n.size-10,n.y));}
-    }
-    // Edges
-    for(const e of ve){
-      const a=gNodes.find(n=>n.id===e.from),b=gNodes.find(n=>n.id===e.to);if(!a||!b)continue;
-      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-      const al=e.kev?.7:Math.min(.55,.25+(e.risk||0)*.04);
-      ctx.strokeStyle=e.kev?`rgba(167,139,250,${al})`:`rgba(56,189,248,${al})`;ctx.lineWidth=e.kev?2:Math.max(.5,(e.risk||0)*.18);ctx.stroke();
-      const ang=Math.atan2(b.y-a.y,b.x-a.x),len=Math.sqrt((b.x-a.x)**2+(b.y-a.y)**2),mx=a.x+Math.cos(ang)*(len*.6),my=a.y+Math.sin(ang)*(len*.6);
-      ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx-8*Math.cos(ang-.4),my-8*Math.sin(ang-.4));ctx.lineTo(mx-8*Math.cos(ang+.4),my-8*Math.sin(ang+.4));ctx.closePath();ctx.fillStyle=e.kev?'rgba(167,139,250,.55)':'rgba(56,189,248,.38)';ctx.fill();
-    }
-    // Nodes
-    for(const n of vn){
-      const ih=n===hovN;
-      if(n.kev||n.severity==='critical'){ctx.beginPath();ctx.arc(n.x,n.y,n.size+7+Math.sin(t*.05)*2,0,Math.PI*2);ctx.fillStyle=n.kev?'rgba(167,139,250,.12)':'rgba(248,113,113,.12)';ctx.fill();}
-      ctx.beginPath();ctx.arc(n.x,n.y,n.size+(ih?3:0),0,Math.PI*2);ctx.fillStyle=n.color+(n.type==='asset'?'':'88');ctx.fill();
-      if(n.type==='asset'){ctx.strokeStyle='#38bdf8';ctx.lineWidth=2;ctx.stroke();}
-      ctx.fillStyle=ih?'#f1f5f9':'#94a3b8';ctx.font=(n.type==='asset'?'600 12':'10')+'px DM Sans,sans-serif';ctx.textAlign='center';
-      ctx.fillText(n.label.slice(0,20),n.x,n.y+n.size+13);
-    }
-    anim=requestAnimationFrame(draw);
-  }
-  canvas.onmousemove=e=>{
-    const rc=canvas.getBoundingClientRect(),mx=e.clientX-rc.left,my=e.clientY-rc.top;
-    if(dragN){dragN.x=mx;dragN.y=my;return;}
-    hovN=getVN().find(n=>Math.hypot(n.x-mx,n.y-my)<n.size+5)||null;
-    canvas.style.cursor=hovN?'pointer':'default';
-    const tt=gi('gtip');
-    if(hovN){tt.style.display='block';tt.style.left=(mx+14)+'px';tt.style.top=(my-10)+'px';gi('gtt').textContent=hovN.full||hovN.label;gi('gtype').textContent=hovN.type==='asset'?'Asset / Target':'Vulnerability';gi('gcve').textContent=hovN.cve||'—';gi('grisk').textContent=hovN.risk!=null?hovN.risk.toFixed(2):'—';gi('gsev').textContent=hovN.severity||(hovN.type==='asset'?'—':'info');}
-    else tt.style.display='none';
+function togglePhysics() {
+  AppState.gPhysics = !AppState.gPhysics;
+  gi('physics-btn').textContent = '⚛ Physics: ' + (AppState.gPhysics ? 'ON' : 'OFF');
+}
+
+function resetGraphLayout() {
+  const canvas = gi('gcanvas');
+  AppState.gScale = 1; AppState.gOffX = 0; AppState.gOffY = 0;
+  AppState.gNodes.forEach(n => {
+    n.x = 60 + Math.random() * (canvas.width - 120);
+    n.y = 60 + Math.random() * (canvas.height - 120);
+    n.vx = 0; n.vy = 0;
+  });
+}
+
+function startGraphDraw() {
+  if (AppState.gAnimFrame) cancelAnimationFrame(AppState.gAnimFrame);
+  const canvas = gi('gcanvas');
+  const ctx    = canvas.getContext('2d');
+  const wrap   = canvas.parentElement;
+
+  const resize = () => {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = wrap.clientWidth  * dpr;
+    canvas.height = wrap.clientHeight * dpr;
+    canvas.style.width  = wrap.clientWidth + 'px';
+    canvas.style.height = wrap.clientHeight + 'px';
+    ctx.scale(dpr, dpr);
   };
-  canvas.onmousedown=e=>{const rc=canvas.getBoundingClientRect(),mx=e.clientX-rc.left,my=e.clientY-rc.top;dragN=getVN().find(n=>Math.hypot(n.x-mx,n.y-my)<n.size+5)||null;};
-  canvas.onmouseup=()=>{dragN=null;};
-  canvas.onmouseleave=()=>{dragN=null;hovN=null;gi('gtip').style.display='none';};
+  resize();
+  window.addEventListener('resize', resize);
+
+  let t = 0;
+  const W = () => wrap.clientWidth;
+  const H = () => wrap.clientHeight;
+
+  function draw() {
+    t++;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    ctx.clearRect(0, 0, W(), H());
+    ctx.fillStyle = '#030508';
+    ctx.fillRect(0, 0, W(), H());
+
+    const vn = getVisibleNodes();
+    const viSet = new Set(vn.map(n => n.id));
+    const ve = AppState.gEdges.filter(e => viSet.has(e.from) && viSet.has(e.to));
+
+    if (!vn.length) {
+      // Demo
+      drawDemoGraph(ctx, W(), H(), t);
+      AppState.gAnimFrame = requestAnimationFrame(draw);
+      return;
+    }
+
+    // Physics simulation
+    if (AppState.gPhysics) {
+      // Repulsion
+      for (let i = 0; i < vn.length; i++) {
+        for (let j = i + 1; j < vn.length; j++) {
+          const a = vn[i], b = vn[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+          const repel = Math.min(2400, 2400 / (dist * dist));
+          const fx = (dx / dist) * repel, fy = (dy / dist) * repel;
+          a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
+        }
+      }
+      // Spring attraction along edges
+      for (const e of ve) {
+        const a = AppState.gNodes.find(n => n.id === e.from);
+        const b = AppState.gNodes.find(n => n.id === e.to);
+        if (!a || !b) continue;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+        const targetLen = 160, spring = (dist - targetLen) * 0.008;
+        const fx = (dx / dist) * spring, fy = (dy / dist) * spring;
+        a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+      }
+      // Integrate + dampen + boundary
+      for (const n of vn) {
+        if (n === AppState.gDragNode) continue;
+        n.vx *= 0.82; n.vy *= 0.82;
+        n.x  += n.vx;  n.y  += n.vy;
+        n.x = Math.max(n.size + 12, Math.min(W() - n.size - 12, n.x));
+        n.y = Math.max(n.size + 12, Math.min(H() - n.size - 12, n.y));
+      }
+    }
+
+    // Draw edges
+    for (const e of ve) {
+      const a = AppState.gNodes.find(n => n.id === e.from);
+      const b = AppState.gNodes.find(n => n.id === e.to);
+      if (!a || !b) continue;
+
+      const alpha = e.kev ? 0.7 : Math.min(0.55, 0.18 + (e.risk || 0) * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = e.kev ? `rgba(167,139,250,${alpha})` : `rgba(56,189,248,${alpha})`;
+      ctx.lineWidth = e.kev ? 2 : Math.max(0.5, (e.risk || 0) * 0.18);
+      ctx.stroke();
+
+      // Arrow midpoint
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const len = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+      const mx  = a.x + Math.cos(ang) * (len * 0.58);
+      const my  = a.y + Math.sin(ang) * (len * 0.58);
+      ctx.beginPath();
+      ctx.moveTo(mx, my);
+      ctx.lineTo(mx - 8 * Math.cos(ang - 0.38), my - 8 * Math.sin(ang - 0.38));
+      ctx.lineTo(mx - 8 * Math.cos(ang + 0.38), my - 8 * Math.sin(ang + 0.38));
+      ctx.closePath();
+      ctx.fillStyle = e.kev ? 'rgba(167,139,250,.55)' : 'rgba(56,189,248,.38)';
+      ctx.fill();
+    }
+
+    // Draw nodes
+    for (const n of vn) {
+      const isHov = n === AppState.gHovNode;
+
+      // Pulsing glow for critical/KEV
+      if (n.kev || n.severity === 'critical') {
+        const pulse = 0.12 + Math.sin(t * 0.06) * 0.05;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.size + 8, 0, Math.PI * 2);
+        ctx.fillStyle = n.kev ? `rgba(167,139,250,${pulse})` : `rgba(248,113,113,${pulse})`;
+        ctx.fill();
+      }
+
+      // Node circle
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.size + (isHov ? 3 : 0), 0, Math.PI * 2);
+      ctx.fillStyle = n.type === 'asset' ? n.color + 'cc' : n.color + '88';
+      ctx.fill();
+
+      // Asset gets outline ring
+      if (n.type === 'asset') {
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+      }
+
+      // Label
+      ctx.fillStyle = isHov ? '#f1f5f9' : '#8899aa';
+      ctx.font = `${n.type === 'asset' ? '600 12' : '10'}px DM Sans, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(n.label.slice(0, 22), n.x, n.y + n.size + 13);
+    }
+
+    AppState.gAnimFrame = requestAnimationFrame(draw);
+  }
+
+  // Mouse events
+  canvas.onmousemove = ev => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    if (AppState.gDragNode) {
+      AppState.gDragNode.x = mx; AppState.gDragNode.y = my;
+      AppState.gDragNode.vx = 0; AppState.gDragNode.vy = 0;
+      return;
+    }
+    const vn = getVisibleNodes();
+    AppState.gHovNode = vn.find(n => Math.hypot(n.x - mx, n.y - my) < n.size + 6) || null;
+    canvas.style.cursor = AppState.gHovNode ? 'pointer' : 'default';
+    const tt = gi('graph-tooltip');
+    if (AppState.gHovNode) {
+      const n = AppState.gHovNode;
+      tt.style.display = 'block';
+      // Keep tooltip inside canvas bounds
+      const ttW = 200, ttH = 120;
+      tt.style.left = (mx + 16 + ttW > W() ? mx - ttW - 8 : mx + 16) + 'px';
+      tt.style.top  = (my - 8 < 0 ? 8 : Math.min(my - 8, H() - ttH)) + 'px';
+      gi('gt-name').textContent  = n.fullLabel || n.label;
+      gi('gt-type').textContent  = n.type === 'asset' ? 'Asset / Target' : 'Vulnerability';
+      gi('gt-cve').textContent   = n.cve || '—';
+      gi('gt-risk').textContent  = n.risk != null ? Number(n.risk).toFixed(2) : '—';
+      gi('gt-sev').textContent   = n.severity || (n.type === 'asset' ? '—' : 'info');
+      gi('gt-kev-row').style.display = n.kev ? '' : 'none';
+    } else {
+      tt.style.display = 'none';
+    }
+  };
+
+  canvas.onmousedown = ev => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    AppState.gDragNode = getVisibleNodes().find(n => Math.hypot(n.x - mx, n.y - my) < n.size + 6) || null;
+  };
+  canvas.onmouseup    = () => { AppState.gDragNode = null; };
+  canvas.onmouseleave = () => {
+    AppState.gDragNode = null;
+    AppState.gHovNode  = null;
+    gi('graph-tooltip').style.display = 'none';
+  };
+
   draw();
 }
 
-function drawDemo(ctx,canvas,t){
-  const cx=canvas.width/2,cy=canvas.height/2;
-  const dn=[{x:cx,y:cy,l:'10.0.0.1',c:'#38bdf8',s:18,type:'asset'},{x:cx-190,y:cy-90,l:'CVE-2021-44228',c:'#f87171',s:13},{x:cx+190,y:cy-90,l:'CVE-2021-23017',c:'#fb923c',s:11},{x:cx,y:cy+150,l:'TLS Weak',c:'#fbbf24',s:9},{x:cx-130,y:cy+80,l:'Log4Shell KEV',c:'#a78bfa',s:13},{x:cx+130,y:cy+80,l:'WordPress CVE',c:'#fb923c',s:10}];
-  [[0,1],[0,2],[0,3],[0,4],[0,5]].forEach(([a,b])=>{ctx.beginPath();ctx.moveTo(dn[a].x,dn[a].y);ctx.lineTo(dn[b].x,dn[b].y);ctx.strokeStyle='rgba(56,189,248,.12)';ctx.lineWidth=1;ctx.stroke();});
-  dn.forEach(n=>{ctx.beginPath();ctx.arc(n.x,n.y,n.s+Math.sin(t*.04)*2,0,Math.PI*2);ctx.fillStyle=n.c+'33';ctx.fill();ctx.beginPath();ctx.arc(n.x,n.y,n.s,0,Math.PI*2);ctx.fillStyle=n.c+'77';ctx.fill();if(n.type==='asset'){ctx.strokeStyle=n.c;ctx.lineWidth=2;ctx.stroke();}ctx.fillStyle='#94a3b8';ctx.font='10px DM Sans';ctx.textAlign='center';ctx.fillText(n.l,n.x,n.y+n.s+13);});
+function drawDemoGraph(ctx, W, H, t) {
+  const cx = W / 2, cy = H / 2;
+  ctx.fillStyle = '#475569';
+  ctx.font = '13px DM Sans, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('No scan data — run a scan, then click Refresh', cx, cy - H * 0.28);
+
+  const demo = [
+    { x: cx, y: cy, l: '10.0.0.1', c: '#38bdf8', s: 20, asset: true },
+    { x: cx - 200, y: cy - 100, l: 'CVE-2021-44228', c: '#f87171', s: 13 },
+    { x: cx + 200, y: cy - 100, l: 'CVE-2021-23017', c: '#fb923c', s: 11 },
+    { x: cx, y: cy + 160, l: 'TLS v1.0 Weak', c: '#fbbf24', s: 9 },
+    { x: cx - 140, y: cy + 80, l: 'Log4Shell KEV', c: '#a78bfa', s: 14 },
+    { x: cx + 140, y: cy + 80, l: 'WordPress CVE', c: '#fb923c', s: 10 },
+  ];
+  [[0,1],[0,2],[0,3],[0,4],[0,5]].forEach(([a, b]) => {
+    ctx.beginPath(); ctx.moveTo(demo[a].x, demo[a].y); ctx.lineTo(demo[b].x, demo[b].y);
+    ctx.strokeStyle = 'rgba(56,189,248,.1)'; ctx.lineWidth = 1; ctx.stroke();
+  });
+  demo.forEach(n => {
+    const pulse = n.s + Math.sin(t * 0.04) * 2;
+    ctx.beginPath(); ctx.arc(n.x, n.y, pulse + 6, 0, Math.PI * 2);
+    ctx.fillStyle = n.c + '22'; ctx.fill();
+    ctx.beginPath(); ctx.arc(n.x, n.y, pulse, 0, Math.PI * 2);
+    ctx.fillStyle = n.c + '77'; ctx.fill();
+    if (n.asset) { ctx.strokeStyle = n.c; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.fillStyle = '#7a8fa6'; ctx.font = '10px DM Sans'; ctx.textAlign = 'center';
+    ctx.fillText(n.l, n.x, n.y + pulse + 14);
+  });
 }
 
-function resetGraph(){gNodes.forEach(n=>{n.x=80+Math.random()*(gi('gcanvas').width-160);n.y=80+Math.random()*(gi('gcanvas').height-160);n.vx=0;n.vy=0;});}
+// ══════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════
+function severityBadge(sev) {
+  const map = { critical: 'b-crit', high: 'b-high', medium: 'b-med', low: 'b-low', info: 'b-info' };
+  return `<span class="badge ${map[sev] || 'b-info'}">${esc(sev) || 'info'}</span>`;
+}
 
-// ── HELPERS ──
-function sbadge(sev){const m={critical:'bc_',high:'bh',medium:'bm',low:'bl',info:'bi'};return `<span class="badge ${m[sev]||'bi'}">${sev||'info'}</span>`;}
-function sdot(status){const dc={running:'sr',done:'sd',failed:'sf_',queued:'sq'}[status]||'sq',lbl={running:'Running',done:'Done',failed:'Failed',queued:'Queued'}[status]||status,lc={running:'var(--accent)',done:'var(--green)',failed:'var(--red)',queued:'var(--text3)'}[status]||'var(--text3)';return `<div class="sw"><div class="sdot ${dc}"></div><span class="sl2" style="color:${lc}">${lbl}</span></div>`;}
-function showAl(id,type,msg){const el=gi(id);el.className='alert a-'+type.slice(0,1);el.textContent=msg;el.style.display='flex';setTimeout(()=>el.style.display='none',5000);}
+function renderStatusDot(status) {
+  const dotClass = { running: 's-run', done: 's-done', failed: 's-fail', queued: 's-queue' }[status] || 's-queue';
+  const label    = { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' }[status] || status;
+  const color    = { running: 'var(--accent)', done: 'var(--green)', failed: 'var(--red)', queued: 'var(--text3)' }[status] || 'var(--text3)';
+  return `<div class="sdot-wrap"><div class="sdot ${dotClass}"></div><span class="s-lbl" style="color:${color}">${label}</span></div>`;
+}
 
-// ── INIT ──
-window.onload=()=>{
-  const t=localStorage.getItem('vt'),e=localStorage.getItem('ve')||'admin@local';
-  if(t){TOKEN=t;showApp(e);}
-  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&gi('login-page').classList.contains('show'))doLogin();});
-};
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+window.addEventListener('load', () => {
+  const savedToken = localStorage.getItem('vs_token');
+  const savedEmail = localStorage.getItem('vs_email') || 'admin@local';
+  if (savedToken) {
+    AppState.token     = savedToken;
+    AppState.userEmail = savedEmail;
+    showApp();
+  }
+  // Enter key on login
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && gi('login-page').classList.contains('show')) doLogin();
+  });
+  // Close confirm on overlay click
+  gi('confirm-modal').addEventListener('click', ev => {
+    if (ev.target === gi('confirm-modal')) closeConfirm();
+  });
+});
 </script>
 </body>
 </html>
