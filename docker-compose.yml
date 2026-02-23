@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  neo4j:
+    image: neo4j:5
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+
+  backend:
+    build: ./backend
+    env_file: .env.example
+    depends_on: [db, redis, neo4j]
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080
+
+  worker:
+    build: ./backend
+    env_file: .env.example
+    depends_on: [db, redis]
+    volumes:
+      - ./data:/data
+    command: rq worker --url redis://redis:6379/0 scans
+
+  frontend:
+    build: ./frontend
+    environment:
+      - VITE_API_URL=http://localhost:8080
+    depends_on: [backend]
+    ports:
+      - "5173:5173"
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+
+volumes:
+  db_data:
+  neo4j_data:
