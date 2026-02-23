@@ -1,0 +1,16 @@
+[
+  {
+    "cve":"CVE-2021-23017",
+    "summary":"Nginx resolver issue (sample)",
+    "severity":"high",
+    "cvss":7.5,
+    "refs":["https://example.invalid/nvd"],
+    "matches":[
+      {
+        "cpe23":"cpe:2.3:a:nginx:nginx:*:*:*:*:*:*:*:*",
+        "versionStartIncluding":"1.19.0",
+        "versionEndExcluding":"1.20.1"
+      }
+    ]
+  }
+]

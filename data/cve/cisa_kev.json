@@ -1,0 +1,12 @@
+[
+  {
+    "cve":"CVE-2021-44228",
+    "vendorProject":"Apache",
+    "product":"Log4j",
+    "dateAdded":"2021-12-10",
+    "dueDate":"2021-12-24",
+    "knownRansomwareCampaignUse":"Known",
+    "notes":"Log4Shell exploited in the wild",
+    "refs":["https://example.invalid/kev"]
+  }
+]

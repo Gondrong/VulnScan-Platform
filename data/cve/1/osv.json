@@ -1,0 +1,11 @@
+[
+  {
+    "id":"OSV-TEST-1",
+    "package":"openssl",
+    "ecosystem":"deb",
+    "ranges":[{"type":"introduced_fixed","introduced":"0","fixed":"3.0.2"}],
+    "severity":"high",
+    "refs":["https://example.invalid/osv"],
+    "summary":"Test OSV package vulnerability"
+  }
+]
