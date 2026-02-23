@@ -47,6 +47,9 @@ http://localhost:7474
 user: neo4j
 pass: password
 
+Frontend:
+http://localhost:5173
+
 ---
 
 ## Upload Datasets
