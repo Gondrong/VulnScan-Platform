@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16
@@ -81,7 +79,10 @@ services:
   frontend:
     build: ./frontend
     environment:
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
+      # Inside Docker, the proxy must reach the backend via its service name.
+      # VITE_API_URL here is used by Vite's SSR proxy (server-side), NOT the browser.
+      # The browser uses window.location.origin-relative paths via the Vite proxy.
+      - VITE_API_URL=http://backend:8080
     depends_on:
       backend:
         condition: service_healthy
