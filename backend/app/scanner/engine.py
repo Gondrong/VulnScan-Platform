@@ -9,20 +9,14 @@ from app.scanner.context import ScanContext, ScanPolicy, stable_fingerprint
 from app.scanner.plugins.base import Finding
 from app.scanner.plugins.loader import load_plugins, topo_sort
 
-PLUGINS = load_plugins()
-ORDER = topo_sort(PLUGINS)
+PLUGINS = load_plugins()  # returns dict[str, Plugin]
+ORDER = topo_sort(PLUGINS)  # returns list[str] of plugin_ids
 
 
 def _parse_target(raw: str) -> tuple[str, str]:
     """
     Parse target into (host, scheme).
     Returns the actual hostname/IP and the detected scheme.
-    Handles:
-      - plain IP:   10.0.0.1
-      - IP:port:    10.0.0.1:8080
-      - hostname:   example.internal.local
-      - http URL:   http://example.com:8080/path
-      - https URL:  https://example.com/path
     """
     raw = raw.strip()
     scheme = "unknown"
@@ -34,16 +28,10 @@ def _parse_target(raw: str) -> tuple[str, str]:
         host = parsed.hostname or ""
         return host, scheme
 
-    # Strip trailing path/query if any (e.g. "10.0.0.1/path")
-    # but NOT CIDR notation like "10.0.0.0/8" — we handle /path after port
-    # Check if after stripping port it looks like IP with path
-    # Simple split on first "/"
     parts = raw.split("/", 1)
-    base = parts[0]  # host or host:port
+    base = parts[0]
 
-    # Remove port if present
     if ":" in base:
-        # IPv6 in brackets?
         if base.startswith("["):
             host = base.split("]")[0].lstrip("[")
         else:
@@ -58,6 +46,7 @@ def _allowlisted(target: str) -> bool:
     """
     Returns True if the target is allowed to be scanned.
     Checks against ALLOWLIST env var (CIDRs and domain suffixes).
+    For external scans (URLs), we check the hostname portion.
     """
     allow_entries = [
         x.strip() for x in settings.ALLOWLIST.split(",") if x.strip()
@@ -79,7 +68,6 @@ def _allowlisted(target: str) -> bool:
                 except ValueError:
                     pass
             else:
-                # exact IP match
                 try:
                     if ip == ipaddress.ip_address(entry):
                         return True
@@ -94,11 +82,9 @@ def _allowlisted(target: str) -> bool:
     for entry in allow_entries:
         entry = entry.lower()
         if entry.startswith("."):
-            # suffix match: .internal.local matches foo.internal.local
             if host_lower == entry.lstrip(".") or host_lower.endswith(entry):
                 return True
         else:
-            # exact domain match
             if host_lower == entry:
                 return True
 
@@ -166,16 +152,16 @@ async def scan_target(
 
     policy = ScanPolicy(timeout_seconds=float(settings.SCAN_TIMEOUT_SECONDS))
     ctx = ScanContext(policy=policy)
-    ctx.put("workspace_id", workspace_id)
-    ctx.put("target_raw", target)
-    ctx.put("target_host", host)
-    ctx.put("target_scheme", scheme)
+    ctx.set("workspace_id", workspace_id)
+    ctx.set("target_raw", target)
+    ctx.set("target_host", host)
+    ctx.set("target_scheme", scheme)
 
     try:
         options = json.loads(profile.get("options_json", "{}") or "{}")
     except Exception:
         options = {}
-    ctx.put("profile_options", options)
+    ctx.set("profile_options", options)
 
     findings_out: list[Finding] = []
     enabled = _enabled(profile.get("plugin_selection_json", "{}"))
@@ -214,7 +200,7 @@ async def scan_target(
 
         # Merge artifacts
         for k, v in (res.artifacts or {}).items():
-            ctx.put(k, v)
+            ctx.set(k, v)
 
         for f in res.findings or []:
             if not f.fingerprint:
