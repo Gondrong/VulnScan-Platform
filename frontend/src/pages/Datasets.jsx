@@ -2,6 +2,10 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api";
 import { Panel, Alert } from "../components/ui.jsx";
 
+const API_BASE =
+  import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
+  `${window.location.protocol}//${window.location.hostname}:8080`;
+
 const KINDS = [
   ["osv", "OSV package vulnerability database"],
   ["nvd_cpe_cve", "NVD CPE→CVE match table"],
@@ -34,18 +38,37 @@ export default function Datasets() {
     try {
       const form = new FormData();
       form.append("file", file);
+      const token = localStorage.getItem("token");
       const res = await fetch(
-        `${import.meta.env.VITE_API_URL || "http://localhost:8080"}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`,
-        { method: "POST", headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }, body: form }
+        `${API_BASE}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`,
+        { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: form }
       );
       if (!res.ok) throw new Error(await res.text());
       const r = await res.json();
       setMsg({ type: "success", text: `✓ Dataset uploaded — ID #${r.dataset_id}` });
       setFile(null);
-      document.getElementById("ds-file-input").value = "";
+      const fileInput = document.getElementById("ds-file-input");
+      if (fileInput) fileInput.value = "";
       await load();
     } catch (e) { setMsg({ type: "danger", text: e.message }); }
     finally { setLoading(false); }
+  }
+
+  async function toggleDataset(dsId) {
+    try {
+      const res = await api(`/datasets/${dsId}/toggle`, { method: "PATCH" });
+      setMsg({ type: "success", text: `✓ Dataset #${dsId} ${res.enabled ? "enabled" : "disabled"}` });
+      await load();
+    } catch (e) { setMsg({ type: "danger", text: `Failed to toggle: ${e.message}` }); }
+  }
+
+  async function deleteDataset(dsId) {
+    if (!window.confirm(`Delete dataset #${dsId}? This will also remove the file from disk.`)) return;
+    try {
+      await api(`/datasets/${dsId}`, { method: "DELETE" });
+      setMsg({ type: "success", text: `✓ Dataset #${dsId} deleted` });
+      await load();
+    } catch (e) { setMsg({ type: "danger", text: `Failed to delete: ${e.message}` }); }
   }
 
   return (
@@ -111,7 +134,7 @@ export default function Datasets() {
             <button className="btn btn-ghost btn-sm" onClick={load}>↻</button>
           } noPad>
             <table className="data-table">
-              <thead><tr><th>ID</th><th>Name</th><th>Kind</th><th>Status</th></tr></thead>
+              <thead><tr><th>ID</th><th>Name</th><th>Kind</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
               <tbody>
                 {datasets.length ? datasets.map(d => (
                   <tr key={d.id}>
@@ -120,11 +143,30 @@ export default function Datasets() {
                     <td><span className="badge badge-info">{d.kind}</span></td>
                     <td>{d.enabled
                       ? <span className="badge badge-success">ACTIVE</span>
-                      : <span className="badge">DISABLED</span>}
+                      : <span className="badge" style={{ opacity: 0.5 }}>DISABLED</span>}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => toggleDataset(d.id)}
+                          title={d.enabled ? "Disable dataset" : "Enable dataset"}
+                        >
+                          {d.enabled ? "⏸ Disable" : "▶ Enable"}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: "var(--critical)", borderColor: "rgba(255,71,87,0.3)" }}
+                          onClick={() => deleteDataset(d.id)}
+                          title="Delete dataset"
+                        >
+                          🗑
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan="4"><div className="empty-state" style={{ padding: 28 }}>No datasets uploaded</div></td></tr>
+                  <tr><td colSpan="5"><div className="empty-state" style={{ padding: 28 }}>No datasets uploaded</div></td></tr>
                 )}
               </tbody>
             </table>
