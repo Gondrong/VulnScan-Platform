@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import traceback
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -47,7 +48,6 @@ def _run_async(coro):
         if loop.is_closed():
             raise RuntimeError("Loop is closed")
         if loop.is_running():
-            # We're somehow inside an already-running loop; use a new thread
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, coro)
@@ -62,6 +62,7 @@ def run_scan_job(job_id: int) -> None:
     RQ worker task — runs a full scan and saves findings to DB.
     """
     db: Session = SessionLocal()
+    neo = None  # FIX: initialize neo before try block to avoid UnboundLocalError
     try:
         job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
         if not job:
@@ -79,7 +80,13 @@ def run_scan_job(job_id: int) -> None:
         )
         if not prof:
             job.status = "failed"
-            job.meta_json = json.dumps({"error": "Profile not found"})
+            job.meta_json = json.dumps({
+                "error": "Profile not found",
+                "error_type": "configuration",
+                "error_detail": f"Profile ID {job.profile_id} does not exist in workspace {ws_id}. "
+                                "Create a scan profile first under Configuration → Profiles.",
+            })
+            job.finished_at = datetime.now(timezone.utc)
             db.commit()
             return
 
@@ -95,9 +102,20 @@ def run_scan_job(job_id: int) -> None:
         try:
             findings = _run_async(scan_target(job.target, profile, ws_id))
         except Exception as e:
+            tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)
             job.status = "failed"
-            job.meta_json = json.dumps({"error": str(e)})
+            job.meta_json = json.dumps({
+                "error": str(e),
+                "error_type": "scan_engine",
+                "error_detail": (
+                    f"The scan engine encountered an error while scanning '{job.target}'. "
+                    f"This may be caused by: network unreachable, DNS resolution failure, "
+                    f"target refused connection, or a plugin crash.\n\n"
+                    f"Technical detail: {str(e)[:500]}"
+                ),
+                "traceback": tb[:2000],
+            })
             job.finished_at = datetime.now(timezone.utc)
             db.commit()
             return
@@ -121,7 +139,6 @@ def run_scan_job(job_id: int) -> None:
         criticality = int((opt.get("asset") or {}).get("criticality", 2))
 
         # Init Neo4j client (best-effort)
-        neo = None
         try:
             neo = Neo4jClient()
         except Exception as e:
@@ -135,7 +152,7 @@ def run_scan_job(job_id: int) -> None:
             kev = bool(getattr(f, "is_kev", False))
             cvss = getattr(f, "cvss", None)
             confidence = float(getattr(f, "confidence", 1.0) or 1.0)
-            exploit_known = kev  # KEV implies known exploit
+            exploit_known = kev
 
             risk = compute_risk(
                 cvss=cvss,
@@ -198,12 +215,22 @@ def run_scan_job(job_id: int) -> None:
         db.commit()
 
     except Exception as e:
+        tb = traceback.format_exc()
         logger.exception("Unhandled error in run_scan_job #%d: %s", job_id, e)
         try:
             job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
             if job:
                 job.status = "failed"
-                job.meta_json = json.dumps({"error": str(e)})
+                job.meta_json = json.dumps({
+                    "error": str(e),
+                    "error_type": "unhandled",
+                    "error_detail": (
+                        f"An unexpected error occurred during scan processing. "
+                        f"This is likely a system-level issue.\n\n"
+                        f"Technical detail: {str(e)[:500]}"
+                    ),
+                    "traceback": tb[:2000],
+                })
                 job.finished_at = datetime.now(timezone.utc)
                 db.commit()
         except Exception:
