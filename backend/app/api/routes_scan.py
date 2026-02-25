@@ -86,6 +86,40 @@ def list_profiles(
     ]
 
 
+# FIX: Add delete profile endpoint
+@router.delete("/profiles/{profile_id}")
+def delete_profile(
+    profile_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    prof = (
+        db.query(models.Profile)
+        .filter(
+            models.Profile.workspace_id == user["ws"],
+            models.Profile.id == profile_id,
+        )
+        .first()
+    )
+    if not prof:
+        raise HTTPException(404, "profile not found")
+
+    # Check if any jobs reference this profile
+    job_count = (
+        db.query(models.ScanJob)
+        .filter(
+            models.ScanJob.workspace_id == user["ws"],
+            models.ScanJob.profile_id == profile_id,
+        )
+        .count()
+    )
+
+    db.delete(prof)
+    db.commit()
+    logger.info("Deleted profile #%d (had %d associated jobs)", profile_id, job_count)
+    return {"ok": True, "deleted_profile_id": profile_id}
+
+
 # ─── Jobs ──────────────────────────────────────────────────────────────────────
 
 @router.post("/jobs")
@@ -138,9 +172,16 @@ def create_job(
         q.enqueue(run_scan_job, job.id, job_timeout=600)
         logger.info("Enqueued scan job #%d target=%s", job.id, target)
     except Exception as e:
-        # Mark as failed if we can't enqueue
         job.status = "failed"
-        job.meta_json = json.dumps({"error": f"Failed to enqueue: {e}"})
+        job.meta_json = json.dumps({
+            "error": f"Failed to enqueue: {e}",
+            "error_type": "queue",
+            "error_detail": (
+                "Could not submit the scan job to the task queue. "
+                "The Redis worker may be down or unreachable. "
+                "Check that the 'worker' container is running."
+            ),
+        })
         db.commit()
         raise HTTPException(503, f"Could not enqueue job: {e}")
 
@@ -174,9 +215,27 @@ def list_jobs(
             "scan_type": r.scan_type or "internal",
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "error_info": _extract_error_info(r.meta_json) if r.status == "failed" else None,
         }
         for r in rows
     ]
+
+
+def _extract_error_info(meta_json: str | None) -> dict | None:
+    """Extract user-friendly error info from job meta_json."""
+    if not meta_json:
+        return None
+    try:
+        meta = json.loads(meta_json)
+        if "error" in meta:
+            return {
+                "error": meta.get("error", "Unknown error"),
+                "error_type": meta.get("error_type", "unknown"),
+                "error_detail": meta.get("error_detail", ""),
+            }
+    except Exception:
+        pass
+    return None
 
 
 @router.get("/jobs/{job_id}")
@@ -206,6 +265,9 @@ def job_detail(
         .all()
     )
 
+    # FIX: Include error_info in job detail response so the UI can display it
+    error_info = _extract_error_info(job.meta_json) if job.status == "failed" else None
+
     return {
         "job": {
             "id": job.id,
@@ -216,6 +278,7 @@ def job_detail(
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "finished_at": job.finished_at.isoformat() if job.finished_at else None,
             "meta_json": job.meta_json,
+            "error_info": error_info,
         },
         "findings": [
             {
@@ -281,7 +344,6 @@ def suppress(
     if not fp:
         raise HTTPException(400, "missing fingerprint")
 
-    # Upsert suppression
     existing = (
         db.query(models.SuppressedFinding)
         .filter(
