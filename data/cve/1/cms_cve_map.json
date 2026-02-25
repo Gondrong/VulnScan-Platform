@@ -1,9 +1,0 @@
-[
-  {
-    "cms":"wordpress",
-    "cve":"CVE-2023-12345",
-    "severity":"high",
-    "summary":"WordPress sample mapping",
-    "refs":["https://example.invalid/wp"]
-  }
-]
