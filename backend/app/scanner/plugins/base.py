@@ -34,6 +34,7 @@ class Finding:
     cve: str | None = None
     is_kev: bool = False
     confidence: float = 1.0
+    affected: str = ""  # FIX: added missing 'affected' field
 
 
 # Backwards-compat alias
