@@ -34,8 +34,13 @@ class ScanContext:
     def __init__(self, policy: ScanPolicy | None = None):
         self.policy: ScanPolicy = policy or ScanPolicy()
         self._artifacts: dict[str, Any] = {}
+        self._seen_fingerprints: set[str] = set()
 
     def set(self, key: str, value: Any) -> None:
+        self._artifacts[key] = value
+
+    # FIX: add put() as alias for set() — engine.py uses ctx.put(...)
+    def put(self, key: str, value: Any) -> None:
         self._artifacts[key] = value
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -43,6 +48,17 @@ class ScanContext:
 
     def has(self, key: str) -> bool:
         return key in self._artifacts
+
+    # FIX: add dedup() method — engine.py calls ctx.dedup(fingerprint)
+    def dedup(self, fingerprint: str) -> bool:
+        """
+        Returns True if this fingerprint has NOT been seen before (i.e. it's new).
+        Returns False if it's a duplicate.
+        """
+        if fingerprint in self._seen_fingerprints:
+            return False
+        self._seen_fingerprints.add(fingerprint)
+        return True
 
 
 def stable_fingerprint(*parts: Any) -> str:
