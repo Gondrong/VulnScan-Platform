@@ -3,7 +3,6 @@ Plugin loader — discovers all scanner plugins and sorts them by dependency ord
 """
 import importlib
 import logging
-import pkgutil
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,24 +14,34 @@ logger = logging.getLogger("vulnscan.loader")
 _BUILTIN_PLUGINS = [
     "port_scan",
     "http_fingerprint",
+    "banner_grabber",
     "web_tech",
+    "favicon_hash",
+    "cpe_builder",
+    "nvd_match",
+    "cms_match",
+    "cisa_kev",
+    "tls_basic",
+    "ssh_inventory",
+    "cve_packages",
 ]
 
 
-def load_plugins(plugin_selection: dict | None = None) -> list["Plugin"]:
+def load_plugins(plugin_selection: dict | None = None) -> dict[str, "Plugin"]:
     """
-    Import all plugin modules and return instantiated Plugin objects.
+    Import all plugin modules and return a dict of {plugin_id: Plugin instance}.
 
     Args:
         plugin_selection: Dict of {plugin_id: bool} controlling which plugins
-                          are enabled. If None, all enabled_by_default plugins run.
+                          are enabled. If None, all plugins are loaded (filtering
+                          happens later in engine._enabled()).
 
     Returns:
-        List of Plugin instances in dependency-resolved order.
+        Dict mapping plugin_id -> Plugin instance.
     """
     from app.scanner.plugins.base import Plugin, PluginMeta  # noqa: F401
 
-    plugins: list[Plugin] = []
+    plugins: dict[str, "Plugin"] = {}
 
     for module_name in _BUILTIN_PLUGINS:
         full_name = f"app.scanner.plugins.{module_name}"
@@ -50,35 +59,41 @@ def load_plugins(plugin_selection: dict | None = None) -> list["Plugin"]:
             logger.warning("Plugin %s missing META or Check class — skipping", full_name)
             continue
 
-        # Check if explicitly enabled/disabled in profile
-        if plugin_selection is not None:
-            enabled = plugin_selection.get(meta.plugin_id, meta.enabled_by_default)
-        else:
-            enabled = meta.enabled_by_default
-
-        if not enabled:
-            logger.debug("Plugin %s is disabled — skipping", meta.plugin_id)
-            continue
-
         instance = check_cls()
-        instance.META = meta
-        plugins.append(instance)
+        instance.meta = meta  # store as .meta for engine.py access
+        instance.META = meta  # backwards compat
+        plugins[meta.plugin_id] = instance
 
-    return topo_sort(plugins)
+    return plugins
 
 
-def topo_sort(plugins: list["Plugin"]) -> list["Plugin"]:
+def topo_sort(plugins: dict[str, "Plugin"] | list["Plugin"]) -> list[str]:
     """
     Sort plugins so that each plugin runs after its dependencies.
     Uses Kahn's algorithm (BFS topological sort).
+
+    Accepts either a dict {plugin_id: Plugin} or a list of Plugins.
+    Returns a list of plugin_id strings in dependency order.
     """
-    by_id: dict[str, "Plugin"] = {p.META.plugin_id: p for p in plugins}
+    # Normalize input to dict
+    if isinstance(plugins, list):
+        by_id: dict[str, "Plugin"] = {}
+        for p in plugins:
+            meta = getattr(p, "meta", None) or getattr(p, "META", None)
+            if meta:
+                by_id[meta.plugin_id] = p
+    else:
+        by_id = dict(plugins)
+
     in_degree: dict[str, int] = {pid: 0 for pid in by_id}
 
-    for plugin in plugins:
-        for dep in (plugin.META.depends_on or []):
+    for pid, plugin in by_id.items():
+        meta = getattr(plugin, "meta", None) or getattr(plugin, "META", None)
+        if not meta:
+            continue
+        for dep in (meta.depends_on or []):
             if dep in in_degree:
-                in_degree[plugin.META.plugin_id] += 1
+                in_degree[pid] += 1
 
     queue = [pid for pid, deg in in_degree.items() if deg == 0]
     sorted_ids: list[str] = []
@@ -86,11 +101,12 @@ def topo_sort(plugins: list["Plugin"]) -> list["Plugin"]:
     while queue:
         pid = queue.pop(0)
         sorted_ids.append(pid)
-        for plugin in plugins:
-            if pid in (plugin.META.depends_on or []):
-                in_degree[plugin.META.plugin_id] -= 1
-                if in_degree[plugin.META.plugin_id] == 0:
-                    queue.append(plugin.META.plugin_id)
+        for other_pid, plugin in by_id.items():
+            meta = getattr(plugin, "meta", None) or getattr(plugin, "META", None)
+            if meta and pid in (meta.depends_on or []):
+                in_degree[other_pid] -= 1
+                if in_degree[other_pid] == 0:
+                    queue.append(other_pid)
 
     # Any plugins not reached (cycles or missing deps) — append at end
     remaining = [pid for pid in by_id if pid not in sorted_ids]
@@ -98,4 +114,4 @@ def topo_sort(plugins: list["Plugin"]) -> list["Plugin"]:
         logger.warning("Plugin dependency cycle or missing dep for: %s", remaining)
     sorted_ids.extend(remaining)
 
-    return [by_id[pid] for pid in sorted_ids if pid in by_id]
+    return sorted_ids
