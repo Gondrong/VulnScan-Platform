@@ -23,9 +23,6 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
 @keyframes spin{to{transform:rotate(360deg)}}
-@keyframes pulse-ring{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.8);opacity:0}}
-
-/* ── SIDEBAR ── */
 .sidebar{position:fixed;left:0;top:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:200}
 .sidebar-accent{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--accent))}
 .logo-wrap{padding:22px 20px 18px;border-bottom:1px solid var(--border)}
@@ -34,7 +31,7 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .logo-tag{font-family:var(--fm);font-size:0.58rem;color:var(--text3);letter-spacing:.14em;margin-top:4px}
 .nav-wrap{flex:1;overflow-y:auto;padding:8px 0}
 .nav-sec{font-family:var(--fm);font-size:0.58rem;color:var(--text3);letter-spacing:.24em;text-transform:uppercase;padding:14px 20px 4px}
-.ni{display:flex;align-items:center;gap:11px;padding:10px 20px;cursor:pointer;font-family:var(--fb);font-size:0.93rem;font-weight:500;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:all .14s;border-left:3px solid transparent;position:relative}
+.ni{display:flex;align-items:center;gap:11px;padding:10px 20px;cursor:pointer;font-family:var(--fb);font-size:0.93rem;font-weight:500;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:all .14s;border-left:3px solid transparent}
 .ni:hover{color:var(--bright);background:var(--accent-dim);border-left-color:var(--border2)}
 .ni.active{color:var(--accent);background:var(--accent-dim);border-left-color:var(--accent)}
 .ni-ic{font-size:1.05rem;width:20px;text-align:center;flex-shrink:0}
@@ -44,8 +41,6 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s infinite}
 .sign-out-btn{margin-top:11px;width:100%;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--fb);font-size:.82rem;padding:7px;cursor:pointer;transition:all .15s}
 .sign-out-btn:hover{border-color:var(--red);color:var(--red)}
-
-/* ── MAIN ── */
 .main{margin-left:var(--sidebar-w);min-height:100vh;position:relative;z-index:1;display:flex;flex-direction:column}
 .topbar{height:58px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:100}
 .bc{font-family:var(--fm);font-size:.7rem;color:var(--text3)}
@@ -57,15 +52,11 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .content{padding:28px;flex:1}
 .page{display:none;animation:fadeUp .2s ease both}
 .page.active{display:block}
-
-/* ── PAGE HEADER ── */
 .ph{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:12px}
 .ph-title{font-family:var(--fh);font-size:1.8rem;font-weight:800;color:var(--bright);letter-spacing:-.02em}
 .ph-title .hl{color:var(--accent)}
 .ph-sub{font-family:var(--fm);font-size:.66rem;color:var(--text3);margin-top:4px;letter-spacing:.08em}
 .ph-right{display:flex;gap:10px;align-items:center}
-
-/* ── STAT CARDS ── */
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px}
 .sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
@@ -79,8 +70,6 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .sc-val{font-family:var(--fh);font-size:2.2rem;font-weight:800;line-height:1}
 .sc.c-c .sc-val{color:var(--red)}.sc.c-h .sc-val{color:var(--orange)}.sc.c-m .sc-val{color:var(--yellow)}.sc.c-l .sc-val{color:var(--green)}.sc.c-i .sc-val{color:var(--accent)}
 .sc-sub{font-size:.78rem;color:var(--text3);margin-top:5px}
-
-/* ── PANEL ── */
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:18px;overflow:hidden}
 .panel-head{padding:13px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .panel-title{font-family:var(--fh);font-size:.95rem;font-weight:700;color:var(--bright);display:flex;align-items:center;gap:9px}
@@ -88,16 +77,12 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .pb{padding:20px}.pb.np{padding:0}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-
-/* ── TABLE ── */
 .tbl{width:100%;border-collapse:collapse}
 .tbl th{padding:10px 16px;text-align:left;font-family:var(--fm);font-size:.63rem;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);background:var(--surface2);border-bottom:1px solid var(--border);font-weight:400}
 .tbl td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;font-size:.92rem}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover td{background:rgba(56,189,248,.025)}
 .mc{font-family:var(--fm);font-size:.8rem}
-
-/* ── BADGES ── */
 .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:4px;font-family:var(--fm);font-size:.63rem;letter-spacing:.07em;text-transform:uppercase;font-weight:500}
 .b-crit{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25)}
 .b-high{background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.25)}
@@ -107,53 +92,41 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .b-ok{background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.2)}
 .b-purple{background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.25)}
 .kev-tag{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3);font-family:var(--fm);font-size:.58rem;padding:2px 7px;border-radius:3px;font-weight:700;letter-spacing:.06em}
-
-/* ── STATUS DOTS ── */
 .sdot-wrap{display:inline-flex;align-items:center;gap:7px}
 .sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .s-run{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 1s infinite}
 .s-done{background:var(--green)}.s-fail{background:var(--red)}.s-queue{background:var(--text3)}
 .s-lbl{font-family:var(--fm);font-size:.72rem}
-
-/* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:6px;font-family:var(--fb);font-size:.88rem;font-weight:600;cursor:pointer;border:none;transition:all .14s;white-space:nowrap;line-height:1}
 .btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .btn-primary{background:var(--accent);color:#07090f;box-shadow:0 0 16px rgba(56,189,248,.2)}
 .btn-primary:hover:not(:disabled){box-shadow:0 0 28px rgba(56,189,248,.45)}
 .btn-danger{background:rgba(248,113,113,.14);color:var(--red);border:1px solid rgba(248,113,113,.28)}
-.btn-danger:hover{background:rgba(248,113,113,.26)}
+.btn-danger:hover:not(:disabled){background:rgba(248,113,113,.26)}
 .btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
-.btn-ghost:hover{color:var(--bright);border-color:var(--border2)}
+.btn-ghost:hover:not(:disabled){color:var(--bright);border-color:var(--border2)}
 .btn-sm{padding:5px 12px;font-size:.78rem;border-radius:5px}
 .btn-lg{padding:11px 24px;font-size:1rem}
 .btn-full{width:100%;justify-content:center}
-.btn-icon{padding:5px 9px;border-radius:5px}
-
-/* ── FORMS ── */
 .fg{margin-bottom:15px}
 .fl{display:block;font-family:var(--fm);font-size:.63rem;color:var(--text3);letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px}
 .fc{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fb);font-size:.92rem;padding:9px 13px;outline:none;transition:border-color .14s,box-shadow .14s;-webkit-appearance:none;appearance:none}
 .fc:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,.1)}
 .fc::placeholder{color:var(--text3)}
+.fc.err{border-color:var(--red)}
 textarea.fc{resize:vertical;font-family:var(--fm);font-size:.8rem;line-height:1.55}
 select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23475569'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:13px}
-
-/* ── ALERT ── */
 .alert{padding:11px 15px;border-radius:6px;font-size:.86rem;margin-bottom:14px;display:flex;align-items:center;gap:9px;animation:fadeUp .15s ease}
 .a-danger{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#fca5a5}
 .a-success{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#6ee7b7}
 .a-info{background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);color:#7dd3fc}
 .a-warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:#fde68a}
-
-/* ── RISK BAR ── */
 .risk-wrap{display:flex;align-items:center;gap:8px}
 .risk-track{flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;min-width:56px}
 .risk-fill{height:100%;border-radius:3px;transition:width .3s ease}
 .risk-num{font-family:var(--fm);font-size:.7rem;width:30px;text-align:right;flex-shrink:0}
-
-/* ── FINDING CARDS ── */
 .fcard{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:7px;overflow:hidden;transition:border-color .14s}
 .fcard:hover{border-color:var(--border2)}
 .fcard-hdr{display:flex;align-items:center;gap:11px;padding:12px 16px;cursor:pointer;user-select:none}
@@ -166,65 +139,24 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 .mi{background:var(--surface3);border:1px solid var(--border);border-radius:6px;padding:10px 12px}
 .mk{font-family:var(--fm);font-size:.58rem;color:var(--text3);letter-spacing:.16em;text-transform:uppercase;margin-bottom:4px}
 .mv{font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--bright)}
-
-/* ── SCAN TYPE TOGGLE ── */
 .scan-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:15px}
 .scan-tab{flex:1;padding:10px;text-align:center;cursor:pointer;font-family:var(--fb);font-size:.9rem;font-weight:600;color:var(--text2);background:var(--surface2);border:none;transition:all .14s}
 .scan-tab+.scan-tab{border-left:1px solid var(--border)}
 .scan-tab.active{background:var(--accent-dim);color:var(--accent)}
-.scan-tab:hover:not(.active){color:var(--bright);background:rgba(255,255,255,.03)}
-
-/* ── QUICK TARGET CHIPS ── */
+.scan-tab:hover:not(.active){color:var(--bright)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{padding:4px 10px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;font-family:var(--fm);font-size:.67rem;color:var(--text2);cursor:pointer;transition:all .12s}
 .chip:hover{border-color:var(--accent);color:var(--accent)}
-
-/* ── VALIDATION ERROR ── */
 .field-err{font-family:var(--fm);font-size:.65rem;color:var(--red);margin-top:5px}
-.fc.err{border-color:var(--red)}
-
-/* ── SEVERITY FILTER ── */
 .sev-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:15px;align-items:center}
 .sev-chip{padding:4px 12px;border-radius:20px;cursor:pointer;font-family:var(--fm);font-size:.67rem;border:1px solid transparent;transition:all .12s;background:var(--surface2)}
 .sev-chip.active{font-weight:700}
-
-/* ── TERMINAL ── */
 .terminal{background:#030508;border:1px solid var(--border);border-radius:6px;font-family:var(--fm);font-size:.77rem;padding:13px 16px;max-height:180px;overflow-y:auto;line-height:1.75}
-.t-ok{color:var(--green)}.t-err{color:var(--red)}.t-info{color:var(--accent)}.t-warn{color:var(--yellow)}.t-dim{color:var(--text3)}
-
-/* ── ATTACK GRAPH ── */
-.gcanvas-wrap{position:relative;background:#030508;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;height:500px}
-#gcanvas{width:100%;height:100%;display:block}
-.graph-legend{display:flex;flex-wrap:wrap;gap:14px;padding:13px 20px;border-top:1px solid var(--border)}
-.legend-item{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:.68rem;color:var(--text2)}
-.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.graph-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:13px}
-.gf-chip{padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-family:var(--fm);font-size:.67rem;color:var(--text2);cursor:pointer;transition:all .12s;background:var(--surface2)}
-.gf-chip.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
-.gf-chip:hover:not(.active){border-color:var(--border2);color:var(--bright)}
-.graph-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:11px 14px;font-family:var(--fm);font-size:.7rem;pointer-events:none;z-index:20;display:none;min-width:190px;box-shadow:0 8px 28px rgba(0,0,0,.6)}
-.gt-title{font-size:.82rem;font-weight:700;color:var(--bright);margin-bottom:7px;line-height:1.4;word-break:break-word}
-.gt-row{color:var(--text2);margin-top:3px}.gt-row span{color:var(--text)}
-
-/* ── CONFIRM MODAL ── */
-.modal-overlay{position:fixed;inset:0;background:rgba(4,6,11,.88);z-index:900;display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
-.modal-overlay.show{display:flex}
-.modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:11px;padding:30px;max-width:400px;width:90%;text-align:center;animation:fadeUp .2s ease;box-shadow:0 24px 60px rgba(0,0,0,.6)}
-.modal-icon{font-size:2.4rem;margin-bottom:12px}
-.modal-title{font-family:var(--fh);font-size:1.15rem;font-weight:700;color:var(--bright);margin-bottom:8px}
-.modal-body{font-size:.9rem;color:var(--text2);margin-bottom:22px;line-height:1.6}
-.modal-actions{display:flex;gap:10px}
-
-/* ── SPINNER ── */
 .spinner{width:15px;height:15px;border:2px solid rgba(56,189,248,.18);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;flex-shrink:0}
-
-/* ── MISC ── */
 .empty-state{text-align:center;padding:44px 20px;color:var(--text3);font-family:var(--fm);font-size:.78rem}
 .empty-icon{font-size:2rem;opacity:.22;margin-bottom:11px}
 .bright{color:var(--bright);font-weight:600}
 .dim{color:var(--text3)}
-
-/* ── LOGIN ── */
 #login-page{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:1000}
 #login-page.show{display:flex}
 .login-card{width:420px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:fadeUp .3s ease;box-shadow:0 24px 60px rgba(0,0,0,.6)}
@@ -233,11 +165,6 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 .login-logo{font-family:var(--fh);font-size:2rem;font-weight:800;color:var(--bright);letter-spacing:-.02em}
 .login-sub{font-family:var(--fm);font-size:.6rem;color:var(--text3);letter-spacing:.13em;margin-top:5px}
 .login-body{padding:26px 32px 30px}
-
-/* ── JOB STATUS PROGRESS BAR ── */
-.job-progress{height:3px;background:var(--surface3);border-radius:2px;margin-top:4px;overflow:hidden}
-.job-progress-fill{height:100%;border-radius:2px;transition:width 1s ease}
-
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--surface)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 </style>
 </head>
@@ -265,21 +192,8 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <span id="login-spin" class="spinner" style="display:none"></span>Sign In
       </button>
       <div style="margin-top:13px;font-family:var(--fm);font-size:.6rem;color:var(--text3);text-align:center">
-        Default credentials: admin@local / admin123
+        Default: admin@local / admin123
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- CONFIRM DELETE MODAL -->
-<div class="modal-overlay" id="confirm-modal">
-  <div class="modal-box">
-    <div class="modal-icon">🗑️</div>
-    <div class="modal-title" id="confirm-title">Delete Scan Job</div>
-    <div class="modal-body" id="confirm-body">Are you sure? This cannot be undone.</div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost btn-full" onclick="closeConfirm()">Cancel</button>
-      <button class="btn btn-danger btn-full" id="confirm-ok">Delete</button>
     </div>
   </div>
 </div>
@@ -293,13 +207,7 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
   </div>
   <div class="nav-wrap">
     <div class="nav-sec">Monitoring</div>
-    <button class="ni active" id="nav-dashboard" onclick="navTo('dashboard')">
-      <span class="ni-ic">⬡</span>Dashboard
-    </button>
-    <button class="ni" id="nav-graph" onclick="navTo('graph')">
-      <span class="ni-ic">◈</span>Attack Graph
-      <span class="ni-badge" id="graph-badge" style="display:none">0</span>
-    </button>
+    <button class="ni active" id="nav-dashboard" onclick="navTo('dashboard')"><span class="ni-ic">⬡</span>Dashboard</button>
     <div class="nav-sec">Scanning</div>
     <button class="ni" id="nav-jobs" onclick="navTo('jobs')">
       <span class="ni-ic">⚡</span>Scan Jobs
@@ -311,7 +219,7 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <button class="ni" id="nav-datasets" onclick="navTo('datasets')"><span class="ni-ic">▦</span>Datasets</button>
   </div>
   <div class="sidebar-foot">
-    <div class="online-pill"><div class="pulse"></div><span id="sys-status">System Online</span></div>
+    <div class="online-pill"><div class="pulse"></div><span>System Online</span></div>
     <button class="sign-out-btn" onclick="doLogout()">Sign Out</button>
   </div>
 </nav>
@@ -319,7 +227,7 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 <!-- MAIN APP -->
 <div class="main" id="app-main" style="display:none">
   <div class="topbar">
-    <div class="bc"><span class="bc-a" id="bc-page">Dashboard</span><span id="bc-sub" style="color:var(--text3)"></span></div>
+    <div class="bc"><span class="bc-a" id="bc-page">Dashboard</span></div>
     <div class="topbar-r">
       <div class="clock" id="clock-el"></div>
       <div class="user-chip"><div class="avatar" id="user-av">A</div><span id="user-email">admin@local</span></div>
@@ -328,186 +236,74 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 
   <div class="content">
 
-    <!-- ══════ DASHBOARD ══════ -->
+    <!-- DASHBOARD -->
     <div id="page-dashboard" class="page active">
       <div class="ph">
         <div>
           <div class="ph-title">Threat <span class="hl">Dashboard</span></div>
-          <div class="ph-sub">// All vulnerabilities across all scans — live posture</div>
+          <div class="ph-sub">// All vulnerabilities across all scans</div>
         </div>
         <div class="ph-right">
           <button class="btn btn-ghost" onclick="loadDashboard(true)">↻ Refresh</button>
           <button class="btn btn-primary" onclick="navTo('jobs')">⚡ New Scan</button>
         </div>
       </div>
-
       <div class="stats-row">
         <div class="sc c-c"><div class="sc-lbl">Critical</div><div class="sc-val" id="stat-crit">—</div><div class="sc-sub">Immediate action</div></div>
-        <div class="sc c-h"><div class="sc-lbl">High</div><div class="sc-val" id="stat-high">—</div><div class="sc-sub">Urgent fix needed</div></div>
+        <div class="sc c-h"><div class="sc-lbl">High</div><div class="sc-val" id="stat-high">—</div><div class="sc-sub">Urgent fix</div></div>
         <div class="sc c-m"><div class="sc-lbl">Medium</div><div class="sc-val" id="stat-med">—</div><div class="sc-sub">Plan remediation</div></div>
         <div class="sc c-l"><div class="sc-lbl">KEV Hits</div><div class="sc-val" id="stat-kev">—</div><div class="sc-sub">Active exploits</div></div>
         <div class="sc c-i"><div class="sc-lbl">Total Jobs</div><div class="sc-val" id="stat-jobs">—</div><div class="sc-sub">Scans executed</div></div>
       </div>
-
-      <!-- Severity filter bar -->
       <div class="sev-row" id="sev-filter-bar">
         <span style="font-family:var(--fm);font-size:.7rem;color:var(--text3);font-weight:500">Filter:</span>
-        <div class="sev-chip active" style="background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:var(--accent)" data-sev="all" onclick="setSevFilter('all',this)">All</div>
-        <div class="sev-chip" style="border-color:rgba(248,113,113,.3);color:var(--red)" data-sev="critical" onclick="setSevFilter('critical',this)">Critical</div>
-        <div class="sev-chip" style="border-color:rgba(251,146,60,.3);color:var(--orange)" data-sev="high" onclick="setSevFilter('high',this)">High</div>
-        <div class="sev-chip" style="border-color:rgba(251,191,36,.3);color:var(--yellow)" data-sev="medium" onclick="setSevFilter('medium',this)">Medium</div>
-        <div class="sev-chip" style="border-color:rgba(52,211,153,.3);color:var(--green)" data-sev="low" onclick="setSevFilter('low',this)">Low</div>
-        <div class="sev-chip" style="border-color:var(--border);color:var(--text3)" data-sev="info" onclick="setSevFilter('info',this)">Info</div>
+        <div class="sev-chip active" style="background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:var(--accent)" onclick="setSevFilter('all',this)">All</div>
+        <div class="sev-chip" style="border-color:rgba(248,113,113,.3);color:var(--red)" onclick="setSevFilter('critical',this)">Critical</div>
+        <div class="sev-chip" style="border-color:rgba(251,146,60,.3);color:var(--orange)" onclick="setSevFilter('high',this)">High</div>
+        <div class="sev-chip" style="border-color:rgba(251,191,36,.3);color:var(--yellow)" onclick="setSevFilter('medium',this)">Medium</div>
+        <div class="sev-chip" style="border-color:rgba(52,211,153,.3);color:var(--green)" onclick="setSevFilter('low',this)">Low</div>
+        <div class="sev-chip" style="border-color:var(--border);color:var(--text3)" onclick="setSevFilter('info',this)">Info</div>
         <span style="margin-left:auto;font-family:var(--fm);font-size:.7rem;color:var(--text3)" id="finding-count-label">— findings</span>
       </div>
-
       <div id="findings-list"><div class="empty-state"><div class="empty-icon">⬡</div>Loading findings...</div></div>
-
       <div class="panel" style="margin-top:20px">
-        <div class="panel-head">
-          <div class="panel-title"><div class="panel-title-bar"></div>Recent Scan Jobs</div>
-          <button class="btn btn-ghost btn-sm" onclick="loadDashboard(true)">↻</button>
-        </div>
-        <div class="pb np">
-          <table class="tbl">
-            <thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Status</th><th>Started</th></tr></thead>
-            <tbody id="dash-jobs-body"><tr><td colspan="5"><div class="empty-state" style="padding:24px">Loading...</div></td></tr></tbody>
-          </table>
-        </div>
+        <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Recent Scan Jobs</div></div>
+        <div class="pb np"><table class="tbl">
+          <thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Status</th><th>Started</th></tr></thead>
+          <tbody id="dash-jobs-body"><tr><td colspan="5"><div class="empty-state" style="padding:24px">Loading...</div></td></tr></tbody>
+        </table></div>
       </div>
     </div>
 
-    <!-- ══════ ATTACK GRAPH ══════ -->
-    <div id="page-graph" class="page">
-      <div class="ph">
-        <div>
-          <div class="ph-title">Attack <span class="hl">Surface</span></div>
-          <div class="ph-sub">// Interactive attack path modeling — drag nodes, hover to inspect</div>
-        </div>
-        <div class="ph-right">
-          <button class="btn btn-ghost btn-sm" onclick="resetGraphLayout()">⟳ Reset Layout</button>
-          <button class="btn btn-ghost btn-sm" onclick="togglePhysics()" id="physics-btn">⚛ Physics: ON</button>
-          <button class="btn btn-primary btn-sm" onclick="loadGraph()">↻ Refresh</button>
-        </div>
-      </div>
-
-      <div class="graph-filters">
-        <div class="gf-chip active" data-gf="all" onclick="setGraphFilter('all',this)">All Nodes</div>
-        <div class="gf-chip" data-gf="asset" onclick="setGraphFilter('asset',this)">Assets</div>
-        <div class="gf-chip" data-gf="vuln" onclick="setGraphFilter('vuln',this)">Vulnerabilities</div>
-        <div class="gf-chip" data-gf="kev" onclick="setGraphFilter('kev',this)">KEV / Exploited</div>
-        <div class="gf-chip" data-gf="critical" onclick="setGraphFilter('critical',this)">Critical Only</div>
-      </div>
-
-      <div class="g3" style="margin-bottom:14px">
-        <div class="sc c-c" style="padding:14px 16px"><div class="sc-lbl">Assets</div><div class="sc-val" id="g-assets" style="font-size:1.5rem">0</div></div>
-        <div class="sc c-h" style="padding:14px 16px"><div class="sc-lbl">CVEs Mapped</div><div class="sc-val" id="g-cves" style="font-size:1.5rem">0</div></div>
-        <div class="sc c-m" style="padding:14px 16px"><div class="sc-lbl">Attack Paths</div><div class="sc-val" id="g-paths" style="font-size:1.5rem">0</div></div>
-      </div>
-
-      <div class="g2" style="margin-bottom:14px">
-        <div class="panel" style="margin:0">
-          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Critical Attack Paths</div></div>
-          <div class="pb np" style="max-height:150px;overflow-y:auto">
-            <table class="tbl"><thead><tr><th>Asset</th><th>Vulnerability</th><th>Risk</th></tr></thead>
-            <tbody id="attack-paths-body"><tr><td colspan="3"><div class="empty-state" style="padding:14px">Refresh graph to load paths</div></td></tr></tbody></table>
-          </div>
-        </div>
-        <div class="panel" style="margin:0">
-          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Graph Summary</div></div>
-          <div class="pb" id="graph-summary" style="font-family:var(--fm);font-size:.77rem;color:var(--text2);line-height:2">
-            Run a scan, then click Refresh to build the attack graph.
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-bottom:0">
-        <div class="panel-head">
-          <div class="panel-title"><div class="panel-title-bar"></div>Attack Surface Visualization</div>
-          <span style="font-family:var(--fm);font-size:.63rem;color:var(--text3)">Click to inspect • Drag to rearrange • Scroll to zoom</span>
-        </div>
-        <div class="gcanvas-wrap">
-          <canvas id="gcanvas"></canvas>
-          <div class="graph-tooltip" id="graph-tooltip">
-            <div class="gt-title" id="gt-name">Node</div>
-            <div class="gt-row">Type: <span id="gt-type">—</span></div>
-            <div class="gt-row">CVE: <span id="gt-cve">—</span></div>
-            <div class="gt-row">Risk Score: <span id="gt-risk">—</span></div>
-            <div class="gt-row">Severity: <span id="gt-sev">—</span></div>
-            <div class="gt-row" id="gt-kev-row" style="display:none">Status: <span style="color:var(--purple)">⚠ KEV Active Exploit</span></div>
-          </div>
-        </div>
-        <div class="graph-legend">
-          <div class="legend-item"><div class="legend-dot" style="background:#38bdf8;box-shadow:0 0 6px #38bdf8"></div>Asset / Target</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div>Critical CVE</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>High CVE</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>Medium CVE</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Low / Info</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#a78bfa;box-shadow:0 0 8px #a78bfa"></div>KEV Active Exploit</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════ SCAN JOBS ══════ -->
+    <!-- SCAN JOBS -->
     <div id="page-jobs" class="page">
-      <div class="ph">
-        <div>
-          <div class="ph-title">Scan <span class="hl">Jobs</span></div>
-          <div class="ph-sub">// Launch internal LAN and external web scans • Delete completed jobs</div>
-        </div>
-      </div>
-
+      <div class="ph"><div><div class="ph-title">Scan <span class="hl">Jobs</span></div><div class="ph-sub">// Launch and monitor vulnerability scans</div></div></div>
       <div class="g2" style="margin-bottom:20px;align-items:start">
-        <!-- Left: Launch panel -->
         <div class="panel" style="margin:0">
           <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Launch Scan</div></div>
           <div class="pb">
             <div id="job-alert" style="display:none"></div>
-
-            <!-- Scan type toggle -->
             <div class="fl">Scan Target Type</div>
             <div class="scan-toggle">
               <button class="scan-tab active" id="tab-internal" onclick="setScanType('internal')">🏠 Internal / LAN</button>
               <button class="scan-tab" id="tab-external" onclick="setScanType('external')">🌐 External / Web</button>
             </div>
-
-            <!-- Target input -->
-            <div class="fg" id="target-group">
+            <div class="fg">
               <label class="fl" id="target-label">IP Address or Hostname</label>
-              <input id="job-target" class="fc" placeholder="10.0.0.1" value="127.0.0.1"
-                     oninput="clearFieldErr('job-target')" onchange="validateTarget()"/>
+              <input id="job-target" class="fc" placeholder="10.0.0.1" value="127.0.0.1" oninput="clearTargetErr()"/>
               <div class="field-err" id="target-err" style="display:none"></div>
               <div class="chips" id="quick-chips">
                 <div class="chip" onclick="setTarget('127.0.0.1')">127.0.0.1</div>
                 <div class="chip" onclick="setTarget('192.168.1.1')">192.168.1.1</div>
                 <div class="chip" onclick="setTarget('10.0.0.1')">10.0.0.1</div>
-                <div class="chip" onclick="setTarget('172.16.0.1')">172.16.0.1</div>
               </div>
             </div>
-
-            <!-- External-only options (hidden by default) -->
-            <div id="external-opts" style="display:none">
-              <div class="fg">
-                <label class="fl">Web Scan Mode</label>
-                <select class="fc" id="web-scan-mode">
-                  <option value="http_fingerprint">HTTP Fingerprint Only</option>
-                  <option value="full_web">Full Web Scan (Tech + CVE)</option>
-                  <option value="passive">Passive Reconnaissance</option>
-                </select>
-              </div>
-              <div class="alert a-warn" style="margin-bottom:14px">
-                ⚠ Only scan targets you own or have explicit written permission to test. Unauthorized scanning may be illegal.
-              </div>
-            </div>
-
-            <!-- Scan profile -->
+            <div id="external-warn" class="alert a-warn" style="display:none">⚠ Only scan targets you own or have written permission to test.</div>
             <div class="fg">
               <label class="fl">Scan Profile</label>
               <select id="job-profile" class="fc"><option value="">Loading profiles...</option></select>
               <div class="field-err" id="profile-err" style="display:none"></div>
             </div>
-
-            <!-- Actions -->
             <div class="form-row">
               <button class="btn btn-primary btn-lg btn-full" id="launch-btn" onclick="submitJob()">
                 <span id="launch-spin" class="spinner" style="display:none"></span>⚡ Launch Scan
@@ -516,68 +312,49 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
             </div>
           </div>
         </div>
-
-        <!-- Right: Capabilities info -->
-        <div>
-          <div class="panel" style="margin:0 0 14px">
-            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Scan Capabilities</div></div>
-            <div class="pb" style="padding:16px 20px">
-              <div style="display:grid;gap:14px">
-                <div style="display:flex;gap:11px;align-items:flex-start">
-                  <span style="font-size:1.1rem;margin-top:1px">🏠</span>
-                  <div>
-                    <div style="font-weight:600;color:var(--bright);font-size:.93rem;margin-bottom:3px">Internal / LAN</div>
-                    <div style="font-size:.85rem;color:var(--text2);line-height:1.55">Port discovery, banner grabbing, service fingerprinting, SSH inventory, NVD CVE matching, CPE lookup, TLS version check</div>
-                  </div>
-                </div>
-                <div style="display:flex;gap:11px;align-items:flex-start">
-                  <span style="font-size:1.1rem;margin-top:1px">🌐</span>
-                  <div>
-                    <div style="font-weight:600;color:var(--bright);font-size:.93rem;margin-bottom:3px">External / Web</div>
-                    <div style="font-size:.85rem;color:var(--text2);line-height:1.55">HTTP fingerprinting, web tech detection, favicon hash matching, TLS cipher check, CMS CVE mapping, CISA KEV correlation</div>
-                  </div>
-                </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Scan Capabilities</div></div>
+          <div class="pb" style="padding:16px 20px">
+            <div style="display:grid;gap:14px">
+              <div style="display:flex;gap:11px;align-items:flex-start">
+                <span style="font-size:1.1rem;margin-top:1px">🏠</span>
+                <div><div style="font-weight:600;color:var(--bright);font-size:.93rem;margin-bottom:3px">Internal / LAN</div>
+                <div style="font-size:.85rem;color:var(--text2);line-height:1.55">Port discovery, banner grabbing, SSH inventory, NVD CVE matching, TLS check</div></div>
               </div>
-              <div style="margin-top:14px;padding:10px 12px;background:var(--surface3);border-radius:6px;border:1px solid var(--border)">
-                <div style="font-family:var(--fm);font-size:.6rem;color:var(--text3);letter-spacing:.14em;margin-bottom:7px">REMEDIATION SLA</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-family:var(--fm);font-size:.74rem">
-                  <span><span style="color:var(--red)">Critical</span> → 7 days</span>
-                  <span><span style="color:var(--orange)">High</span> → 14 days</span>
-                  <span><span style="color:var(--yellow)">Medium</span> → 30 days</span>
-                  <span><span style="color:var(--green)">Low</span> → 60 days</span>
-                </div>
+              <div style="display:flex;gap:11px;align-items:flex-start">
+                <span style="font-size:1.1rem;margin-top:1px">🌐</span>
+                <div><div style="font-weight:600;color:var(--bright);font-size:.93rem;margin-bottom:3px">External / Web</div>
+                <div style="font-size:.85rem;color:var(--text2);line-height:1.55">HTTP fingerprint, web tech detection, favicon hash, CMS CVE, CISA KEV</div></div>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding:10px 12px;background:var(--surface3);border-radius:6px;border:1px solid var(--border)">
+              <div style="font-family:var(--fm);font-size:.6rem;color:var(--text3);letter-spacing:.14em;margin-bottom:7px">REMEDIATION SLA</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-family:var(--fm);font-size:.74rem">
+                <span><span style="color:var(--red)">Critical</span> → 7 days</span>
+                <span><span style="color:var(--orange)">High</span> → 14 days</span>
+                <span><span style="color:var(--yellow)">Medium</span> → 30 days</span>
+                <span><span style="color:var(--green)">Low</span> → 60 days</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Job History -->
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title"><div class="panel-title-bar"></div>Job History</div>
           <div style="display:flex;align-items:center;gap:12px">
             <span style="font-family:var(--fm);font-size:.67rem;color:var(--text3)" id="job-count-label">0 jobs</span>
-            <button class="btn btn-ghost btn-sm" onclick="loadJobs()">↻ Refresh</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadJobs()">↻</button>
           </div>
         </div>
-        <div class="pb np">
-          <table class="tbl">
-            <thead>
-              <tr>
-                <th>ID</th><th>Target</th><th>Type</th><th>Profile</th>
-                <th>Status</th><th>Started</th><th style="text-align:right">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="jobs-tbody">
-              <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>
-            </tbody>
-          </table>
-        </div>
+        <div class="pb np"><table class="tbl">
+          <thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Profile</th><th>Status</th><th>Started</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody id="jobs-tbody"><tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr></tbody>
+        </table></div>
       </div>
     </div>
 
-    <!-- ══════ PROFILES ══════ -->
+    <!-- PROFILES -->
     <div id="page-profiles" class="page">
       <div class="ph"><div><div class="ph-title">Scan <span class="hl">Profiles</span></div><div class="ph-sub">// Plugin selection and scan configuration</div></div></div>
       <div class="g2">
@@ -608,64 +385,42 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
             <button class="btn btn-primary btn-full" onclick="createProfile()">Create Profile</button>
           </div>
         </div>
-        <div>
-          <div class="panel" style="margin:0 0 14px">
-            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Available Plugins</div></div>
-            <div class="pb np"><table class="tbl" style="font-size:.84rem">
-              <thead><tr><th>Plugin ID</th><th>Category</th><th>On</th></tr></thead>
-              <tbody>
-                <tr><td class="mc" style="color:var(--accent)">net.port.discovery.v2</td><td><span class="badge b-info">network</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">fingerprint.http</td><td><span class="badge b-info">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">fingerprint.web.tech</td><td><span class="badge b-info">fingerprint</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">cpe.builder</td><td><span class="badge b-purple">cpe</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">cve.match.nvd_cpe</td><td><span class="badge b-high">cve</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">priority.cisa_kev</td><td><span class="badge b-crit">priority</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">tls.basic.version</td><td><span class="badge b-med">tls</span></td><td style="color:var(--green)">✓</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">auth.ssh.inventory</td><td><span class="badge b-ok">auth</span></td><td style="color:var(--text3)">—</td></tr>
-                <tr><td class="mc" style="color:var(--accent)">cve.match.packages</td><td><span class="badge b-high">cve</span></td><td style="color:var(--text3)">—</td></tr>
-              </tbody>
-            </table></div>
-          </div>
-          <div class="panel" style="margin:0">
-            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Saved Profiles</div><button class="btn btn-ghost btn-sm" onclick="loadProfiles()">↻</button></div>
-            <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead><tbody id="profiles-tbody"><tr><td colspan="3"><div class="empty-state" style="padding:20px">No profiles</div></td></tr></tbody></table></div>
-          </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Saved Profiles</div><button class="btn btn-ghost btn-sm" onclick="loadProfiles()">↻</button></div>
+          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead><tbody id="profiles-tbody"><tr><td colspan="3"><div class="empty-state" style="padding:20px">No profiles</div></td></tr></tbody></table></div>
         </div>
       </div>
     </div>
 
-    <!-- ══════ CREDENTIALS ══════ -->
+    <!-- CREDENTIALS -->
     <div id="page-credentials" class="page">
-      <div class="ph"><div><div class="ph-title">SSH <span class="hl">Credentials</span></div><div class="ph-sub">// AES-256 encrypted credential vault for authenticated scanning</div></div></div>
+      <div class="ph"><div><div class="ph-title">SSH <span class="hl">Credentials</span></div><div class="ph-sub">// AES-256 encrypted credential vault</div></div></div>
       <div class="g2">
         <div class="panel" style="margin:0">
-          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Add Credential</div><span class="badge b-info">Admin Only</span></div>
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Add Credential</div></div>
           <div class="pb">
             <div id="cred-alert" style="display:none"></div>
             <div class="fg"><label class="fl">Name</label><input id="cr-name" class="fc" value="prod-ssh"/></div>
             <div class="fg"><label class="fl">Username</label><input id="cr-user" class="fc" value="ubuntu"/></div>
             <div class="fg"><label class="fl">Type</label><select id="cr-type" class="fc"><option value="ssh_key">SSH Private Key</option><option value="password">Password</option></select></div>
-            <div class="fg"><label class="fl">Secret</label><textarea id="cr-secret" class="fc" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"></textarea></div>
+            <div class="fg"><label class="fl">Secret</label><textarea id="cr-secret" class="fc" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>
             <div class="fg"><label class="fl">Passphrase (optional)</label><input id="cr-pass" class="fc" type="password"/></div>
             <button class="btn btn-primary btn-full" onclick="createCred()">Store Credential</button>
-            <div style="margin-top:12px;padding:10px 13px;background:rgba(56,189,248,.05);border:1px solid rgba(56,189,248,.15);border-radius:6px;font-size:.83rem;color:var(--text2);line-height:1.55">
-              🔒 Secrets are encrypted with AES-256 before storage. Private keys are never returned via the API.
-            </div>
           </div>
         </div>
         <div class="panel" style="margin:0">
           <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Stored Credentials</div><button class="btn btn-ghost btn-sm" onclick="loadCreds()">↻</button></div>
-          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Username</th><th>Type</th></tr></thead><tbody id="creds-tbody"><tr><td colspan="4"><div class="empty-state" style="padding:28px">No credentials stored</div></td></tr></tbody></table></div>
+          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Username</th><th>Type</th></tr></thead><tbody id="creds-tbody"><tr><td colspan="4"><div class="empty-state" style="padding:28px">No credentials</div></td></tr></tbody></table></div>
         </div>
       </div>
     </div>
 
-    <!-- ══════ DATASETS ══════ -->
+    <!-- DATASETS -->
     <div id="page-datasets" class="page">
-      <div class="ph"><div><div class="ph-title">CVE <span class="hl">Datasets</span></div><div class="ph-sub">// Upload threat intelligence feeds for CVE matching</div></div></div>
+      <div class="ph"><div><div class="ph-title">CVE <span class="hl">Datasets</span></div><div class="ph-sub">// Upload threat intelligence feeds</div></div></div>
       <div class="g2">
         <div class="panel" style="margin:0">
-          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Upload Dataset</div><span class="badge b-info">Admin Only</span></div>
+          <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Upload Dataset</div></div>
           <div class="pb">
             <div id="ds-alert" style="display:none"></div>
             <div class="fg"><label class="fl">Dataset Kind</label>
@@ -692,74 +447,64 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       </div>
     </div>
 
-  </div><!-- /content -->
-</div><!-- /main -->
+  </div>
+</div>
 
 <script>
 // ══════════════════════════════════════════════════════════════════
-//  VULNSCAN PLATFORM — FIXED APPLICATION LOGIC
-//  - Proper delete job flow with optimistic UI + rollback
-//  - Validated internal/external scan switching
-//  - Target validation per scan type
-//  - Race-condition-safe job polling
-//  - Graph canvas with zoom support
+// VULNSCAN — FIXED APPLICATION LOGIC
+// Fixes: API URL detection, scan type, target validation,
+//        DELETE jobs, external scan support
 // ══════════════════════════════════════════════════════════════════
 
-const API_BASE = '0.0.0.0:8080';
+// ─── API Base URL ──────────────────────────────────────────────────────────────
+// Auto-detect: same host, port 8080. Override by setting window.VULNSCAN_API.
+// This works whether accessed from localhost or a remote machine.
+const API_BASE = (function() {
+  if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, '');
+  const proto = window.location.protocol;
+  const host  = window.location.hostname;
+  return `${proto}//${host}:8080`;
+})();
 
-// ── App State ──
-const AppState = {
+// ─── App State ────────────────────────────────────────────────────────────────
+const S = {
   token: null,
   userEmail: 'admin@local',
   allFindings: [],
   sevFilter: 'all',
   scanType: 'internal',
   profiles: [],
-  // Graph
-  gNodes: [], gEdges: [],
-  gFilter: 'all',
-  gPhysics: true,
-  gAnimFrame: null,
-  gDragNode: null,
-  gHovNode: null,
-  gScale: 1,
-  gOffX: 0, gOffY: 0,
-  gPanning: false,
-  gPanStart: null,
-  // Polling
+  deletedJobIds: new Set(),
   dashInterval: null,
   jobsInterval: null,
-  // Deleted job IDs (for optimistic UI)
-  deletedJobIds: new Set(),
 };
 
-// ── Helpers ──
+// ─── DOM helpers ──────────────────────────────────────────────────────────────
 const gi = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const fmtDate = d => {
   if (!d) return '—';
-  try { return new Date(d).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' }); }
-  catch { return d; }
+  try { return new Date(d).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}); }
+  catch { return String(d); }
 };
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── API ──
+// ─── API helper ───────────────────────────────────────────────────────────────
 async function apiReq(path, opts = {}, skipAuth = false) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
-  if (!skipAuth && AppState.token) headers['Authorization'] = 'Bearer ' + AppState.token;
-  const res = await fetch(API_BASE + path, { ...opts, headers });
+  const headers = {'Content-Type': 'application/json', ...(opts.headers || {})};
+  if (!skipAuth && S.token) headers['Authorization'] = 'Bearer ' + S.token;
+  const res = await fetch(API_BASE + path, {...opts, headers});
+  if (res.status === 401 && !skipAuth) { doLogout(); throw new Error('Session expired'); }
   if (!res.ok) {
     let msg = res.statusText;
     try { const t = await res.text(); if (t) msg = t; } catch {}
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
+    const err = new Error(msg); err.status = res.status; throw err;
   }
   const ct = res.headers.get('content-type') || '';
   return ct.includes('json') ? res.json() : res.text();
 }
 
-// ── AUTH ──
+// ─── Auth ─────────────────────────────────────────────────────────────────────
 async function doLogin() {
   const email = gi('l-email').value.trim();
   const pass  = gi('l-pass').value;
@@ -769,17 +514,14 @@ async function doLogin() {
   btn.disabled = true;
   gi('login-spin').style.display = 'inline-block';
   try {
-    const data = await apiReq('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password: pass }),
-    }, true);
-    AppState.token = data.token;
-    AppState.userEmail = email;
+    const data = await apiReq('/auth/login', {method:'POST', body:JSON.stringify({email, password:pass})}, true);
+    S.token = data.token;
+    S.userEmail = email;
     localStorage.setItem('vs_token', data.token);
     localStorage.setItem('vs_email', email);
     showApp();
   } catch(e) {
-    errEl.textContent = '⚠ ' + (e.message || 'Login failed. Check credentials.');
+    errEl.textContent = '⚠ ' + (e.message || 'Login failed');
     errEl.style.display = 'flex';
   } finally {
     btn.disabled = false;
@@ -788,118 +530,91 @@ async function doLogin() {
 }
 
 function doLogout() {
-  AppState.token = null;
-  clearInterval(AppState.dashInterval);
-  clearInterval(AppState.jobsInterval);
+  S.token = null;
+  clearInterval(S.dashInterval);
+  clearInterval(S.jobsInterval);
   localStorage.removeItem('vs_token');
   localStorage.removeItem('vs_email');
   gi('login-page').classList.add('show');
   gi('app-sidebar').style.display = 'none';
-  gi('app-main').style.display   = 'none';
+  gi('app-main').style.display = 'none';
 }
 
 function showApp() {
   gi('login-page').classList.remove('show');
   gi('app-sidebar').style.display = 'flex';
-  gi('app-main').style.display   = 'flex';
-  gi('user-email').textContent = AppState.userEmail;
-  gi('user-av').textContent    = AppState.userEmail[0].toUpperCase();
+  gi('app-main').style.display = 'flex';
+  gi('user-email').textContent = S.userEmail;
+  gi('user-av').textContent = S.userEmail[0].toUpperCase();
   startClock();
-  // Initial loads
   loadDashboard(false);
   loadJobs();
   loadProfiles();
   loadCreds();
   loadDs();
-  // Polling
-  AppState.dashInterval = setInterval(() => loadDashboard(false), 20000);
-  AppState.jobsInterval = setInterval(loadJobs, 5000);
+  S.dashInterval = setInterval(() => loadDashboard(false), 20000);
+  S.jobsInterval = setInterval(loadJobs, 5000);
 }
 
-// ── CLOCK ──
 function startClock() {
   const el = gi('clock-el');
   const tick = () => { el.textContent = new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC'; };
   tick(); setInterval(tick, 1000);
 }
 
-// ── NAVIGATION ──
+// ─── Navigation ───────────────────────────────────────────────────────────────
 function navTo(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
   const pageEl = gi('page-' + page);
-  if (!pageEl) return;
-  pageEl.classList.add('active');
+  if (pageEl) pageEl.classList.add('active');
   const navEl = gi('nav-' + page);
   if (navEl) navEl.classList.add('active');
-  const labels = {
-    dashboard: 'Dashboard', graph: 'Attack Graph', jobs: 'Scan Jobs',
-    profiles: 'Profiles', credentials: 'Credentials', datasets: 'Datasets'
-  };
+  const labels = {dashboard:'Dashboard',jobs:'Scan Jobs',profiles:'Profiles',credentials:'Credentials',datasets:'Datasets'};
   gi('bc-page').textContent = labels[page] || page;
-  gi('bc-sub').textContent = '';
-  if (page === 'graph') loadGraph();
 }
 
-// ── SHOW ALERT ──
-function showAlert(elId, type, msg, duration = 6000) {
+function showAlert(elId, type, msg, duration=6000) {
   const el = gi(elId);
   if (!el) return;
   el.className = 'alert a-' + type;
   el.textContent = msg;
   el.style.display = 'flex';
-  if (duration > 0) setTimeout(() => { el.style.display = 'none'; }, duration);
+  if (duration > 0) setTimeout(() => { if(el) el.style.display = 'none'; }, duration);
 }
 
-// ══════════════════════════════════════════
-// DASHBOARD
-// ══════════════════════════════════════════
-async function loadDashboard(showLoader = true) {
-  if (showLoader) {
-    gi('findings-list').innerHTML = '<div class="empty-state"><div class="empty-icon">⬡</div>Loading findings...</div>';
-  }
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+async function loadDashboard(showLoader=true) {
+  if (showLoader) gi('findings-list').innerHTML = '<div class="empty-state"><div class="empty-icon">⬡</div>Loading findings...</div>';
   try {
     const jobs = await apiReq('/scan/jobs');
-    const visibleJobs = jobs.filter(j => !AppState.deletedJobIds.has(j.id));
-    gi('stat-jobs').textContent = visibleJobs.length;
+    const visible = jobs.filter(j => !S.deletedJobIds.has(j.id));
+    gi('stat-jobs').textContent = visible.length;
 
-    // Collect findings from all done jobs
     let findings = [];
-    const doneJobs = visibleJobs.filter(j => j.status === 'done');
+    const doneJobs = visible.filter(j => j.status === 'done');
     for (const j of doneJobs.slice(0, 20)) {
       try {
         const detail = await apiReq('/scan/jobs/' + j.id);
-        (detail.findings || []).forEach(f => {
-          findings.push({ ...f, _jobId: j.id, _jobTarget: j.target, _jobScanType: j.scan_type });
-        });
+        (detail.findings || []).forEach(f => findings.push({...f, _jobId:j.id, _jobTarget:j.target, _scanType:j.scan_type}));
       } catch {}
     }
 
-    AppState.allFindings = findings;
-    gi('stat-crit').textContent = findings.filter(f => f.severity === 'critical').length;
-    gi('stat-high').textContent = findings.filter(f => f.severity === 'high').length;
-    gi('stat-med').textContent  = findings.filter(f => f.severity === 'medium').length;
+    S.allFindings = findings;
+    gi('stat-crit').textContent = findings.filter(f => f.severity==='critical').length;
+    gi('stat-high').textContent = findings.filter(f => f.severity==='high').length;
+    gi('stat-med').textContent  = findings.filter(f => f.severity==='medium').length;
     gi('stat-kev').textContent  = findings.filter(f => f.is_kev).length;
-
     renderFindings();
 
-    // Update graph badge
-    const critCount = findings.filter(f => f.severity === 'critical').length;
-    const badge = gi('graph-badge');
-    if (critCount > 0) { badge.textContent = critCount; badge.style.display = 'inline'; }
-    else badge.style.display = 'none';
+    const runningCount = visible.filter(j => j.status==='running').length;
+    gi('running-badge').style.display = runningCount > 0 ? 'inline' : 'none';
 
-    // Running badge
-    const runningCount = visibleJobs.filter(j => j.status === 'running').length;
-    const rbadge = gi('running-badge');
-    if (runningCount > 0) { rbadge.style.display = 'inline'; }
-    else rbadge.style.display = 'none';
-
-    // Profile map for jobs table
+    // Load profile names
     const pm = {};
-    try { const ps = await apiReq('/scan/profiles'); ps.forEach(p => pm[p.id] = p.name); } catch {}
+    S.profiles.forEach(p => pm[p.id] = p.name);
 
-    gi('dash-jobs-body').innerHTML = visibleJobs.slice(0, 8).map(j => `
+    gi('dash-jobs-body').innerHTML = visible.slice(0, 8).map(j => `
       <tr>
         <td class="mc" style="color:var(--accent)">#${j.id}</td>
         <td class="bright">${esc(j.target)}</td>
@@ -908,32 +623,28 @@ async function loadDashboard(showLoader = true) {
           : '<span class="badge b-info">🏠 Internal</span>'}</td>
         <td>${renderStatusDot(j.status)}</td>
         <td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td>
-      </tr>`).join('') || '<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs yet</div></td></tr>';
-
+      </tr>`).join('') || '<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs</div></td></tr>';
   } catch(e) { console.error('[Dashboard]', e); }
 }
 
 function setSevFilter(sev, el) {
-  AppState.sevFilter = sev;
+  S.sevFilter = sev;
   document.querySelectorAll('.sev-chip').forEach(c => c.classList.remove('active'));
   if (el) el.classList.add('active');
   renderFindings();
 }
 
 function renderFindings() {
-  const { allFindings, sevFilter } = AppState;
-  const filtered = sevFilter === 'all' ? allFindings : allFindings.filter(f => f.severity === sevFilter);
+  const filtered = S.sevFilter==='all' ? S.allFindings : S.allFindings.filter(f => f.severity===S.sevFilter);
   gi('finding-count-label').textContent = filtered.length + ' findings';
-
   if (!filtered.length) {
     gi('findings-list').innerHTML = '<div class="empty-state"><div class="empty-icon">◎</div>' +
-      (allFindings.length === 0 ? 'Run a scan to see findings' : 'No findings match this filter') + '</div>';
+      (S.allFindings.length===0 ? 'Run a scan to see findings' : 'No findings match this filter') + '</div>';
     return;
   }
-
   gi('findings-list').innerHTML = filtered.map((f, i) => {
-    const riskColor = f.risk_score >= 9 ? '#f87171' : f.risk_score >= 7 ? '#fb923c' : f.risk_score >= 4 ? '#fbbf24' : '#34d399';
-    const riskPct = f.risk_score ? Math.min(100, f.risk_score * 10) : 0;
+    const rc = f.risk_score >= 9 ? '#f87171' : f.risk_score >= 7 ? '#fb923c' : f.risk_score >= 4 ? '#fbbf24' : '#34d399';
+    const rp = f.risk_score ? Math.min(100, f.risk_score * 10) : 0;
     let compHtml = '';
     if (f.compliance_json) {
       try {
@@ -943,24 +654,23 @@ function renderFindings() {
         ).join('');
       } catch {}
     }
-    return `
-    <div class="fcard" id="fc-${i}">
+    return `<div class="fcard" id="fc-${i}">
       <div class="fcard-hdr" onclick="toggleFinding(${i})">
         ${severityBadge(f.severity)}
         ${f.is_kev ? '<span class="kev-tag">KEV</span>' : ''}
         <div class="fcard-title">${esc(f.title)}</div>
-        <div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id || '')}</div>
+        <div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id||'')}</div>
         <div class="risk-wrap" style="width:108px;flex-shrink:0">
-          <div class="risk-track"><div class="risk-fill" style="width:${riskPct}%;background:${riskColor}"></div></div>
-          <div class="risk-num" style="color:${riskColor}">${f.risk_score != null ? Number(f.risk_score).toFixed(1) : '—'}</div>
+          <div class="risk-track"><div class="risk-fill" style="width:${rp}%;background:${rc}"></div></div>
+          <div class="risk-num" style="color:${rc}">${f.risk_score!=null ? Number(f.risk_score).toFixed(1) : '—'}</div>
         </div>
         <span class="fcard-arrow">▾</span>
       </div>
       <div class="fcard-body">
         <div class="fmeta">
-          <div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${riskColor}">${f.risk_score != null ? Number(f.risk_score).toFixed(2) : '—'}</div></div>
-          <div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base ?? '—'}</div></div>
-          <div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.75rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget || '')}</div></div>
+          <div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${rc}">${f.risk_score!=null ? Number(f.risk_score).toFixed(2):'—'}</div></div>
+          <div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base??'—'}</div></div>
+          <div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget||'')}</div></div>
         </div>
         ${f.evidence ? `<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">${esc(f.evidence)}</div>` : ''}
         ${f.description ? `<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>` : ''}
@@ -977,37 +687,29 @@ function toggleFinding(i) { gi('fc-' + i).classList.toggle('open'); }
 
 async function suppressFinding(fp, e) {
   e.stopPropagation();
-  const reason = prompt('Suppression reason (leave blank for none):');
+  const reason = prompt('Suppression reason:');
   if (reason === null) return;
   try {
-    await apiReq('/scan/suppress', { method: 'POST', body: JSON.stringify({ fingerprint: fp, reason }) });
+    await apiReq('/scan/suppress', {method:'POST', body:JSON.stringify({fingerprint:fp, reason})});
     await loadDashboard(false);
   } catch(e) { alert('Error suppressing finding: ' + e.message); }
 }
 
-// ══════════════════════════════════════════
-// SCAN TYPE SWITCHING — FIXED LOGIC
-// ══════════════════════════════════════════
+// ─── Scan Type ────────────────────────────────────────────────────────────────
 function setScanType(type) {
-  AppState.scanType = type;
+  S.scanType = type;
+  gi('tab-internal').classList.toggle('active', type==='internal');
+  gi('tab-external').classList.toggle('active', type==='external');
+  gi('external-warn').style.display = type==='external' ? 'flex' : 'none';
 
-  // Update tab visual state
-  gi('tab-internal').classList.toggle('active', type === 'internal');
-  gi('tab-external').classList.toggle('active', type === 'external');
-
-  // Show/hide external options
-  gi('external-opts').style.display = type === 'external' ? 'block' : 'none';
-
-  // Update label and placeholder
   if (type === 'external') {
     gi('target-label').textContent = 'Domain or URL';
     gi('job-target').placeholder = 'https://example.com or example.com';
-    gi('job-target').value = '';
+    gi('job-target').value = 'https://example.com';
     gi('quick-chips').innerHTML = `
       <div class="chip" onclick="setTarget('https://example.com')">example.com</div>
-      <div class="chip" onclick="setTarget('https://testphp.vulnweb.com')">vulnweb.com</div>
-      <div class="chip" onclick="setTarget('scanme.nmap.org')">scanme.nmap.org</div>
-      <div class="chip" onclick="setTarget('https://httpbin.org')">httpbin.org</div>`;
+      <div class="chip" onclick="setTarget('https://httpbin.org')">httpbin.org</div>
+      <div class="chip" onclick="setTarget('scanme.nmap.org')">scanme.nmap.org</div>`;
   } else {
     gi('target-label').textContent = 'IP Address or Hostname';
     gi('job-target').placeholder = '10.0.0.1';
@@ -1015,106 +717,64 @@ function setScanType(type) {
     gi('quick-chips').innerHTML = `
       <div class="chip" onclick="setTarget('127.0.0.1')">127.0.0.1</div>
       <div class="chip" onclick="setTarget('192.168.1.1')">192.168.1.1</div>
-      <div class="chip" onclick="setTarget('10.0.0.1')">10.0.0.1</div>
-      <div class="chip" onclick="setTarget('172.16.0.1')">172.16.0.1</div>`;
+      <div class="chip" onclick="setTarget('10.0.0.1')">10.0.0.1</div>`;
   }
-
-  // Clear any prior validation errors
-  clearFieldErr('job-target');
-  hideAlert('job-alert');
+  clearTargetErr();
 }
 
-function setTarget(val) {
-  gi('job-target').value = val;
-  clearFieldErr('job-target');
+function setTarget(val) { gi('job-target').value = val; clearTargetErr(); }
+
+function clearTargetErr() {
+  gi('job-target').classList.remove('err');
+  gi('target-err').style.display = 'none';
 }
 
-// Target validation
-function validateTarget() {
-  const val = gi('job-target').value.trim();
-  const err = gi('target-err');
-  if (!val) { showFieldErr('job-target', 'Target is required'); return false; }
-
-  if (AppState.scanType === 'internal') {
-    // Must look like an IP or hostname (no http://)
-    if (val.startsWith('http://') || val.startsWith('https://')) {
-      showFieldErr('job-target', 'For internal scans, enter an IP address or hostname (no http://)');
-      return false;
-    }
-    const ipRx = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
-    const hostRx = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9\-]+)*$/;
-    if (!ipRx.test(val) && !hostRx.test(val)) {
-      showFieldErr('job-target', 'Enter a valid IP address (e.g. 192.168.1.1) or hostname');
-      return false;
-    }
+function validateTarget(val, type) {
+  if (!val) return 'Target is required';
+  if (type === 'external') {
+    const isUrl = /^https?:\/\//i.test(val);
+    const isDomain = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(val);
+    if (!isUrl && !isDomain) return 'Enter a domain (e.g. example.com) or URL (https://example.com)';
+    if (isUrl) { try { new URL(val); } catch { return 'Invalid URL format'; } }
   } else {
-    // External — must look like a domain/URL
-    const isUrl = val.startsWith('http://') || val.startsWith('https://');
-    const domainRx = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-    const strippedDomain = val.replace(/^https?:\/\//, '').split('/')[0];
-    if (!isUrl && !domainRx.test(val)) {
-      showFieldErr('job-target', 'Enter a valid domain (e.g. example.com) or URL (https://example.com)');
-      return false;
-    }
-    if (isUrl) {
-      try { new URL(val); } catch { showFieldErr('job-target', 'Invalid URL format'); return false; }
-    }
+    if (/^https?:\/\//i.test(val)) return 'For internal scans, enter an IP or hostname only (no http://)';
+    const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(val) && val.split('.').every(n => parseInt(n) <= 255);
+    const isHost = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9-]+)*$/.test(val);
+    if (!isIp && !isHost) return 'Enter a valid IP address or hostname';
   }
-
-  clearFieldErr('job-target');
-  return true;
+  return null;
 }
 
-function showFieldErr(fieldId, msg) {
-  const field = gi(fieldId);
-  const errEl = gi(fieldId + '-err');
-  if (field) field.classList.add('err');
-  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
-}
-function clearFieldErr(fieldId) {
-  const field = gi(fieldId);
-  const errEl = gi(fieldId + '-err');
-  if (field) field.classList.remove('err');
-  if (errEl) errEl.style.display = 'none';
-}
-function hideAlert(id) { const el = gi(id); if (el) el.style.display = 'none'; }
-
-// ══════════════════════════════════════════
-// SCAN JOB SUBMISSION — FIXED LOGIC
-// ══════════════════════════════════════════
+// ─── Submit Scan Job ──────────────────────────────────────────────────────────
 async function submitJob() {
-  // Validate target
-  if (!validateTarget()) return;
-
-  // Validate profile
-  const profileSel = gi('job-profile');
-  const profileId = profileSel.value;
-  if (!profileId || profileId === '' || profileSel.options[0]?.text === 'Loading profiles...') {
-    showFieldErr('job-profile', 'Select a scan profile');
+  const target = gi('job-target').value.trim();
+  const err = validateTarget(target, S.scanType);
+  if (err) {
+    gi('job-target').classList.add('err');
+    gi('target-err').textContent = err;
+    gi('target-err').style.display = 'block';
     return;
   }
-  clearFieldErr('job-profile');
+  clearTargetErr();
 
-  const target = gi('job-target').value.trim();
+  const profileId = gi('job-profile').value;
+  if (!profileId) {
+    gi('profile-err').textContent = 'Select a scan profile';
+    gi('profile-err').style.display = 'block';
+    return;
+  }
+  gi('profile-err').style.display = 'none';
+
   const btn = gi('launch-btn');
   btn.disabled = true;
   gi('launch-spin').style.display = 'inline-block';
-  hideAlert('job-alert');
+  gi('job-alert').style.display = 'none';
 
   try {
-    const body = {
-      target,
-      profile_id: Number(profileId),
-      scan_type: AppState.scanType,
-    };
-    if (AppState.scanType === 'external') {
-      body.web_mode = gi('web-scan-mode').value;
-    }
-
-    const result = await apiReq('/scan/jobs', { method: 'POST', body: JSON.stringify(body) });
-    showAlert('job-alert', 'success',
-      `✓ Scan job #${result.id} launched — target: ${target} [${AppState.scanType === 'external' ? '🌐 External' : '🏠 Internal'}]`
-    );
+    const result = await apiReq('/scan/jobs', {method:'POST', body:JSON.stringify({
+      target, profile_id: Number(profileId), scan_type: S.scanType
+    })});
+    showAlert('job-alert', 'success', `✓ Scan job #${result.id} launched — ${target} [${S.scanType}]`);
     await loadJobs();
     setTimeout(() => loadDashboard(false), 3000);
   } catch(e) {
@@ -1125,211 +785,123 @@ async function submitJob() {
   }
 }
 
-// ══════════════════════════════════════════
-// JOB HISTORY — FIXED LOAD
-// ══════════════════════════════════════════
+// ─── Load Jobs ────────────────────────────────────────────────────────────────
 async function loadJobs() {
   try {
     const jobs = await apiReq('/scan/jobs');
-    // Filter out optimistically-deleted jobs
-    const visible = jobs.filter(j => !AppState.deletedJobIds.has(j.id));
-
-    // Build profile name map
+    const visible = jobs.filter(j => !S.deletedJobIds.has(j.id));
     const pm = {};
-    AppState.profiles.forEach(p => pm[p.id] = p.name);
+    S.profiles.forEach(p => pm[p.id] = p.name);
+    gi('job-count-label').textContent = visible.length + ' job' + (visible.length!==1?'s':'');
 
-    gi('job-count-label').textContent = visible.length + (visible.length === 1 ? ' job' : ' jobs');
-
-    if (!visible.length) {
-      gi('jobs-tbody').innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>';
-      return;
-    }
-
-    gi('jobs-tbody').innerHTML = visible.map(j => `
+    gi('jobs-tbody').innerHTML = visible.length ? visible.map(j => `
       <tr id="job-row-${j.id}">
         <td class="mc" style="color:var(--accent)">#${j.id}</td>
-        <td class="bright">${esc(j.target)}</td>
-        <td>${j.scan_type === 'external'
+        <td class="bright" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.target)}">${esc(j.target)}</td>
+        <td>${j.scan_type==='external'
           ? '<span class="badge b-ok">🌐 External</span>'
           : '<span class="badge b-info">🏠 Internal</span>'}</td>
-        <td class="mc dim">${esc(pm[j.profile_id] || ('#' + j.profile_id))}</td>
+        <td class="mc dim">${esc(pm[j.profile_id] || ('#'+j.profile_id))}</td>
         <td>${renderStatusDot(j.status)}</td>
         <td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td>
         <td style="text-align:right">
-          <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
-            <button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id}, '${esc(j.target)}')">▸ Results</button>
-            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteJob(${j.id}, '${esc(j.target)}')"
-              title="Delete job #${j.id}" aria-label="Delete job">🗑</button>
+          <div style="display:flex;gap:6px;justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id})">▸ Results</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteJob(${j.id},'${esc(j.target)}')" title="Delete">🗑</button>
           </div>
         </td>
-      </tr>`).join('');
-  } catch(e) {
-    console.error('[loadJobs]', e);
-  }
+      </tr>`).join('')
+      : '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>';
+  } catch(e) { console.error('[loadJobs]', e); }
 }
 
-function viewJobResults(jobId, target) {
+function viewJobResults(jobId) {
   navTo('dashboard');
-  // Optional: pre-filter to this job's findings
-  setTimeout(() => {
-    gi('findings-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 250);
+  setTimeout(() => gi('findings-list')?.scrollIntoView({behavior:'smooth'}), 250);
 }
 
-// ══════════════════════════════════════════
-// DELETE JOB — FULLY FIXED LOGIC
-// ══════════════════════════════════════════
-let _pendingDeleteId = null;
+async function deleteJob(jobId, target) {
+  if (!confirm(`Delete job #${jobId} (${target}) and all findings?\nThis cannot be undone.`)) return;
 
-function confirmDeleteJob(jobId, target) {
-  _pendingDeleteId = jobId;
-  gi('confirm-title').textContent = 'Delete Scan Job';
-  gi('confirm-body').innerHTML = `Delete job <strong style="color:var(--bright)">#${jobId}</strong> (${esc(target)}) and all its findings?<br><br>This action cannot be undone.`;
-  gi('confirm-ok').onclick = () => executeDeleteJob(jobId, target);
-  gi('confirm-modal').classList.add('show');
-}
-
-function closeConfirm() {
-  gi('confirm-modal').classList.remove('show');
-  _pendingDeleteId = null;
-}
-
-async function executeDeleteJob(jobId, target) {
-  closeConfirm();
-
-  // Optimistic UI — hide the row immediately
+  // Optimistic removal
+  S.deletedJobIds.add(jobId);
   const row = gi('job-row-' + jobId);
-  if (row) {
-    row.style.transition = 'opacity .25s, transform .25s';
-    row.style.opacity = '0';
-    row.style.transform = 'translateX(10px)';
-  }
+  if (row) { row.style.opacity='0'; row.style.transition='opacity .2s'; setTimeout(()=>row.remove(),220); }
 
-  // Add to deleted set so polling doesn't restore it
-  AppState.deletedJobIds.add(jobId);
-
-  // After animation, remove from DOM
-  await sleep(280);
-  if (row) row.remove();
-
-  // Update count
-  const tbody = gi('jobs-tbody');
-  if (tbody && tbody.querySelectorAll('tr[id^="job-row-"]').length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>';
-  }
-  // Refresh count
-  const remaining = tbody ? tbody.querySelectorAll('tr[id^="job-row-"]').length : 0;
-  gi('job-count-label').textContent = remaining + (remaining === 1 ? ' job' : ' jobs');
-
-  // Try the real API call
   try {
-    await apiReq('/scan/jobs/' + jobId, { method: 'DELETE' });
-    // Success — also refresh dashboard findings
+    await apiReq('/scan/jobs/' + jobId, {method:'DELETE'});
+    showAlert('job-alert', 'success', `✓ Job #${jobId} deleted`);
     loadDashboard(false);
-    showJobAlert('success', `✓ Job #${jobId} deleted successfully`);
   } catch(e) {
     if (e.status === 404) {
-      // Job was already gone — treat as success
+      showAlert('job-alert', 'info', `Job #${jobId} was already removed`);
       loadDashboard(false);
-      showJobAlert('info', `Job #${jobId} was not found (may have already been removed)`);
-    } else if (e.status === 405 || e.status === 501 || String(e.message).toLowerCase().includes('method')) {
-      // Backend doesn't implement DELETE yet — keep optimistic removal, inform user
-      showJobAlert('info', `Job #${jobId} removed from view. Implement DELETE /scan/jobs/{id} in your backend to persist deletion.`);
     } else {
-      // Other error — rollback: un-delete and restore the row
-      AppState.deletedJobIds.delete(jobId);
+      // Rollback
+      S.deletedJobIds.delete(jobId);
       await loadJobs();
-      showJobAlert('danger', `⚠ Could not delete job #${jobId}: ${e.message}`);
+      showAlert('job-alert', 'danger', `⚠ Could not delete job: ${e.message}`);
     }
   }
 }
 
-function showJobAlert(type, msg) {
-  const el = gi('job-alert');
-  el.className = 'alert a-' + type;
-  el.textContent = msg;
-  el.style.display = 'flex';
-  setTimeout(() => { el.style.display = 'none'; }, 7000);
-}
-
-// ══════════════════════════════════════════
-// PROFILES
-// ══════════════════════════════════════════
+// ─── Profiles ─────────────────────────────────────────────────────────────────
 async function loadProfiles() {
   try {
-    AppState.profiles = await apiReq('/scan/profiles');
+    S.profiles = await apiReq('/scan/profiles');
     const sel = gi('job-profile');
-    if (AppState.profiles.length) {
-      sel.innerHTML = AppState.profiles.map(p =>
-        `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('');
-    } else {
-      sel.innerHTML = '<option value="">No profiles — create one first</option>';
-    }
-    gi('profiles-tbody').innerHTML = AppState.profiles.length
-      ? AppState.profiles.map(p => `
-          <tr><td class="mc" style="color:var(--accent)">#${p.id}</td>
-          <td class="bright">${esc(p.name)}</td>
-          <td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td></tr>`).join('')
+    sel.innerHTML = S.profiles.length
+      ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('')
+      : '<option value="">No profiles — create one first</option>';
+    gi('profiles-tbody').innerHTML = S.profiles.length
+      ? S.profiles.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td></tr>`).join('')
       : '<tr><td colspan="3"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>';
   } catch(e) { console.error('[loadProfiles]', e); }
 }
 
 async function createProfile() {
-  const name    = gi('p-name').value.trim();
+  const name = gi('p-name').value.trim();
   const plugins = gi('p-plugins').value.trim();
   const options = gi('p-options').value.trim();
   if (!name) return showAlert('profile-alert', 'danger', 'Profile name is required');
   try { JSON.parse(plugins); } catch { return showAlert('profile-alert', 'danger', 'Plugin selection is not valid JSON'); }
-  try { JSON.parse(options);  } catch { return showAlert('profile-alert', 'danger', 'Options is not valid JSON'); }
+  try { JSON.parse(options); } catch { return showAlert('profile-alert', 'danger', 'Options is not valid JSON'); }
   try {
-    await apiReq('/scan/profiles', { method: 'POST', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) });
+    await apiReq('/scan/profiles', {method:'POST', body:JSON.stringify({name, plugin_selection_json:plugins, options_json:options})});
     showAlert('profile-alert', 'success', '✓ Profile "' + name + '" created');
     await loadProfiles();
   } catch(e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message); }
 }
 
-// ══════════════════════════════════════════
-// CREDENTIALS
-// ══════════════════════════════════════════
+// ─── Credentials ──────────────────────────────────────────────────────────────
 async function loadCreds() {
   try {
     const creds = await apiReq('/credentials');
     gi('creds-tbody').innerHTML = creds.length
-      ? creds.map(c => `
-          <tr><td class="mc" style="color:var(--accent)">#${c.id}</td>
-          <td class="bright">${esc(c.name)}</td>
-          <td class="mc">${esc(c.username)}</td>
-          <td><span class="badge b-info">${esc(c.secret_type)}</span></td></tr>`).join('')
-      : '<tr><td colspan="4"><div class="empty-state" style="padding:28px">No credentials stored</div></td></tr>';
+      ? creds.map(c => `<tr><td class="mc" style="color:var(--accent)">#${c.id}</td><td class="bright">${esc(c.name)}</td><td class="mc">${esc(c.username)}</td><td><span class="badge b-info">${esc(c.secret_type)}</span></td></tr>`).join('')
+      : '<tr><td colspan="4"><div class="empty-state" style="padding:28px">No credentials</div></td></tr>';
   } catch {}
 }
 
 async function createCred() {
   try {
-    await apiReq('/credentials', { method: 'POST', body: JSON.stringify({
-      name: gi('cr-name').value, kind: 'ssh', username: gi('cr-user').value,
-      secret_type: gi('cr-type').value, secret: gi('cr-secret').value,
-      passphrase: gi('cr-pass').value || null,
+    await apiReq('/credentials', {method:'POST', body:JSON.stringify({
+      name:gi('cr-name').value, kind:'ssh', username:gi('cr-user').value,
+      secret_type:gi('cr-type').value, secret:gi('cr-secret').value,
+      passphrase:gi('cr-pass').value||null
     })});
-    showAlert('cred-alert', 'success', '✓ Credential stored securely');
-    gi('cr-secret').value = '';
-    gi('cr-pass').value   = '';
+    showAlert('cred-alert', 'success', '✓ Credential stored');
+    gi('cr-secret').value=''; gi('cr-pass').value='';
     await loadCreds();
   } catch(e) { showAlert('cred-alert', 'danger', '⚠ ' + e.message); }
 }
 
-// ══════════════════════════════════════════
-// DATASETS
-// ══════════════════════════════════════════
+// ─── Datasets ─────────────────────────────────────────────────────────────────
 async function loadDs() {
   try {
     const ds = await apiReq('/datasets');
     gi('ds-tbody').innerHTML = ds.length
-      ? ds.map(d => `
-          <tr><td class="mc" style="color:var(--accent)">#${d.id}</td>
-          <td class="bright">${esc(d.name)}</td>
-          <td><span class="badge b-info">${esc(d.kind)}</span></td>
-          <td>${d.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge">Disabled</span>'}</td></tr>`).join('')
+      ? ds.map(d => `<tr><td class="mc" style="color:var(--accent)">#${d.id}</td><td class="bright">${esc(d.name)}</td><td><span class="badge b-info">${esc(d.kind)}</span></td><td>${d.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge">Disabled</span>'}</td></tr>`).join('')
       : '<tr><td colspan="4"><div class="empty-state" style="padding:28px">No datasets</div></td></tr>';
   } catch {}
 }
@@ -1345,388 +917,43 @@ async function uploadDs() {
     form.append('file', file);
     const kind = gi('ds-kind').value;
     const name = gi('ds-name').value;
-    const res  = await fetch(`${API_BASE}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + AppState.token },
-      body: form,
+    const res = await fetch(`${API_BASE}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, {
+      method:'POST',
+      headers:{'Authorization':'Bearer '+S.token},
+      body:form
     });
     if (!res.ok) throw new Error(await res.text());
     const d = await res.json();
     showAlert('ds-alert', 'success', `✓ Dataset uploaded — ID #${d.dataset_id}`);
     await loadDs();
   } catch(e) { showAlert('ds-alert', 'danger', '⚠ ' + e.message); }
-  finally { btn.disabled = false; gi('ds-spin').style.display = 'none'; }
+  finally { btn.disabled=false; gi('ds-spin').style.display='none'; }
 }
 
-// ══════════════════════════════════════════
-// ATTACK SURFACE GRAPH
-// ══════════════════════════════════════════
-async function loadGraph() {
-  gi('graph-summary').textContent = 'Loading graph data...';
-  try {
-    const jobs = await apiReq('/scan/jobs');
-    AppState.gNodes = [];
-    AppState.gEdges = [];
-    const assetSeen = {}, vulnSeen = {};
-
-    for (const j of jobs.filter(j => j.status === 'done' && !AppState.deletedJobIds.has(j.id)).slice(0, 25)) {
-      try {
-        const det = await apiReq('/scan/jobs/' + j.id);
-        const findings = det.findings || [];
-
-        const assetKey = 'a_' + j.target.replace(/[^a-z0-9]/gi, '_');
-        if (!assetSeen[assetKey]) {
-          assetSeen[assetKey] = true;
-          AppState.gNodes.push({
-            id: assetKey, type: 'asset', label: j.target, fullLabel: j.target,
-            x: 150 + Math.random() * 500, y: 80 + Math.random() * 340,
-            vx: 0, vy: 0, color: '#38bdf8', size: 20, kev: false,
-            severity: null, risk: null, cve: null,
-          });
-        }
-
-        for (const f of findings) {
-          if (f.plugin_id === 'net.port.discovery.v2') continue;
-          const vKey = 'v_' + (f.fingerprint || f.id || Math.random());
-          if (!vulnSeen[vKey]) {
-            vulnSeen[vKey] = true;
-            const col = f.is_kev ? '#a78bfa'
-              : f.severity === 'critical' ? '#f87171'
-              : f.severity === 'high'     ? '#fb923c'
-              : f.severity === 'medium'   ? '#fbbf24'
-              : '#34d399';
-            const sz = f.is_kev ? 15 : f.severity === 'critical' ? 13 : f.severity === 'high' ? 11 : 8;
-            AppState.gNodes.push({
-              id: vKey, type: 'vuln',
-              label: (f.cve || f.title || '').slice(0, 24),
-              fullLabel: f.title || f.cve || '—',
-              cve: f.cve || null, risk: f.risk_score, severity: f.severity, kev: !!f.is_kev,
-              x: 60 + Math.random() * 680, y: 60 + Math.random() * 460,
-              vx: 0, vy: 0, color: col, size: sz,
-            });
-            AppState.gEdges.push({ from: assetKey, to: vKey, risk: f.risk_score || 0, kev: !!f.is_kev });
-          }
-        }
-      } catch {}
-    }
-
-    const assets = AppState.gNodes.filter(n => n.type === 'asset').length;
-    const cves   = AppState.gNodes.filter(n => n.type === 'vuln').length;
-    gi('g-assets').textContent = assets;
-    gi('g-cves').textContent   = cves;
-    gi('g-paths').textContent  = AppState.gEdges.length;
-
-    // Critical attack paths
-    const critPaths = AppState.gEdges.filter(e => e.risk >= 7).sort((a, b) => b.risk - a.risk).slice(0, 12);
-    gi('attack-paths-body').innerHTML = critPaths.length
-      ? critPaths.map(e => {
-          const fn = AppState.gNodes.find(n => n.id === e.from);
-          const tn = AppState.gNodes.find(n => n.id === e.to);
-          const rc = e.risk >= 9 ? '#f87171' : e.risk >= 7 ? '#fb923c' : '#fbbf24';
-          return `<tr>
-            <td class="mc" style="font-size:.72rem">${esc(fn?.label || '?')}</td>
-            <td class="mc" style="color:var(--accent);font-size:.7rem">${esc(tn?.cve || tn?.label || '?')}</td>
-            <td><span style="color:${rc};font-family:var(--fm);font-size:.75rem;font-weight:700">${Number(e.risk || 0).toFixed(1)}</span></td>
-          </tr>`;
-        }).join('')
-      : '<tr><td colspan="3"><div class="empty-state" style="padding:14px">No high-risk paths</div></td></tr>';
-
-    gi('graph-summary').innerHTML = `
-      <div>Total nodes: <span style="color:var(--accent)">${AppState.gNodes.length}</span></div>
-      <div>Assets: <span style="color:var(--accent)">${assets}</span></div>
-      <div>CVEs mapped: <span style="color:var(--accent)">${cves}</span></div>
-      <div>KEV nodes: <span style="color:var(--purple)">${AppState.gNodes.filter(n => n.kev).length}</span></div>
-      <div>High-risk paths: <span style="color:var(--red)">${AppState.gEdges.filter(e => e.risk >= 7).length}</span></div>`;
-
-    startGraphDraw();
-  } catch(e) {
-    console.error('[loadGraph]', e);
-    gi('graph-summary').textContent = 'Failed to load graph: ' + e.message;
-  }
-}
-
-function setGraphFilter(type, el) {
-  AppState.gFilter = type;
-  document.querySelectorAll('.gf-chip').forEach(c => c.classList.remove('active'));
-  if (el) el.classList.add('active');
-}
-
-function getVisibleNodes() {
-  const { gNodes, gFilter } = AppState;
-  if (gFilter === 'all')      return gNodes;
-  if (gFilter === 'asset')    return gNodes.filter(n => n.type === 'asset');
-  if (gFilter === 'vuln')     return gNodes.filter(n => n.type === 'vuln');
-  if (gFilter === 'kev')      return gNodes.filter(n => n.kev || n.type === 'asset');
-  if (gFilter === 'critical') return gNodes.filter(n => n.severity === 'critical' || n.type === 'asset');
-  return gNodes;
-}
-
-function togglePhysics() {
-  AppState.gPhysics = !AppState.gPhysics;
-  gi('physics-btn').textContent = '⚛ Physics: ' + (AppState.gPhysics ? 'ON' : 'OFF');
-}
-
-function resetGraphLayout() {
-  const canvas = gi('gcanvas');
-  AppState.gScale = 1; AppState.gOffX = 0; AppState.gOffY = 0;
-  AppState.gNodes.forEach(n => {
-    n.x = 60 + Math.random() * (canvas.width - 120);
-    n.y = 60 + Math.random() * (canvas.height - 120);
-    n.vx = 0; n.vy = 0;
-  });
-}
-
-function startGraphDraw() {
-  if (AppState.gAnimFrame) cancelAnimationFrame(AppState.gAnimFrame);
-  const canvas = gi('gcanvas');
-  const ctx    = canvas.getContext('2d');
-  const wrap   = canvas.parentElement;
-
-  const resize = () => {
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width  = wrap.clientWidth  * dpr;
-    canvas.height = wrap.clientHeight * dpr;
-    canvas.style.width  = wrap.clientWidth + 'px';
-    canvas.style.height = wrap.clientHeight + 'px';
-    ctx.scale(dpr, dpr);
-  };
-  resize();
-  window.addEventListener('resize', resize);
-
-  let t = 0;
-  const W = () => wrap.clientWidth;
-  const H = () => wrap.clientHeight;
-
-  function draw() {
-    t++;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-
-    ctx.clearRect(0, 0, W(), H());
-    ctx.fillStyle = '#030508';
-    ctx.fillRect(0, 0, W(), H());
-
-    const vn = getVisibleNodes();
-    const viSet = new Set(vn.map(n => n.id));
-    const ve = AppState.gEdges.filter(e => viSet.has(e.from) && viSet.has(e.to));
-
-    if (!vn.length) {
-      // Demo
-      drawDemoGraph(ctx, W(), H(), t);
-      AppState.gAnimFrame = requestAnimationFrame(draw);
-      return;
-    }
-
-    // Physics simulation
-    if (AppState.gPhysics) {
-      // Repulsion
-      for (let i = 0; i < vn.length; i++) {
-        for (let j = i + 1; j < vn.length; j++) {
-          const a = vn[i], b = vn[j];
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-          const repel = Math.min(2400, 2400 / (dist * dist));
-          const fx = (dx / dist) * repel, fy = (dy / dist) * repel;
-          a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
-        }
-      }
-      // Spring attraction along edges
-      for (const e of ve) {
-        const a = AppState.gNodes.find(n => n.id === e.from);
-        const b = AppState.gNodes.find(n => n.id === e.to);
-        if (!a || !b) continue;
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-        const targetLen = 160, spring = (dist - targetLen) * 0.008;
-        const fx = (dx / dist) * spring, fy = (dy / dist) * spring;
-        a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
-      }
-      // Integrate + dampen + boundary
-      for (const n of vn) {
-        if (n === AppState.gDragNode) continue;
-        n.vx *= 0.82; n.vy *= 0.82;
-        n.x  += n.vx;  n.y  += n.vy;
-        n.x = Math.max(n.size + 12, Math.min(W() - n.size - 12, n.x));
-        n.y = Math.max(n.size + 12, Math.min(H() - n.size - 12, n.y));
-      }
-    }
-
-    // Draw edges
-    for (const e of ve) {
-      const a = AppState.gNodes.find(n => n.id === e.from);
-      const b = AppState.gNodes.find(n => n.id === e.to);
-      if (!a || !b) continue;
-
-      const alpha = e.kev ? 0.7 : Math.min(0.55, 0.18 + (e.risk || 0) * 0.04);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.strokeStyle = e.kev ? `rgba(167,139,250,${alpha})` : `rgba(56,189,248,${alpha})`;
-      ctx.lineWidth = e.kev ? 2 : Math.max(0.5, (e.risk || 0) * 0.18);
-      ctx.stroke();
-
-      // Arrow midpoint
-      const ang = Math.atan2(b.y - a.y, b.x - a.x);
-      const len = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-      const mx  = a.x + Math.cos(ang) * (len * 0.58);
-      const my  = a.y + Math.sin(ang) * (len * 0.58);
-      ctx.beginPath();
-      ctx.moveTo(mx, my);
-      ctx.lineTo(mx - 8 * Math.cos(ang - 0.38), my - 8 * Math.sin(ang - 0.38));
-      ctx.lineTo(mx - 8 * Math.cos(ang + 0.38), my - 8 * Math.sin(ang + 0.38));
-      ctx.closePath();
-      ctx.fillStyle = e.kev ? 'rgba(167,139,250,.55)' : 'rgba(56,189,248,.38)';
-      ctx.fill();
-    }
-
-    // Draw nodes
-    for (const n of vn) {
-      const isHov = n === AppState.gHovNode;
-
-      // Pulsing glow for critical/KEV
-      if (n.kev || n.severity === 'critical') {
-        const pulse = 0.12 + Math.sin(t * 0.06) * 0.05;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.size + 8, 0, Math.PI * 2);
-        ctx.fillStyle = n.kev ? `rgba(167,139,250,${pulse})` : `rgba(248,113,113,${pulse})`;
-        ctx.fill();
-      }
-
-      // Node circle
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.size + (isHov ? 3 : 0), 0, Math.PI * 2);
-      ctx.fillStyle = n.type === 'asset' ? n.color + 'cc' : n.color + '88';
-      ctx.fill();
-
-      // Asset gets outline ring
-      if (n.type === 'asset') {
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth   = 2;
-        ctx.stroke();
-      }
-
-      // Label
-      ctx.fillStyle = isHov ? '#f1f5f9' : '#8899aa';
-      ctx.font = `${n.type === 'asset' ? '600 12' : '10'}px DM Sans, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(n.label.slice(0, 22), n.x, n.y + n.size + 13);
-    }
-
-    AppState.gAnimFrame = requestAnimationFrame(draw);
-  }
-
-  // Mouse events
-  canvas.onmousemove = ev => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
-    if (AppState.gDragNode) {
-      AppState.gDragNode.x = mx; AppState.gDragNode.y = my;
-      AppState.gDragNode.vx = 0; AppState.gDragNode.vy = 0;
-      return;
-    }
-    const vn = getVisibleNodes();
-    AppState.gHovNode = vn.find(n => Math.hypot(n.x - mx, n.y - my) < n.size + 6) || null;
-    canvas.style.cursor = AppState.gHovNode ? 'pointer' : 'default';
-    const tt = gi('graph-tooltip');
-    if (AppState.gHovNode) {
-      const n = AppState.gHovNode;
-      tt.style.display = 'block';
-      // Keep tooltip inside canvas bounds
-      const ttW = 200, ttH = 120;
-      tt.style.left = (mx + 16 + ttW > W() ? mx - ttW - 8 : mx + 16) + 'px';
-      tt.style.top  = (my - 8 < 0 ? 8 : Math.min(my - 8, H() - ttH)) + 'px';
-      gi('gt-name').textContent  = n.fullLabel || n.label;
-      gi('gt-type').textContent  = n.type === 'asset' ? 'Asset / Target' : 'Vulnerability';
-      gi('gt-cve').textContent   = n.cve || '—';
-      gi('gt-risk').textContent  = n.risk != null ? Number(n.risk).toFixed(2) : '—';
-      gi('gt-sev').textContent   = n.severity || (n.type === 'asset' ? '—' : 'info');
-      gi('gt-kev-row').style.display = n.kev ? '' : 'none';
-    } else {
-      tt.style.display = 'none';
-    }
-  };
-
-  canvas.onmousedown = ev => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
-    AppState.gDragNode = getVisibleNodes().find(n => Math.hypot(n.x - mx, n.y - my) < n.size + 6) || null;
-  };
-  canvas.onmouseup    = () => { AppState.gDragNode = null; };
-  canvas.onmouseleave = () => {
-    AppState.gDragNode = null;
-    AppState.gHovNode  = null;
-    gi('graph-tooltip').style.display = 'none';
-  };
-
-  draw();
-}
-
-function drawDemoGraph(ctx, W, H, t) {
-  const cx = W / 2, cy = H / 2;
-  ctx.fillStyle = '#475569';
-  ctx.font = '13px DM Sans, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('No scan data — run a scan, then click Refresh', cx, cy - H * 0.28);
-
-  const demo = [
-    { x: cx, y: cy, l: '10.0.0.1', c: '#38bdf8', s: 20, asset: true },
-    { x: cx - 200, y: cy - 100, l: 'CVE-2021-44228', c: '#f87171', s: 13 },
-    { x: cx + 200, y: cy - 100, l: 'CVE-2021-23017', c: '#fb923c', s: 11 },
-    { x: cx, y: cy + 160, l: 'TLS v1.0 Weak', c: '#fbbf24', s: 9 },
-    { x: cx - 140, y: cy + 80, l: 'Log4Shell KEV', c: '#a78bfa', s: 14 },
-    { x: cx + 140, y: cy + 80, l: 'WordPress CVE', c: '#fb923c', s: 10 },
-  ];
-  [[0,1],[0,2],[0,3],[0,4],[0,5]].forEach(([a, b]) => {
-    ctx.beginPath(); ctx.moveTo(demo[a].x, demo[a].y); ctx.lineTo(demo[b].x, demo[b].y);
-    ctx.strokeStyle = 'rgba(56,189,248,.1)'; ctx.lineWidth = 1; ctx.stroke();
-  });
-  demo.forEach(n => {
-    const pulse = n.s + Math.sin(t * 0.04) * 2;
-    ctx.beginPath(); ctx.arc(n.x, n.y, pulse + 6, 0, Math.PI * 2);
-    ctx.fillStyle = n.c + '22'; ctx.fill();
-    ctx.beginPath(); ctx.arc(n.x, n.y, pulse, 0, Math.PI * 2);
-    ctx.fillStyle = n.c + '77'; ctx.fill();
-    if (n.asset) { ctx.strokeStyle = n.c; ctx.lineWidth = 2; ctx.stroke(); }
-    ctx.fillStyle = '#7a8fa6'; ctx.font = '10px DM Sans'; ctx.textAlign = 'center';
-    ctx.fillText(n.l, n.x, n.y + pulse + 14);
-  });
-}
-
-// ══════════════════════════════════════════
-// UI HELPERS
-// ══════════════════════════════════════════
+// ─── UI helpers ───────────────────────────────────────────────────────────────
 function severityBadge(sev) {
-  const map = { critical: 'b-crit', high: 'b-high', medium: 'b-med', low: 'b-low', info: 'b-info' };
-  return `<span class="badge ${map[sev] || 'b-info'}">${esc(sev) || 'info'}</span>`;
+  const map = {critical:'b-crit', high:'b-high', medium:'b-med', low:'b-low', info:'b-info'};
+  return `<span class="badge ${map[sev]||'b-info'}">${esc(sev)||'info'}</span>`;
 }
 
 function renderStatusDot(status) {
-  const dotClass = { running: 's-run', done: 's-done', failed: 's-fail', queued: 's-queue' }[status] || 's-queue';
-  const label    = { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' }[status] || status;
-  const color    = { running: 'var(--accent)', done: 'var(--green)', failed: 'var(--red)', queued: 'var(--text3)' }[status] || 'var(--text3)';
-  return `<div class="sdot-wrap"><div class="sdot ${dotClass}"></div><span class="s-lbl" style="color:${color}">${label}</span></div>`;
+  const dc = {running:'s-run', done:'s-done', failed:'s-fail', queued:'s-queue'}[status]||'s-queue';
+  const lbl = {running:'Running', done:'Done', failed:'Failed', queued:'Queued'}[status]||status;
+  const col = {running:'var(--accent)', done:'var(--green)', failed:'var(--red)', queued:'var(--text3)'}[status]||'var(--text3)';
+  return `<div class="sdot-wrap"><div class="sdot ${dc}"></div><span class="s-lbl" style="color:${col}">${lbl}</span></div>`;
 }
 
-// ══════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════
+// ─── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   const savedToken = localStorage.getItem('vs_token');
   const savedEmail = localStorage.getItem('vs_email') || 'admin@local';
   if (savedToken) {
-    AppState.token     = savedToken;
-    AppState.userEmail = savedEmail;
+    S.token = savedToken;
+    S.userEmail = savedEmail;
     showApp();
   }
-  // Enter key on login
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter' && gi('login-page').classList.contains('show')) doLogin();
-  });
-  // Close confirm on overlay click
-  gi('confirm-modal').addEventListener('click', ev => {
-    if (ev.target === gi('confirm-modal')) closeConfirm();
+    if (ev.key==='Enter' && gi('login-page').classList.contains('show')) doLogin();
   });
 });
 </script>

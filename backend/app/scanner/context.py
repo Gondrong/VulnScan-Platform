@@ -1,32 +1,54 @@
-from dataclasses import dataclass, field
-from typing import Any, Dict, Set
+"""
+Scan execution context — shared state passed between plugins during a scan run.
+"""
 import hashlib
+import json
+from typing import Any
 
-@dataclass
+
 class ScanPolicy:
-    timeout_seconds: float = 8.0
-    max_concurrency: int = 10
+    """
+    Governs scanner behaviour: timeouts, retries, concurrency limits.
+    """
 
-@dataclass
+    def __init__(
+        self,
+        timeout_seconds: float = 30.0,
+        max_concurrency: int = 10,
+        follow_redirects: bool = True,
+        verify_tls: bool = False,
+    ):
+        self.timeout_seconds = timeout_seconds
+        self.max_concurrency = max_concurrency
+        self.follow_redirects = follow_redirects
+        self.verify_tls = verify_tls
+
+
 class ScanContext:
-    policy: ScanPolicy
-    artifacts: Dict[str, Any] = field(default_factory=dict)
-    seen_fingerprints: Set[str] = field(default_factory=set)
+    """
+    Mutable context object shared across all plugins in a single scan.
+    Plugins write artifacts keyed by their `provides` IDs, and read from
+    artifact keys listed in their `consumes`.
+    """
 
-    def put(self, key: str, value: Any):
-        self.artifacts[key] = value
+    def __init__(self, policy: ScanPolicy | None = None):
+        self.policy: ScanPolicy = policy or ScanPolicy()
+        self._artifacts: dict[str, Any] = {}
 
-    def get(self, key: str, default=None):
-        return self.artifacts.get(key, default)
+    def set(self, key: str, value: Any) -> None:
+        self._artifacts[key] = value
 
-    def dedup(self, fp: str) -> bool:
-        if not fp:
-            return True
-        if fp in self.seen_fingerprints:
-            return False
-        self.seen_fingerprints.add(fp)
-        return True
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._artifacts.get(key, default)
 
-def stable_fingerprint(*parts: str) -> str:
-    raw = "|".join([p or "" for p in parts])
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+    def has(self, key: str) -> bool:
+        return key in self._artifacts
+
+
+def stable_fingerprint(*parts: Any) -> str:
+    """
+    Produce a stable 12-char hex fingerprint from arbitrary input.
+    Used to deduplicate findings across scan runs.
+    """
+    raw = json.dumps(parts, default=str, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:12]

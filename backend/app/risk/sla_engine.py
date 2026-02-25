@@ -1,17 +1,26 @@
-from datetime import datetime, timedelta, timezone
+"""
+SLA engine — assigns remediation deadlines based on finding severity.
+Thresholds are based on common enterprise SLA policies.
+"""
 
-SLA_RULES = {"critical":7, "high":14, "medium":30, "low":60, "info":90}
+# SLA thresholds in days by severity
+_SLA_DAYS: dict[str, int] = {
+    "critical": 7,
+    "high": 30,
+    "medium": 90,
+    "low": 180,
+    "info": 365,
+}
+
 
 def assign_sla_days(severity: str) -> int:
-    return SLA_RULES.get(severity, 30)
+    """
+    Return the number of days to remediate a finding of the given severity.
 
-def is_sla_breached(opened_at: datetime, sla_days: int, status: str) -> bool:
-    if status == "closed":
-        return False
-    due = opened_at + timedelta(days=int(sla_days))
-    return datetime.now(timezone.utc) > due
+    Args:
+        severity: One of "critical", "high", "medium", "low", "info"
 
-def mttr_days(opened_at: datetime, closed_at: datetime | None) -> float | None:
-    if not closed_at:
-        return None
-    return round((closed_at - opened_at).total_seconds() / 86400, 2)
+    Returns:
+        Integer number of days.
+    """
+    return _SLA_DAYS.get(severity.lower(), 365)

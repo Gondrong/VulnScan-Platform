@@ -4,55 +4,91 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   neo4j:
     image: neo4j:5
     environment:
-      - NEO4J_AUTH=neo4j/password
+      - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/password}
+      - NEO4J_PLUGINS=["apoc"]
     ports:
       - "7474:7474"
       - "7687:7687"
     volumes:
       - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   backend:
     build: ./backend
-    env_file: .env.example
-    depends_on: [db, redis, neo4j]
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./data:/data
     ports:
-      - "8080:8080"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8080
+      - "${BACKEND_PORT:-8080}:8080"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   worker:
     build: ./backend
-    env_file: .env.example
-    depends_on: [db, redis]
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./data:/data
-    command: rq worker --url redis://redis:6379/0 scans
+    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} scans
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
     environment:
-      - VITE_API_URL=http://localhost:8080
-    depends_on: [backend]
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:5173"
     command: npm run dev -- --host 0.0.0.0 --port 5173
+    restart: unless-stopped
 
 volumes:
   db_data:

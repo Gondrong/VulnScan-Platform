@@ -1,35 +1,89 @@
-import os
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, require_role
+
+from app.core.auth import require_auth
+from app.db.session import get_db
 from app.db import models
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
+
+class DatasetCreate(BaseModel):
+    name: str
+    kind: str
+    path: str
+    enabled: bool = True
+
+
 @router.get("")
-def list_datasets(user=Depends(require_role("admin","analyst","viewer")), db: Session = Depends(get_db)):
-    return db.query(models.CveDataset).filter(models.CveDataset.workspace_id==user["workspace_id"]).order_by(models.CveDataset.id.desc()).all()
+def list_datasets(claims=Depends(require_auth), db: Session = Depends(get_db)):
+    ws = claims["ws"]
+    ds = db.query(models.CveDataset).filter(models.CveDataset.workspace_id == ws).all()
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "kind": d.kind,
+            "path": d.path,
+            "enabled": d.enabled,
+        }
+        for d in ds
+    ]
 
-@router.post("/upload")
-async def upload_dataset(
-    kind: str,
-    name: str,
-    file: UploadFile = File(...),
-    user=Depends(require_role("admin")),
-    db: Session = Depends(get_db)
+
+@router.post("")
+def create_dataset(
+    body: DatasetCreate, claims=Depends(require_auth), db: Session = Depends(get_db)
 ):
-    base = os.path.join("/data/cve", str(user["workspace_id"]))
-    os.makedirs(base, exist_ok=True)
+    ws = claims["ws"]
+    d = models.CveDataset(
+        workspace_id=ws,
+        name=body.name,
+        kind=body.kind,
+        path=body.path,
+        enabled=body.enabled,
+    )
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    return {"id": d.id}
 
-    raw = await file.read()
-    if len(raw) < 10:
-        raise HTTPException(400, "file too small")
 
-    fn = file.filename or f"{kind}.json"
-    path = os.path.join(base, fn)
-    with open(path, "wb") as f:
-        f.write(raw)
+@router.patch("/{ds_id}")
+def update_dataset(
+    ds_id: int,
+    body: dict,
+    claims=Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    ws = claims["ws"]
+    d = (
+        db.query(models.CveDataset)
+        .filter(models.CveDataset.id == ds_id, models.CveDataset.workspace_id == ws)
+        .first()
+    )
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    for k, v in body.items():
+        if hasattr(d, k):
+            setattr(d, k, v)
+    db.commit()
+    return {"ok": True}
 
-    row = models.CveDataset(workspace_id=user["workspace_id"], name=name, kind=kind, path=path, enabled=True)
-    db.add(row); db.commit(); db.refresh(row)
-    return {"ok": True, "dataset_id": row.id, "path": path}
+
+@router.delete("/{ds_id}")
+def delete_dataset(
+    ds_id: int, claims=Depends(require_auth), db: Session = Depends(get_db)
+):
+    ws = claims["ws"]
+    d = (
+        db.query(models.CveDataset)
+        .filter(models.CveDataset.id == ds_id, models.CveDataset.workspace_id == ws)
+        .first()
+    )
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(d)
+    db.commit()
+    return {"ok": True}

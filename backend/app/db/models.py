@@ -3,13 +3,16 @@ from sqlalchemy import String, Integer, Text, Boolean, DateTime, ForeignKey, Flo
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
+
 def now():
     return datetime.now(timezone.utc)
+
 
 class Workspace(Base):
     __tablename__ = "workspaces"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -19,6 +22,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50), default="admin")  # admin|analyst|viewer
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 
 class Credential(Base):
     __tablename__ = "credentials"
@@ -32,6 +36,7 @@ class Credential(Base):
     passphrase_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
 class CveDataset(Base):
     __tablename__ = "cve_datasets"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -42,6 +47,7 @@ class CveDataset(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
 class Profile(Base):
     __tablename__ = "profiles"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -51,6 +57,7 @@ class Profile(Base):
     options_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
 class ScanJob(Base):
     __tablename__ = "scan_jobs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -58,9 +65,11 @@ class ScanJob(Base):
     target: Mapped[str] = mapped_column(String(512))
     profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
     status: Mapped[str] = mapped_column(String(50), default="queued")  # queued|running|done|failed
+    scan_type: Mapped[str] = mapped_column(String(20), default="internal")  # internal|external
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class Finding(Base):
     __tablename__ = "findings"
@@ -77,12 +86,11 @@ class Finding(Base):
     evidence: Mapped[str] = mapped_column(Text, default="")
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
 
-    # CVSS/Risk/SLA
     cvss_base: Mapped[float | None] = mapped_column(Float, nullable=True)
     risk_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    status: Mapped[str] = mapped_column(String(50), default="open")  # open|closed|accepted|false_positive
+    status: Mapped[str] = mapped_column(String(50), default="open")
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sla_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -91,6 +99,7 @@ class Finding(Base):
     is_kev: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
 class SuppressedFinding(Base):
     __tablename__ = "suppressed_findings"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -98,6 +107,7 @@ class SuppressedFinding(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     reason: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
