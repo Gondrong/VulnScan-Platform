@@ -37,6 +37,7 @@ Features:
 
 ## Run
 To running this docker or platform you can run this command:
+
 **┌──(root㉿kali)-[/home/kali/VulnScan Platform]**
 **└─# ./bootstrap.sh**
 
@@ -47,12 +48,14 @@ Frontend:
 http://localhost:5173
 
 **First**, you must running this script to update/fetch datasets.
+
 **┌──(root㉿kali)-[/home/kali/VulnScan Platform]**
 **└─#** **./scripts/update_datasets.sh** 
 [update] Fetching NVD CVEs from API (last 120 days)...
 [update] Date range: 2025-11-02T08:05:31.000 -> 2026-03-02T08:05:31.000
 
 **Second**, after that you can run this script to upload datasets into platform.
+
 **┌──(root㉿kali)-[/home/kali/VulnScan Platform]**
 **└─# ./scripts/upload_datasets.sh** 
 [upload] Logging in to http://localhost:8080 as admin@local...
@@ -140,4 +143,5 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
