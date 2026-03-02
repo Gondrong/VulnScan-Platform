@@ -1,30 +1,17 @@
-import base64
-import os
-
+"""
+Credential management API routes.
+Stores SSH keys and passwords encrypted with Fernet (via crypto.py).
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_auth
+from app.core.crypto import encrypt_str
 from app.db.session import get_db
 from app.db import models
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
-
-# Simple XOR-based encryption placeholder (replace with proper AES-256 in prod)
-_KEY = os.environ.get("SECRET_KEY", "changeme")[:32].encode().ljust(32, b"\x00")
-
-
-def _encrypt(plaintext: str) -> str:
-    data = plaintext.encode()
-    key = (_KEY * ((len(data) // len(_KEY)) + 1))[: len(data)]
-    return base64.b64encode(bytes(a ^ b for a, b in zip(data, key))).decode()
-
-
-def _decrypt(ciphertext: str) -> str:
-    data = base64.b64decode(ciphertext)
-    key = (_KEY * ((len(data) // len(_KEY)) + 1))[: len(data)]
-    return bytes(a ^ b for a, b in zip(data, key)).decode()
 
 
 class CredCreate(BaseModel):
@@ -32,14 +19,18 @@ class CredCreate(BaseModel):
     kind: str = "ssh"
     username: str
     secret: str
-    secret_type: str = "password"
+    secret_type: str = "password"  # "password" or "SSH_KEY"
     passphrase: str | None = None
 
 
 @router.get("")
 def list_creds(claims=Depends(require_auth), db: Session = Depends(get_db)):
     ws = claims["ws"]
-    creds = db.query(models.Credential).filter(models.Credential.workspace_id == ws).all()
+    creds = (
+        db.query(models.Credential)
+        .filter(models.Credential.workspace_id == ws)
+        .all()
+    )
     return [
         {
             "id": c.id,
@@ -57,14 +48,18 @@ def create_cred(
     body: CredCreate, claims=Depends(require_auth), db: Session = Depends(get_db)
 ):
     ws = claims["ws"]
+
+    if not body.secret or not body.secret.strip():
+        raise HTTPException(400, "Secret (key or password) is required")
+
     c = models.Credential(
         workspace_id=ws,
         name=body.name,
         kind=body.kind,
         username=body.username,
-        secret_enc=_encrypt(body.secret),
+        secret_enc=encrypt_str(body.secret),
         secret_type=body.secret_type,
-        passphrase_enc=_encrypt(body.passphrase) if body.passphrase else None,
+        passphrase_enc=encrypt_str(body.passphrase) if body.passphrase else None,
     )
     db.add(c)
     db.commit()
@@ -73,11 +68,16 @@ def create_cred(
 
 
 @router.delete("/{cred_id}")
-def delete_cred(cred_id: int, claims=Depends(require_auth), db: Session = Depends(get_db)):
+def delete_cred(
+    cred_id: int, claims=Depends(require_auth), db: Session = Depends(get_db)
+):
     ws = claims["ws"]
     c = (
         db.query(models.Credential)
-        .filter(models.Credential.id == cred_id, models.Credential.workspace_id == ws)
+        .filter(
+            models.Credential.id == cred_id,
+            models.Credential.workspace_id == ws,
+        )
         .first()
     )
     if not c:

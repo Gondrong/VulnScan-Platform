@@ -104,7 +104,7 @@ def delete_profile(
     if not prof:
         raise HTTPException(404, "profile not found")
 
-    # Check if any jobs reference this profile
+    # Nullify foreign key references in scan_jobs before deleting
     job_count = (
         db.query(models.ScanJob)
         .filter(
@@ -113,11 +113,21 @@ def delete_profile(
         )
         .count()
     )
+    if job_count > 0:
+        db.query(models.ScanJob).filter(
+            models.ScanJob.workspace_id == user["ws"],
+            models.ScanJob.profile_id == profile_id,
+        ).update({models.ScanJob.profile_id: None}, synchronize_session="fetch")
 
     db.delete(prof)
-    db.commit()
-    logger.info("Deleted profile #%d (had %d associated jobs)", profile_id, job_count)
-    return {"ok": True, "deleted_profile_id": profile_id}
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to delete profile #%d: %s", profile_id, e)
+        raise HTTPException(500, f"Failed to delete profile: {e}")
+    logger.info("Deleted profile #%d (unlinked %d jobs)", profile_id, job_count)
+    return {"ok": True, "deleted_profile_id": profile_id, "unlinked_jobs": job_count}
 
 
 # ─── Jobs ──────────────────────────────────────────────────────────────────────

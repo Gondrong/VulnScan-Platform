@@ -46,11 +46,19 @@ def _allowlisted(target: str) -> bool:
     """
     Returns True if the target is allowed to be scanned.
     Checks against ALLOWLIST env var (CIDRs and domain suffixes).
-    For external scans (URLs), we check the hostname portion.
+    If ALLOWLIST is empty, '*', or not set, ALL targets are allowed.
     """
-    allow_entries = [
-        x.strip() for x in settings.ALLOWLIST.split(",") if x.strip()
-    ]
+    raw_allowlist = (settings.ALLOWLIST or "").strip()
+
+    # If allowlist is empty or wildcard, allow everything
+    if not raw_allowlist or raw_allowlist == "*":
+        return True
+
+    allow_entries = [x.strip() for x in raw_allowlist.split(",") if x.strip()]
+
+    # If no valid entries remain, allow everything
+    if not allow_entries:
+        return True
 
     host, _ = _parse_target(target)
     if not host:

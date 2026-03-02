@@ -13,6 +13,7 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_credentials import router as cred_router
 from app.api.routes_datasets import router as ds_router
 from app.api.routes_scan import router as scan_router
+from app.api.routes_settings import router as settings_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
@@ -24,8 +25,6 @@ app = FastAPI(
 )
 
 # ─── CORS ──────────────────────────────────────────────────────────────────────
-# IMPORTANT: allow_credentials=True is incompatible with allow_origins=["*"]
-# per the CORS spec. Use allow_origin_regex=".*" instead for wildcard + credentials.
 origins = settings.cors_origins_list()
 if origins == ["*"]:
     app.add_middleware(
@@ -50,16 +49,30 @@ def _hash(pw: str) -> str:
 
 
 def _run_migrations(db: Session) -> None:
-    """
-    Apply any schema changes that create_all() won't handle because the
-    table already exists from an earlier run with an older model definition.
-    Each statement is idempotent — safe to run on every startup.
-    """
     migrations = [
-        # Added in fix-session: scan_type column on scan_jobs
         """
         ALTER TABLE scan_jobs
             ADD COLUMN IF NOT EXISTS scan_type VARCHAR(20) NOT NULL DEFAULT 'internal';
+        """,
+        # Make profile_id nullable so profiles can be deleted while keeping job history
+        """
+        ALTER TABLE scan_jobs
+            ALTER COLUMN profile_id DROP NOT NULL;
+        """,
+        # Drop the strict FK constraint and re-add with ON DELETE SET NULL
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'scan_jobs_profile_id_fkey'
+                AND table_name = 'scan_jobs'
+            ) THEN
+                ALTER TABLE scan_jobs DROP CONSTRAINT scan_jobs_profile_id_fkey;
+                ALTER TABLE scan_jobs ADD CONSTRAINT scan_jobs_profile_id_fkey
+                    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
         """,
     ]
     for sql in migrations:
@@ -73,15 +86,12 @@ def _run_migrations(db: Session) -> None:
 
 @app.on_event("startup")
 def startup() -> None:
-    # 1. Create any completely new tables
     Base.metadata.create_all(bind=engine)
 
     db: Session = SessionLocal()
     try:
-        # 2. Apply incremental column migrations to existing tables
         _run_migrations(db)
 
-        # 3. Ensure default workspace exists
         ws = (
             db.query(models.Workspace)
             .filter(models.Workspace.name == settings.DEFAULT_WORKSPACE)
@@ -93,7 +103,6 @@ def startup() -> None:
             db.commit()
             db.refresh(ws)
 
-        # 4. Ensure default admin exists
         admin = (
             db.query(models.User)
             .filter(models.User.email == settings.DEFAULT_ADMIN_EMAIL)
@@ -118,7 +127,6 @@ def healthz():
     return {"ok": True, "version": "1.0.0"}
 
 
-# ─── Audit middleware ───────────────────────────────────────────────────────────
 @app.middleware("http")
 async def audit_mw(request: Request, call_next):
     response = await call_next(request)
@@ -151,3 +159,4 @@ app.include_router(auth_router)
 app.include_router(cred_router)
 app.include_router(ds_router)
 app.include_router(scan_router)
+app.include_router(settings_router)
