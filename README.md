@@ -36,16 +36,38 @@ Features:
 ---
 
 ## Run
-
-docker compose up -d --build
+To running this docker or platform you can run this command:
+**┌──(root㉿kali)-[/home/kali/VulnScan Platform]**
+**└─# ./bootstrap.sh**
 
 Backend:
 http://localhost:8080/docs
 
-Neo4j:
-http://localhost:7474
-user: neo4j
-pass: password
+Frontend:
+http://localhost:5173
+
+**First**, you must running this script to update/fetch datasets.
+**┌──(root㉿kali)-[/home/kali/VulnScan Platform]**
+**└─#** **./scripts/update_datasets.sh** 
+[update] Fetching NVD CVEs from API (last 120 days)...
+[update] Date range: 2025-11-02T08:05:31.000 -> 2026-03-02T08:05:31.000
+
+**Second**, after that you can run this script to upload datasets into platform.
+**┌──(root㉿kali)-[/home/kali/VulnScan Platform]**
+**└─# ./scripts/upload_datasets.sh** 
+[upload] Logging in to http://localhost:8080 as admin@local...
+[upload] Authenticated ✓
+[upload] Uploading nvd_cpe_cve (nvd_auto) -> nvd_cpe_cve.json [9.1M]
+[upload]   ✓ nvd_cpe_cve uploaded: {"dataset_id":11,"path":"/data/cve/nvd_cpe_cve_e664b387.json"}
+[upload] Uploading cisa_kev (kev_auto) -> cisa_kev.json [764K]
+[upload]   ✓ cisa_kev uploaded: {"dataset_id":12,"path":"/data/cve/cisa_kev_56d7fe68.json"}
+[upload] Uploading epss (epss_auto) -> epss.json [27M]
+[upload]   ✓ epss uploaded: {"dataset_id":13,"path":"/data/cve/epss_e1180839.json"}
+[upload] Uploading cms_cve_map (cms_auto) -> cms_cve_map.json [60K]
+[upload]   ✓ cms_cve_map uploaded: {"dataset_id":14,"path":"/data/cve/cms_cve_map_8c951641.json"}
+[upload] Uploading compliance_map (compliance_auto) -> compliance_map.json [8.0K]
+[upload]   ✓ compliance_map uploaded: {"dataset_id":15,"path":"/data/cve/compliance_map_a72dba92.json"}
+[upload] Upload done ✅
 
 ---
 
@@ -118,3 +140,4 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
