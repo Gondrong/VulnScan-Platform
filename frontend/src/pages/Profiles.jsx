@@ -19,7 +19,7 @@ const PLUGINS = [
 
 const CAT_COLORS = {
   network: "badge-info", fingerprint: "badge-info", cpe: "badge-medium",
-  cve: "badge-medium", priority: "badge-critical", tls: "badge-medium",
+  cve: "badge-warning", priority: "badge-critical", tls: "badge-medium",
   auth: "badge-success",
 };
 
@@ -40,7 +40,6 @@ export default function Profiles() {
     "asset": { "criticality": 2 },
   }, null, 2));
   const [msg, setMsg] = useState({ type: "", text: "" });
-  const [deletingIds, setDeletingIds] = useState(new Set());
 
   async function load() { setProfiles(await api("/scan/profiles")); }
   useEffect(() => { load(); }, []);
@@ -54,20 +53,6 @@ export default function Profiles() {
       setMsg({ type: "success", text: `✓ Profile created: ${name}` });
       await load();
     } catch (e) { setMsg({ type: "danger", text: e.message }); }
-  }
-
-  async function deleteProfile(profileId) {
-    if (!window.confirm(`Delete profile #${profileId}? Jobs referencing this profile will keep their data but you won't be able to reuse it.`)) return;
-    setDeletingIds(s => new Set([...s, profileId]));
-    try {
-      await api(`/scan/profiles/${profileId}`, { method: "DELETE" });
-      setMsg({ type: "success", text: `✓ Profile #${profileId} deleted` });
-      await load();
-    } catch (e) {
-      setMsg({ type: "danger", text: `Failed to delete profile: ${e.message}` });
-    } finally {
-      setDeletingIds(s => { const n = new Set(s); n.delete(profileId); return n; });
-    }
   }
 
   return (
@@ -101,11 +86,11 @@ export default function Profiles() {
             <table className="data-table" style={{ fontSize: "0.78rem" }}>
               <thead><tr><th>Plugin ID</th><th>Category</th><th>Default</th></tr></thead>
               <tbody>
-                {PLUGINS.map(([id, cat, def_]) => (
+                {PLUGINS.map(([id, cat, def]) => (
                   <tr key={id}>
                     <td className="mono text-accent" style={{ fontSize: "0.72rem" }}>{id}</td>
                     <td><span className={`badge ${CAT_COLORS[cat] || "badge-info"}`}>{cat}</span></td>
-                    <td style={{ color: def_ ? "var(--low)" : "var(--text-dim)" }}>{def_ ? "✓" : "—"}</td>
+                    <td style={{ color: def ? "var(--low)" : "var(--text-dim)" }}>{def ? "✓" : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -116,27 +101,16 @@ export default function Profiles() {
             <button className="btn btn-ghost btn-sm" onClick={load}>↻</button>
           } noPad style={{ marginTop: 16 }}>
             <table className="data-table">
-              <thead><tr><th>ID</th><th>Name</th><th>Created</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+              <thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead>
               <tbody>
                 {profiles.length ? profiles.map(p => (
                   <tr key={p.id}>
                     <td className="mono text-accent">#{p.id}</td>
                     <td className="text-bright">{p.name}</td>
                     <td className="mono text-dim" style={{ fontSize: "0.68rem" }}>{fmtDate(p.created_at)}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ color: "var(--critical)", borderColor: "rgba(255,71,87,0.3)" }}
-                        onClick={() => deleteProfile(p.id)}
-                        disabled={deletingIds.has(p.id)}
-                        title="Delete profile"
-                      >
-                        🗑 Delete
-                      </button>
-                    </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan="4"><div className="empty-state" style={{ padding: 24 }}>No profiles</div></td></tr>
+                  <tr><td colSpan="3"><div className="empty-state" style={{ padding: 24 }}>No profiles</div></td></tr>
                 )}
               </tbody>
             </table>

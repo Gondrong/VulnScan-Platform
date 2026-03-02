@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api";
-import { SevBadge, RiskBar, StatusDot, Panel, Alert, fmtDate } from "../components/ui.jsx";
+import { SevBadge, RiskBar, StatusDot, Panel, fmtDate } from "../components/ui.jsx";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -51,18 +51,6 @@ export default function JobDetail() {
     } catch (e) { alert(e.message); }
   }
 
-  // Extract error info for display
-  const errorInfo = job.error_info || null;
-  let metaError = null;
-  if (!errorInfo && job.meta_json && job.status === "failed") {
-    try {
-      const meta = JSON.parse(job.meta_json);
-      if (meta.error) {
-        metaError = meta;
-      }
-    } catch {}
-  }
-
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -76,127 +64,6 @@ export default function JobDetail() {
           <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>
         </div>
       </div>
-
-      {/* Error display for failed scans */}
-      {job.status === "failed" && (errorInfo || metaError) && (
-        <div style={{
-          marginBottom: 24,
-          background: "rgba(255,71,87,0.06)",
-          border: "1px solid rgba(255,71,87,0.25)",
-          padding: 0,
-        }}>
-          <div style={{
-            padding: "12px 16px",
-            borderBottom: "1px solid rgba(255,71,87,0.15)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}>
-            <span style={{ fontSize: "1.1rem" }}>⚠</span>
-            <span style={{
-              fontFamily: "var(--font-head)",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              color: "var(--critical)",
-              letterSpacing: "0.05em",
-            }}>
-              SCAN FAILED
-            </span>
-            {(errorInfo?.error_type || metaError?.error_type) && (
-              <span className="badge badge-critical" style={{ marginLeft: 8 }}>
-                {(errorInfo?.error_type || metaError?.error_type || "").toUpperCase()}
-              </span>
-            )}
-          </div>
-          <div style={{ padding: "16px" }}>
-            {/* User-friendly explanation */}
-            {(errorInfo?.error_detail || metaError?.error_detail) && (
-              <div style={{
-                fontSize: "0.88rem",
-                color: "var(--text)",
-                lineHeight: 1.7,
-                marginBottom: 14,
-                whiteSpace: "pre-wrap",
-              }}>
-                {errorInfo?.error_detail || metaError?.error_detail}
-              </div>
-            )}
-
-            {/* Technical error */}
-            <div style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.65rem",
-              color: "var(--text-dim)",
-              letterSpacing: "0.1em",
-              marginBottom: 6,
-            }}>
-              ERROR MESSAGE
-            </div>
-            <div style={{
-              background: "#050a0e",
-              border: "1px solid var(--border)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.72rem",
-              padding: "12px 14px",
-              color: "var(--critical)",
-              maxHeight: 100,
-              overflow: "auto",
-              wordBreak: "break-all",
-            }}>
-              {errorInfo?.error || metaError?.error || "Unknown error"}
-            </div>
-
-            {/* Troubleshooting tips */}
-            <div style={{
-              marginTop: 14,
-              padding: "10px 12px",
-              background: "rgba(0,212,255,0.04)",
-              border: "1px solid rgba(0,212,255,0.12)",
-              fontSize: "0.78rem",
-              color: "var(--text-dim)",
-              lineHeight: 1.7,
-            }}>
-              <div style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.62rem",
-                color: "var(--accent)",
-                letterSpacing: "0.14em",
-                marginBottom: 6,
-              }}>
-                TROUBLESHOOTING
-              </div>
-              {(errorInfo?.error_type || metaError?.error_type) === "scan_engine" && (
-                <>
-                  <div>• Verify the target is reachable from the scanner network</div>
-                  <div>• Check if the target IP/domain is in the ALLOWLIST env variable</div>
-                  <div>• For external scans, ensure the URL includes https:// or http://</div>
-                  <div>• Try scanning 127.0.0.1 to verify the scanner engine works</div>
-                </>
-              )}
-              {(errorInfo?.error_type || metaError?.error_type) === "configuration" && (
-                <>
-                  <div>• Go to Configuration → Profiles and create a scan profile</div>
-                  <div>• Make sure the profile ID exists and belongs to your workspace</div>
-                </>
-              )}
-              {(errorInfo?.error_type || metaError?.error_type) === "queue" && (
-                <>
-                  <div>• Check that the Redis service is running</div>
-                  <div>• Check that the worker container is healthy</div>
-                  <div>• Run: docker compose logs worker</div>
-                </>
-              )}
-              {!(["scan_engine", "configuration", "queue"].includes(errorInfo?.error_type || metaError?.error_type)) && (
-                <>
-                  <div>• Check Docker logs: docker compose logs worker</div>
-                  <div>• Verify all services are healthy: docker compose ps</div>
-                  <div>• Try restarting the worker: docker compose restart worker</div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Summary pills */}
       <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
@@ -220,7 +87,7 @@ export default function JobDetail() {
         </span>
       </div>
 
-      {findings.length === 0 && job.status !== "failed" && (
+      {findings.length === 0 && (
         <div className="empty-state"><div className="empty-icon">◎</div>
           {job.status === "running" ? "Scan in progress..." : "No findings match the filter"}
         </div>

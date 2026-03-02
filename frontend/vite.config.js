@@ -13,6 +13,7 @@ export default defineConfig({
       "/scan":        { target: apiTarget, changeOrigin: true },
       "/credentials": { target: apiTarget, changeOrigin: true },
       "/datasets":    { target: apiTarget, changeOrigin: true },
+      "/settings":    { target: apiTarget, changeOrigin: true },
       "/healthz":     { target: apiTarget, changeOrigin: true },
     },
   },
