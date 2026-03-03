@@ -31,7 +31,6 @@ def create_profile(
     plugin_json = body.get("plugin_selection_json", "{}")
     options_json = body.get("options_json", "{}")
 
-    # Validate JSON
     try:
         json.loads(plugin_json if isinstance(plugin_json, str) else json.dumps(plugin_json))
     except Exception:
@@ -41,7 +40,6 @@ def create_profile(
     except Exception:
         raise HTTPException(400, "options_json is not valid JSON")
 
-    # Normalize to strings
     if not isinstance(plugin_json, str):
         plugin_json = json.dumps(plugin_json)
     if not isinstance(options_json, str):
@@ -86,7 +84,6 @@ def list_profiles(
     ]
 
 
-# FIX: Add delete profile endpoint
 @router.delete("/profiles/{profile_id}")
 def delete_profile(
     profile_id: int,
@@ -104,7 +101,6 @@ def delete_profile(
     if not prof:
         raise HTTPException(404, "profile not found")
 
-    # Nullify foreign key references in scan_jobs before deleting
     job_count = (
         db.query(models.ScanJob)
         .filter(
@@ -180,7 +176,7 @@ def create_job(
     try:
         q = Queue("scans", connection=_redis())
         q.enqueue(run_scan_job, job.id, job_timeout=600)
-        logger.info("Enqueued scan job #%d target=%s", job.id, target)
+        logger.info("Enqueued scan job #%d target=%s type=%s", job.id, target, scan_type)
     except Exception as e:
         job.status = "failed"
         job.meta_json = json.dumps({
@@ -232,7 +228,6 @@ def list_jobs(
 
 
 def _extract_error_info(meta_json: str | None) -> dict | None:
-    """Extract user-friendly error info from job meta_json."""
     if not meta_json:
         return None
     try:
@@ -275,7 +270,6 @@ def job_detail(
         .all()
     )
 
-    # FIX: Include error_info in job detail response so the UI can display it
     error_info = _extract_error_info(job.meta_json) if job.status == "failed" else None
 
     return {
@@ -331,7 +325,6 @@ def delete_job(
     if not job:
         raise HTTPException(404, "job not found")
 
-    # Delete associated findings first
     db.query(models.Finding).filter(
         models.Finding.job_id == job_id,
         models.Finding.workspace_id == user["ws"],

@@ -19,7 +19,7 @@ META = PluginMeta(
 def split_cpe23(cpe: str):
     parts = (cpe or "").split(":")
     if len(parts) < 6: return None
-    return {"part": parts[2], "vendor": parts[3], "product": parts[4]}
+    return {"part": parts[2], "vendor": parts[3], "product": parts[4], "version": parts[5] if len(parts) > 5 else "*"}
 
 def same_family(a: str, b: str) -> bool:
     aa=split_cpe23(a); bb=split_cpe23(b)
@@ -27,7 +27,8 @@ def same_family(a: str, b: str) -> bool:
 
 def range_ok(installed: str | None, m: dict) -> bool:
     vsi=m.get("versionStartIncluding"); vee=m.get("versionEndExcluding")
-    if not vsi and not vee:
+    vei=m.get("versionEndIncluding"); vse=m.get("versionStartExcluding")
+    if not vsi and not vee and not vei and not vse:
         return True
     if not installed:
         return False
@@ -36,10 +37,73 @@ def range_ok(installed: str | None, m: dict) -> bool:
     if vsi:
         x=parse(vsi)
         if x and v < x: return False
+    if vse:
+        x=parse(vse)
+        if x and v <= x: return False
     if vee:
         x=parse(vee)
         if x and v >= x: return False
+    if vei:
+        x=parse(vei)
+        if x and v > x: return False
     return True
+
+def _build_version_range_str(m: dict) -> str:
+    """Build a human-readable version range string from NVD match data."""
+    parts = []
+    if m.get("versionStartIncluding"):
+        parts.append(f">= {m['versionStartIncluding']}")
+    if m.get("versionStartExcluding"):
+        parts.append(f"> {m['versionStartExcluding']}")
+    if m.get("versionEndIncluding"):
+        parts.append(f"<= {m['versionEndIncluding']}")
+    if m.get("versionEndExcluding"):
+        parts.append(f"< {m['versionEndExcluding']}")
+    return " and ".join(parts) if parts else "all versions"
+
+def _build_remediation(cve: str, h: dict) -> str:
+    """Build remediation text for a CVE finding."""
+    parts = []
+
+    # Parse affected component
+    cpe_info = split_cpe23(h.get("matched_cpe", ""))
+    if cpe_info:
+        vendor = cpe_info["vendor"].replace("_", " ").title()
+        product = cpe_info["product"].replace("_", " ").title()
+        version = h.get("installed_version", "unknown")
+        parts.append(
+            f"[AFFECTED COMPONENT] {vendor} {product} version {version}"
+        )
+
+    # Add fix version if available from the match data
+    vee = h.get("versionEndExcluding")
+    vei = h.get("versionEndIncluding")
+    if vee:
+        parts.append(f"[FIX] Upgrade to version {vee} or later to resolve this vulnerability.")
+    elif vei:
+        parts.append(f"[FIX] Upgrade to a version newer than {vei} to resolve this vulnerability.")
+    else:
+        parts.append("[FIX] Upgrade to the latest patched version from the vendor.")
+
+    # CVE reference
+    if cve and cve.startswith("CVE-"):
+        parts.append(
+            f"[CVE DETAILS] Review {cve} at:\n"
+            f"  - https://nvd.nist.gov/vuln/detail/{cve}\n"
+            f"  - https://www.cve.org/CVERecord?id={cve}"
+        )
+
+    # Severity-based urgency
+    severity = h.get("severity", "medium")
+    if severity == "critical":
+        parts.append("[URGENCY] CRITICAL — Patch immediately within 7 days. Consider temporary mitigations (disable affected feature, block at WAF, network segmentation).")
+    elif severity == "high":
+        parts.append("[URGENCY] HIGH — Patch within 14 days. Assess exposure and apply compensating controls if immediate patching is not feasible.")
+    elif severity == "medium":
+        parts.append("[URGENCY] MEDIUM — Plan patching within 30 days during next maintenance window.")
+
+    return "\n\n".join(parts)
+
 
 class Check(Plugin):
     async def run(self, target, ctx):
@@ -72,7 +136,10 @@ class Check(Plugin):
                                     "refs": item.get("refs", []),
                                     "matched_cpe": c.get("cpe23"),
                                     "installed_version": c.get("version"),
-                                    "confidence": c.get("confidence", 0.6)
+                                    "confidence": c.get("confidence", 0.6),
+                                    "versionEndExcluding": m.get("versionEndExcluding"),
+                                    "versionEndIncluding": m.get("versionEndIncluding"),
+                                    "version_range": _build_version_range_str(m),
                                 })
                                 break
         finally:
@@ -82,17 +149,33 @@ class Check(Plugin):
         for h in hits[:3000]:
             cve = h.get("cve","CVE")
             fp = stable_fingerprint(target, META.plugin_id, cve, h.get("matched_cpe",""))
+            installed = h.get("installed_version", "unknown")
+            version_range = h.get("version_range", "all versions")
+
+            # Build detailed description
+            cpe_info = split_cpe23(h.get("matched_cpe", ""))
+            product_name = cpe_info["product"].replace("_", " ").title() if cpe_info else "unknown"
+            vendor_name = cpe_info["vendor"].replace("_", " ").title() if cpe_info else "unknown"
+
+            description = h.get("summary", "")
+            if not description:
+                description = f"{cve} affects {vendor_name} {product_name}"
+            description += f"\n\nAffected component: {vendor_name} {product_name}"
+            description += f"\nInstalled version: {installed}"
+            description += f"\nVulnerable range: {version_range}"
+
             findings.append(Finding(
                 severity=h.get("severity","medium"),
                 plugin_id=META.plugin_id,
-                title=f"{cve} (NVD match)",
-                description=h.get("summary",""),
+                title=f"{cve}: {vendor_name} {product_name} {installed} (NVD match)",
+                description=description,
                 references=h.get("refs",[]),
-                evidence=f"cpe={h.get('matched_cpe')} installed={h.get('installed_version')}",
+                evidence=f"cpe={h.get('matched_cpe')} installed={installed} vulnerable_range={version_range}",
                 affected=target,
                 fingerprint=fp,
                 cvss=h.get("cvss"),
                 cve=cve,
-                confidence=h.get("confidence", 0.6)
+                confidence=h.get("confidence", 0.6),
+                remediation=_build_remediation(cve, h),
             ))
         return PluginResult(findings=findings, artifacts={"cve.nvd_hits": hits})

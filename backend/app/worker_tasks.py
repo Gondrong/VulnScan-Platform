@@ -39,10 +39,6 @@ def _load_compliance(ws_id: int, db: Session) -> list[dict]:
 
 
 def _run_async(coro):
-    """
-    Safely run an async coroutine from a sync context (RQ worker).
-    Creates a new event loop per task to avoid conflicts.
-    """
     try:
         loop = asyncio.get_event_loop()
         if loop.is_closed():
@@ -58,11 +54,8 @@ def _run_async(coro):
 
 
 def run_scan_job(job_id: int) -> None:
-    """
-    RQ worker task — runs a full scan and saves findings to DB.
-    """
     db: Session = SessionLocal()
-    neo = None  # FIX: initialize neo before try block to avoid UnboundLocalError
+    neo = None
     try:
         job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
         if not job:
@@ -92,15 +85,18 @@ def run_scan_job(job_id: int) -> None:
 
         job.status = "running"
         db.commit()
-        logger.info("Starting scan job #%d target=%s", job_id, job.target)
+        logger.info("Starting scan job #%d target=%s type=%s", job_id, job.target, job.scan_type)
 
         profile = {
             "plugin_selection_json": prof.plugin_selection_json,
             "options_json": prof.options_json,
         }
 
+        # Pass scan_type to engine so external scans bypass allowlist
+        scan_type = job.scan_type or "internal"
+
         try:
-            findings = _run_async(scan_target(job.target, profile, ws_id))
+            findings = _run_async(scan_target(job.target, profile, ws_id, scan_type))
         except Exception as e:
             tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)
@@ -120,7 +116,6 @@ def run_scan_job(job_id: int) -> None:
             db.commit()
             return
 
-        # Load suppression list
         suppressed = {
             s.fingerprint
             for s in db.query(models.SuppressedFinding)
@@ -128,17 +123,14 @@ def run_scan_job(job_id: int) -> None:
             .all()
         }
 
-        # Load compliance data
         compliance_db = _load_compliance(ws_id, db)
 
-        # Parse asset criticality from profile options
         try:
             opt = json.loads(prof.options_json or "{}")
         except Exception:
             opt = {}
         criticality = int((opt.get("asset") or {}).get("criticality", 2))
 
-        # Init Neo4j client (best-effort)
         try:
             neo = Neo4jClient()
         except Exception as e:
@@ -155,11 +147,8 @@ def run_scan_job(job_id: int) -> None:
             exploit_known = kev
 
             risk = compute_risk(
-                cvss=cvss,
-                kev=kev,
-                criticality=criticality,
-                exploit_known=exploit_known,
-                confidence=confidence,
+                cvss=cvss, kev=kev, criticality=criticality,
+                exploit_known=exploit_known, confidence=confidence,
             )
             sev = severity_from_score(risk)
             sla_days = assign_sla_days(sev)
@@ -176,7 +165,7 @@ def run_scan_job(job_id: int) -> None:
                 title=f.title,
                 severity=sev,
                 description=f.description or "",
-                remediation=f.remediation or "",
+                remediation=getattr(f, "remediation", "") or "",
                 references_json=json.dumps(getattr(f, "references", []) or []),
                 evidence=f.evidence or "",
                 fingerprint=f.fingerprint,
@@ -190,7 +179,6 @@ def run_scan_job(job_id: int) -> None:
             db.add(row)
             saved_count += 1
 
-            # Push to Neo4j graph (best-effort)
             if neo:
                 cve = getattr(f, "cve", None)
                 if cve and str(cve).startswith("CVE-"):
@@ -200,12 +188,7 @@ def run_scan_job(job_id: int) -> None:
                         logger.debug("Neo4j upsert failed: %s", e)
 
         db.commit()
-        logger.info(
-            "Job #%d done: %d findings saved (total=%d)",
-            job_id,
-            saved_count,
-            len(findings),
-        )
+        logger.info("Job #%d done: %d findings saved (total=%d)", job_id, saved_count, len(findings))
 
         job.status = "done"
         job.finished_at = datetime.now(timezone.utc)
@@ -224,11 +207,7 @@ def run_scan_job(job_id: int) -> None:
                 job.meta_json = json.dumps({
                     "error": str(e),
                     "error_type": "unhandled",
-                    "error_detail": (
-                        f"An unexpected error occurred during scan processing. "
-                        f"This is likely a system-level issue.\n\n"
-                        f"Technical detail: {str(e)[:500]}"
-                    ),
+                    "error_detail": f"An unexpected error occurred during scan processing.\n\nTechnical detail: {str(e)[:500]}",
                     "traceback": tb[:2000],
                 })
                 job.finished_at = datetime.now(timezone.utc)
