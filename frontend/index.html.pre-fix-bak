@@ -402,47 +402,8 @@ function renderStatusDot(status){const dc={running:'s-run',done:'s-done',failed:
 // ─── Dashboard ───
 async function loadDashboard(sl){if(sl)gi('findings-list').innerHTML='<div class="empty-state"><div class="empty-icon">⬡</div>Loading...</div>';try{const jobs=await apiReq('/scan/jobs');const vis=jobs.filter(j=>!S.deletedJobIds.has(j.id));gi('stat-jobs').textContent=vis.length;let findings=[];for(const j of vis.filter(j=>j.status==='done').slice(0,20)){try{const d=await apiReq('/scan/jobs/'+j.id);(d.findings||[]).forEach(f=>findings.push({...f,_jobId:j.id,_jobTarget:j.target,_scanType:j.scan_type}))}catch{}}S.allFindings=findings;gi('stat-crit').textContent=findings.filter(f=>f.severity==='critical').length;gi('stat-high').textContent=findings.filter(f=>f.severity==='high').length;gi('stat-med').textContent=findings.filter(f=>f.severity==='medium').length;gi('stat-kev').textContent=findings.filter(f=>f.is_kev).length;renderFindings();gi('running-badge').style.display=vis.filter(j=>j.status==='running').length>0?'inline':'none';const pm={};S.profiles.forEach(p=>pm[p.id]=p.name);gi('dash-jobs-body').innerHTML=vis.slice(0,8).map(j=>`<tr><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright">${esc(j.target)}</td><td>${j.scan_type==='external'?'<span class="badge b-ok">🌐 External</span>':'<span class="badge b-info">🏠 Internal</span>'}</td><td>${renderStatusDot(j.status)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs</div></td></tr>'}catch(e){console.error('[Dashboard]',e)}}
 function setSevFilter(sev,el){S.sevFilter=sev;document.querySelectorAll('.sev-chip').forEach(c=>c.classList.remove('active'));if(el)el.classList.add('active');renderFindings()}
-function _fmtRem(t){
-if(!t)return'';var h=esc(t);
-h=h.replace(/\[([^\]]+)\]/g,function(m,l){
-var c={'REMEDIATION':'#34d399','FIX':'#34d399','AFFECTED VERSION':'#f59e0b',
-'AFFECTED COMPONENT':'#f59e0b','CVE REFERENCE':'#60a5fa','CVE DETAILS':'#60a5fa',
-'CISA KEV':'#ef4444','CRITICAL \u2014 ACTIVELY EXPLOITED':'#ef4444',
-'CISA MANDATE':'#ef4444','IMMEDIATE ACTIONS':'#f97316','RANSOMWARE ALERT':'#ef4444',
-'SLA POLICY':'#94a3b8','URGENCY':'#f97316','GENERAL':'#94a3b8',
-'REFERENCES':'#60a5fa','AFFECTED CMS':'#f59e0b','AFFECTED':'#f59e0b',
-'COMPLIANCE':'#94a3b8','NGINX':'#06b6d4','APACHE':'#06b6d4','IIS':'#06b6d4'}[l]||'#94a3b8';
-return'<div style="margin-top:10px;margin-bottom:4px;font-family:var(--fm);font-size:.6rem;color:'+c+';letter-spacing:.14em;font-weight:600">\u25b8 '+l+'</div>';});
-return h;}
-function renderFindings(){
-var filtered=S.sevFilter==='all'?S.allFindings:S.allFindings.filter(function(f){return f.severity===S.sevFilter});
-gi('finding-count-label').textContent=filtered.length+' findings';
-if(!filtered.length){gi('findings-list').innerHTML='<div class="empty-state"><div class="empty-icon">◎</div>'+(S.allFindings.length===0?'Run a scan to see findings':'No findings match this filter')+'</div>';return}
-var html='';
-for(var i=0;i<filtered.length;i++){var f=filtered[i];
-var rc=f.risk_score>=9?'#f87171':f.risk_score>=7?'#fb923c':f.risk_score>=4?'#fbbf24':'#34d399';
-var rp=f.risk_score?Math.min(100,f.risk_score*10):0;
-html+='<div class="fcard" id="fc-'+i+'">';
-html+='<div class="fcard-hdr" onclick="toggleFinding('+i+')">';
-html+=severityBadge(f.severity);
-if(f.is_kev)html+=' <span class="kev-tag">KEV</span>';
-html+='<div class="fcard-title">'+esc(f.title)+'</div>';
-html+='<div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">'+esc(f.plugin_id||'')+'</div>';
-html+='<div class="risk-wrap" style="width:108px;flex-shrink:0"><div class="risk-track"><div class="risk-fill" style="width:'+rp+'%;background:'+rc+'"></div></div><div class="risk-num" style="color:'+rc+'">'+(f.risk_score!=null?Number(f.risk_score).toFixed(1):'\u2014')+'</div></div>';
-html+='<span class="fcard-arrow">\u25be</span></div>';
-html+='<div class="fcard-body">';
-html+='<div class="fmeta"><div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:'+rc+'">'+(f.risk_score!=null?Number(f.risk_score).toFixed(2):'\u2014')+'</div></div>';
-html+='<div class="mi"><div class="mk">CVSS Base</div><div class="mv">'+(f.cvss_base!=null?f.cvss_base:'\u2014')+'</div></div>';
-html+='<div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#'+(f._jobId||'')+' \u2014 '+esc(f._jobTarget||'')+'</div></div></div>';
-if(f.evidence){html+='<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">'+esc(f.evidence)+'</div>';}
-if(f.description){html+='<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">'+esc(f.description)+'</div>';}
-if(f.remediation&&f.remediation.length>2){html+='<div style="margin:16px 0 12px;padding:16px 18px;background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:6px"><div style="font-family:var(--fm);font-size:.62rem;color:#34d399;letter-spacing:.2em;margin-bottom:12px;font-weight:700">\u2695 REMEDIATION</div><div style="font-size:.84rem;color:var(--text);line-height:1.8;white-space:pre-wrap">'+_fmtRem(f.remediation)+'</div></div>';}
-html+='<div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
-if(f.sla_days){html+='<span style="font-family:var(--fm);font-size:.58rem;color:#94a3b8;border:1px solid rgba(148,163,184,0.3);padding:2px 8px;border-radius:3px">SLA: '+f.sla_days+' days</span>';}
-if(f.fingerprint){html+='<button class="btn btn-ghost btn-sm" onclick="suppressFinding(\x27'+esc(f.fingerprint)+'\x27,event)">\u2297 Suppress</button>';}
-html+='</div></div></div>';}
-gi('findings-list').innerHTML=html;
-}
+function renderFindings(){const f=S.sevFilter==='all'?S.allFindings:S.allFindings.filter(f=>f.severity===S.sevFilter);gi('finding-count-label').textContent=f.length+' findings';if(!f.length){gi('findings-list').innerHTML='<div class="empty-state"><div class="empty-icon">◎</div>'+(S.allFindings.length===0?'Run a scan to see findings':'No findings match this filter')+'</div>';return}gi('findings-list').innerHTML=f.map((f,i)=>{const rc=f.risk_score>=9?'#f87171':f.risk_score>=7?'#fb923c':f.risk_score>=4?'#fbbf24':'#34d399';const rp=f.risk_score?Math.min(100,f.risk_score*10):0;return`<div class="fcard" id="fc-${i}"><div class="fcard-hdr" onclick="toggleFinding(${i})">${severityBadge(f.severity)} ${f.is_kev?'<span class="kev-tag">KEV</span>':''}<div class="fcard-title">${esc(f.title)}</div><div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id||'')}</div><div class="risk-wrap" style="width:108px;flex-shrink:0"><div class="risk-track"><div class="risk-fill" style="width:${rp}%;background:${rc}"></div></div><div class="risk-num" style="color:${rc}">${f.risk_score!=null?Number(f.risk_score).toFixed(1):'—'}</div></div><span class="fcard-arrow">▾</span></div><div class="fcard-body"><div class="fmeta"><div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${rc}">${f.risk_score!=null?Number(f.risk_score).toFixed(2):'—'}</div></div><div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base??'—'}</div></div><div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget||'')}</div></div></div>${f.evidence?`<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">${esc(f.evidence)}</div>`:''} ${f.description?`<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>`:''}<div style="margin-top:14px;display:flex;gap:8px">${f.remediation?`<div style="margin:12px 0;padding:14px 16px;background:rgba(52,211,153,0.04);border:1px solid rgba(52,211,153,0.15);border-radius:4px"><div style="font-family:var(--fm);font-size:.62rem;color:#34d399;letter-spacing:.18em;margin-bottom:10px;font-weight:700">⚕ REMEDIATION</div><div style="font-size:.84rem;color:var(--text);line-height:1.7;white-space:pre-wrap">${formatRemediation(f.remediation)}</div></div>`:''}
+${f.fingerprint?`<button class="btn btn-ghost btn-sm" onclick="suppressFinding('${esc(f.fingerprint)}',event)">⊗ Suppress</button>`:''}</div></div></div>`}).join('')}
 function toggleFinding(i){gi('fc-'+i).classList.toggle('open')}
 async function suppressFinding(fp,e){e.stopPropagation();const reason=prompt('Suppression reason:');if(reason===null)return;try{await apiReq('/scan/suppress',{method:'POST',body:JSON.stringify({fingerprint:fp,reason})});await loadDashboard(false)}catch(e){alert('Error: '+e.message)}}
 
@@ -493,6 +454,25 @@ async function saveAllowlist(){try{await apiReq('/settings/allowlist',{method:'P
 window.addEventListener('load',()=>{const t=localStorage.getItem('vs_token'),e=localStorage.getItem('vs_email')||'admin@local';if(t){S.token=t;S.userEmail=e;showApp()}document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&gi('login-page').classList.contains('show'))doLogin()});['p-cred','p-ssh-port','p-criticality'].forEach(id=>{const el=gi(id);if(el)el.addEventListener('change',syncProfileOptions)});gi('p-ds-kinds')?.querySelectorAll('input').forEach(cb=>cb.addEventListener('change',syncProfileOptions))});
 
 
+// ── Remediation formatter (injected by patch) ──
+function formatRemediation(text) {
+  if (!text) return '';
+  return esc(text).replace(/\[([^\]]+)\]/g, function(m, label) {
+    var colors = {
+      'REMEDIATION':'#34d399','FIX':'#34d399','AFFECTED VERSION':'#f59e0b',
+      'AFFECTED COMPONENT':'#f59e0b','CVE REFERENCE':'#60a5fa','CVE DETAILS':'#60a5fa',
+      'CISA KEV':'#ef4444','CRITICAL — ACTIVELY EXPLOITED':'#ef4444',
+      'CISA MANDATE':'#ef4444','IMMEDIATE ACTIONS':'#f97316','RANSOMWARE ALERT':'#ef4444',
+      'SLA POLICY':'#94a3b8','URGENCY':'#f97316','GENERAL':'#94a3b8',
+      'REFERENCES':'#60a5fa','AFFECTED CMS':'#f59e0b','AFFECTED':'#f59e0b',
+      'COMPLIANCE':'#94a3b8'
+    };
+    var c = colors[label] || '#94a3b8';
+    return '<span style="display:block;margin-top:10px;font-family:var(--fm);font-size:.6rem;color:'+c+';letter-spacing:.14em;font-weight:600">▸ '+label+'</span>';
+  });
+}
+
 </script>
+<script src="remediation-fix.js"></script>
 </body>
 </html>

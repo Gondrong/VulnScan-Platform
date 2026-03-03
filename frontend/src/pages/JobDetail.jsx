@@ -56,14 +56,32 @@ export default function JobDetail() {
       <div className="page-header">
         <div>
           <div className="page-title">Job <span className="accent">#{job.id}</span></div>
-          <div className="page-desc">// {job.target} — scan results</div>
+          <div className="page-desc">// {job.target} — {job.scan_type || "internal"} scan results</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <StatusDot status={job.status} />
+          <span className="badge badge-info" style={{ fontSize: "0.6rem" }}>
+            {job.scan_type === "external" ? "🌐 EXTERNAL" : "🏠 INTERNAL"}
+          </span>
           <Link to="/jobs" className="btn btn-ghost">← Back</Link>
           <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>
         </div>
       </div>
+
+      {/* Error info for failed jobs */}
+      {job.status === "failed" && job.error_info && (
+        <div style={{
+          padding: "16px 20px", marginBottom: 20,
+          background: "rgba(255,71,87,0.06)", border: "1px solid rgba(255,71,87,0.2)",
+        }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", color: "var(--critical)", marginBottom: 6 }}>
+            ⚠ SCAN FAILED: {job.error_info.error_type || "unknown"}
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "var(--text)", lineHeight: 1.6 }}>
+            {job.error_info.error_detail || job.error_info.error}
+          </div>
+        </div>
+      )}
 
       {/* Summary pills */}
       <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
@@ -122,8 +140,14 @@ export default function JobDetail() {
                 borderTop: "1px solid var(--border)",
                 animation: "fadeIn 0.15s ease both",
               }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
-                  {[["Risk Score", f.risk_score?.toFixed(2) ?? "—"], ["CVSS Base", f.cvss_base ?? "—"], ["Confidence", f.confidence ? (f.confidence * 100).toFixed(0) + "%" : "—"]].map(([label, val]) => (
+                {/* Metrics row */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+                  {[
+                    ["Risk Score", f.risk_score?.toFixed(2) ?? "—"],
+                    ["CVSS Base", f.cvss_base ?? "—"],
+                    ["Confidence", f.confidence ? (f.confidence * 100).toFixed(0) + "%" : "—"],
+                    ["SLA", f.sla_days ? f.sla_days + " days" : "—"],
+                  ].map(([label, val]) => (
                     <div key={label} style={{ padding: 10, background: "var(--surface3)", border: "1px solid var(--border)" }}>
                       <div className="form-label">{label}</div>
                       <div className="mono text-bright" style={{ fontSize: "1.1rem" }}>{val}</div>
@@ -131,34 +155,68 @@ export default function JobDetail() {
                   ))}
                 </div>
 
-                {f.evidence && (
-                  <>
-                    <div className="form-label">Evidence</div>
-                    <div className="terminal" style={{ maxHeight: 80, marginBottom: 12 }}>
-                      <div className="terminal-line">{f.evidence}</div>
+                {/* Description */}
+                {f.description && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="form-label" style={{ marginBottom: 6 }}>Description</div>
+                    <div style={{
+                      fontSize: "0.85rem", color: "var(--text)", lineHeight: 1.7,
+                      whiteSpace: "pre-line",
+                      padding: "12px 14px",
+                      background: "var(--surface3)",
+                      border: "1px solid var(--border)",
+                    }}>
+                      {f.description}
                     </div>
-                  </>
+                  </div>
                 )}
 
-                {compliance && Object.keys(compliance).length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div className="form-label">Compliance Mapping</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-                      {Object.entries(compliance).map(([k, v]) => (
-                        <span key={k} className="badge badge-info">{k}: {Array.isArray(v) ? v.join(", ") : v}</span>
+                {/* Remediation — prominent display */}
+                {f.remediation && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="form-label" style={{
+                      marginBottom: 6,
+                      color: "var(--low)",
+                      display: "flex", alignItems: "center", gap: 6,
+                    }}>
+                      <span>🛡</span> Remediation Steps
+                    </div>
+                    <div style={{
+                      fontSize: "0.85rem", color: "var(--text)", lineHeight: 1.7,
+                      whiteSpace: "pre-line",
+                      padding: "14px 16px",
+                      background: "rgba(46,213,115,0.04)",
+                      border: "1px solid rgba(46,213,115,0.15)",
+                      borderLeft: "3px solid var(--low)",
+                    }}>
+                      {f.remediation}
+                    </div>
+                  </div>
+                )}
+
+                {/* Evidence */}
+                {f.evidence && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="form-label" style={{ marginBottom: 6 }}>Evidence</div>
+                    <div className="terminal" style={{ maxHeight: 100 }}>
+                      <div className="terminal-line">{f.evidence}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Compliance mapping */}
+                {compliance && compliance.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="form-label" style={{ marginBottom: 6 }}>Compliance Mapping</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {(Array.isArray(compliance) ? compliance : Object.entries(compliance).map(([k,v]) => `${k}: ${v}`)).map((c, i) => (
+                        <span key={i} className="badge badge-info">{typeof c === 'string' ? c : JSON.stringify(c)}</span>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {f.description && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div className="form-label">Description</div>
-                    <div style={{ fontSize: "0.83rem", color: "var(--text-dim)", lineHeight: 1.6 }}>{f.description}</div>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => suppress(f.fingerprint)}>
                     ⊗ Suppress
                   </button>
