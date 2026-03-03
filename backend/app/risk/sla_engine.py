@@ -6,9 +6,9 @@ Thresholds are based on common enterprise SLA policies.
 # SLA thresholds in days by severity
 _SLA_DAYS: dict[str, int] = {
     "critical": 7,
-    "high": 30,
-    "medium": 90,
-    "low": 180,
+    "high": 14,
+    "medium": 30,
+    "low": 60,
     "info": 365,
 }
 

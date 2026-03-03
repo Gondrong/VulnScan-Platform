@@ -153,6 +153,28 @@ def run_scan_job(job_id: int) -> None:
             sev = severity_from_score(risk)
             sla_days = assign_sla_days(sev)
 
+            # Append SLA policy text using the FINAL severity and actual SLA days
+            remediation_text = getattr(f, "remediation", "") or ""
+            sla_policy = (
+                f"[SLA POLICY] This is a {sev.upper()} severity vulnerability "
+                f"with a {sla_days}-day remediation SLA."
+            )
+            if sev == "critical":
+                sla_policy += " Prioritize patching immediately — apply vendor-provided fixes and consider temporary mitigations (WAF rules, network segmentation) while permanent fixes are deployed."
+            elif sev == "high":
+                sla_policy += " Apply available patches promptly, review vendor advisories, and implement compensating controls if immediate patching is not feasible."
+            elif sev == "medium":
+                sla_policy += " Plan patching during the next maintenance window. Review if compensating controls are already in place."
+            elif sev == "low":
+                sla_policy += " Address during regular patching cycles. Document any accepted risk if remediation is deferred."
+            else:
+                sla_policy += " Review and address as part of security hardening efforts."
+
+            if remediation_text:
+                remediation_text = f"{remediation_text}\n\n{sla_policy}"
+            else:
+                remediation_text = sla_policy
+
             comp = map_compliance_by_cve_or_category(
                 getattr(f, "cve", None), f.plugin_id, compliance_db
             )
@@ -165,7 +187,7 @@ def run_scan_job(job_id: int) -> None:
                 title=f.title,
                 severity=sev,
                 description=f.description or "",
-                remediation=getattr(f, "remediation", "") or "",
+                remediation=remediation_text,
                 references_json=json.dumps(getattr(f, "references", []) or []),
                 evidence=f.evidence or "",
                 fingerprint=f.fingerprint,

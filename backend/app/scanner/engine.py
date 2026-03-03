@@ -280,11 +280,12 @@ _SEVERITY_REMEDIATION = {
 
 
 def _enrich_finding_remediation(finding: Finding) -> Finding:
-    """Enrich a finding with remediation steps and version/target details."""
+    """Enrich a finding with remediation steps and version/target details.
+    NOTE: SLA POLICY text is NOT added here because the worker recalculates
+    severity via risk scoring. The worker appends the SLA text after final
+    severity is determined.
+    """
     if finding.remediation and len(finding.remediation) > 50:
-        sev_guide = _SEVERITY_REMEDIATION.get(finding.severity, "")
-        if sev_guide and sev_guide not in finding.remediation:
-            finding.remediation = f"{finding.remediation}\n\n[SLA POLICY] {sev_guide}"
         return finding
 
     remediation_parts = []
@@ -342,9 +343,8 @@ def _enrich_finding_remediation(finding: Finding) -> Finding:
             "compensating controls immediately."
         )
 
-    sev_guide = _SEVERITY_REMEDIATION.get(finding.severity, "")
-    if sev_guide:
-        remediation_parts.append(f"[SLA POLICY] {sev_guide}")
+    # NOTE: SLA POLICY is NOT appended here — the worker adds it after
+    # final severity is determined by risk scoring.
 
     if not remediation_parts:
         remediation_parts.append(
