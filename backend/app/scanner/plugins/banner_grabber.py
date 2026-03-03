@@ -57,7 +57,7 @@ class Check(Plugin):
             if b:
                 banners.append({"port":p,"banner":b})
                 findings.append(Finding(
-                    severity="info",
+                    severity="medium" if p in (6379, 9200) else "low",
                     plugin_id=META.plugin_id,
                     title=f"Service banner on port {p}",
                     description=f"Service on port {p} discloses a banner with potentially sensitive version information.",

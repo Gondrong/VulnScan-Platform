@@ -24,8 +24,9 @@ def _add_header_findings(findings, result, target, url, plugin_id, port=None):
     port_str = f" on port {port}" if port else ""
 
     if server:
+        # Server header version disclosure aids attacker recon — LOW severity
         findings.append(Finding(
-            severity="info",
+            severity="low",
             plugin_id=plugin_id,
             title=f"HTTP Server header disclosed{port_str}: {server}",
             description=f"The web server at {url} reveals its software version in the Server header (status {status}).",
