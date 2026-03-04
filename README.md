@@ -1,6 +1,7 @@
 # VulnScan Platform
-<img width="1901" height="908" alt="image" src="https://github.com/user-attachments/assets/1acb24ed-59cd-43c9-a531-17952b647bae" />
-<img width="1581" height="831" alt="image" src="https://github.com/user-attachments/assets/732a62ed-dd61-4a69-a3b8-e2b2dac513a3" />
+<img width="1902" height="902" alt="image" src="https://github.com/user-attachments/assets/4bcef821-8aae-4c22-aefa-de84204eab55" />
+<img width="1918" height="910" alt="image" src="https://github.com/user-attachments/assets/aa053b3d-391b-4286-b85b-41af2c303b37" />
+
 
 Plugin-based internal vulnerability management platform with:
 - Web UI + API (FastAPI + React)
@@ -76,6 +77,12 @@ Supported dataset kinds:
 
 ---
 
+## Export Report
+
+<img width="843" height="202" alt="image" src="https://github.com/user-attachments/assets/2ad6c63e-f9cf-4f37-9bf8-094917cfa175" />
+
+---
+
 ## Scan Flow
 
 1. Detect open ports
@@ -130,6 +137,7 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
 
 
