@@ -36,6 +36,7 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 .ni.active{color:var(--accent);background:var(--accent-dim);border-left-color:var(--accent)}
 .ni-ic{font-size:1.05rem;width:20px;text-align:center;flex-shrink:0}
 .ni-badge{margin-left:auto;background:var(--red);color:#fff;font-family:var(--fm);font-size:.58rem;padding:1px 6px;border-radius:10px;font-weight:700}
+.ni-sub{padding-left:36px;font-size:.72rem;opacity:.85}
 .sidebar-foot{padding:14px 20px;border-top:1px solid var(--border)}
 .online-pill{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:.63rem;color:var(--text3)}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s infinite}
@@ -154,10 +155,14 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;font-family:var(--fm);font-size:.7rem;color:var(--text2)}
 .tag .tag-x{cursor:pointer;color:var(--red);font-size:.8rem;margin-left:2px}
 .tag .tag-x:hover{color:#fff}
-#login-page{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:1000}
+#login-page{position:fixed;inset:0;background:#07090f;display:none;align-items:center;justify-content:center;z-index:1000;overflow:hidden}
 #login-page.show{display:flex}
-.login-card{width:420px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:fadeUp .3s ease;box-shadow:0 24px 60px rgba(0,0,0,.6)}
-.login-top-bar{height:3px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--accent))}
+#login-bg{position:absolute;inset:0;z-index:0}
+#login-bg canvas{width:100%;height:100%}
+.login-card{position:relative;z-index:2;width:420px;background:rgba(13,17,28,.85);border:1px solid rgba(0,212,255,.15);border-radius:12px;overflow:hidden;animation:fadeUp .5s ease;box-shadow:0 24px 80px rgba(0,0,0,.7),0 0 60px rgba(0,212,255,.06),inset 0 1px 0 rgba(255,255,255,.03);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.login-top-bar{height:3px;background:linear-gradient(90deg,transparent,var(--accent),var(--purple),var(--accent),transparent);position:relative;overflow:hidden}
+.login-top-bar::after{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:login-shine 2s ease-in-out infinite}
+@keyframes login-shine{0%{left:-100%}100%{left:200%}}
 .login-head{padding:28px 32px 22px;border-bottom:1px solid var(--border)}
 .login-logo{font-family:var(--fh);font-size:2rem;font-weight:800;color:var(--bright);letter-spacing:-.02em}
 .login-sub{font-family:var(--fm);font-size:.6rem;color:var(--text3);letter-spacing:.13em;margin-top:5px}
@@ -172,6 +177,12 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 
 <!-- LOGIN -->
 <div id="login-page" class="show">
+  <div id="login-bg"><canvas id="login-canvas"></canvas></div>
+  <!-- Radial glow overlays -->
+  <div style="position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 25% 15%,rgba(248,113,113,.04) 0%,transparent 40%),radial-gradient(ellipse at 75% 85%,rgba(0,212,255,.05) 0%,transparent 40%),radial-gradient(ellipse at 50% 50%,transparent 20%,rgba(7,9,15,.5) 100%)"></div>
+  <!-- Scan line -->
+  <div style="position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden"><div style="position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent 10%,rgba(0,212,255,.2) 40%,rgba(139,92,246,.15) 60%,transparent 90%);animation:scanLine 6s linear infinite;box-shadow:0 0 20px rgba(0,212,255,.1),0 -20px 40px rgba(0,212,255,.03)"></div></div>
+  <style>@keyframes scanLine{0%{top:-2px}100%{top:100%}}</style>
   <div class="login-card">
     <div class="login-top-bar"></div>
     <div class="login-head">
@@ -195,8 +206,9 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
   <div class="nav-wrap">
     <div class="nav-sec">Monitoring</div>
     <button class="ni active" id="nav-dashboard" onclick="navTo('dashboard')"><span class="ni-ic">⬡</span>Dashboard</button>
-    <div class="nav-sec">Scanning</div>
-    <button class="ni" id="nav-jobs" onclick="navTo('jobs')"><span class="ni-ic">⚡</span>Scan Jobs<span class="ni-badge" id="running-badge" style="display:none;background:var(--accent);color:#07090f">●</span></button>
+    <div class="nav-sec">Operations</div>
+    <button class="ni" id="nav-jobs" onclick="navTo('jobs')"><span class="ni-ic">⚡</span>Tasks<span class="ni-badge" id="running-badge" style="display:none;background:var(--accent);color:#07090f">●</span></button>
+    <button class="ni ni-sub" id="nav-vulns" onclick="navTo('vulns')"><span class="ni-ic">⊘</span>Vulnerabilities</button>
     <div class="nav-sec">Configuration</div>
     <button class="ni" id="nav-profiles" onclick="navTo('profiles')"><span class="ni-ic">⊞</span>Profiles</button>
     <button class="ni" id="nav-credentials" onclick="navTo('credentials')"><span class="ni-ic">⊕</span>Credentials</button>
@@ -228,28 +240,119 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <div class="sc c-c"><div class="sc-lbl">Critical</div><div class="sc-val" id="stat-crit">—</div><div class="sc-sub">Immediate action</div></div>
         <div class="sc c-h"><div class="sc-lbl">High</div><div class="sc-val" id="stat-high">—</div><div class="sc-sub">Urgent fix</div></div>
         <div class="sc c-m"><div class="sc-lbl">Medium</div><div class="sc-val" id="stat-med">—</div><div class="sc-sub">Plan remediation</div></div>
-        <div class="sc c-l"><div class="sc-lbl">KEV Hits</div><div class="sc-val" id="stat-kev">—</div><div class="sc-sub">Active exploits</div></div>
+        <div class="sc c-l"><div class="sc-lbl">Low</div><div class="sc-val" id="stat-low">—</div><div class="sc-sub">Monitor & track</div></div>
+        <div class="sc" style="border-top:2px solid var(--accent)"><div class="sc-lbl">Info</div><div class="sc-val" id="stat-info" style="color:var(--accent)">—</div><div class="sc-sub">Informational</div></div>
+        <div class="sc" style="border-top:2px solid var(--red)"><div class="sc-lbl">KEV Hits</div><div class="sc-val" id="stat-kev" style="color:var(--red)">—</div><div class="sc-sub">Active exploits</div></div>
         <div class="sc c-i"><div class="sc-lbl">Total Jobs</div><div class="sc-val" id="stat-jobs">—</div><div class="sc-sub">Scans executed</div></div>
       </div>
-      <div class="sev-row" id="sev-filter-bar">
-        <span style="font-family:var(--fm);font-size:.7rem;color:var(--text3);font-weight:500">Filter:</span>
-        <div class="sev-chip active" style="background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:var(--accent)" onclick="setSevFilter('all',this)">All</div>
-        <div class="sev-chip" style="border-color:rgba(248,113,113,.3);color:var(--red)" onclick="setSevFilter('critical',this)">Critical</div>
-        <div class="sev-chip" style="border-color:rgba(251,146,60,.3);color:var(--orange)" onclick="setSevFilter('high',this)">High</div>
-        <div class="sev-chip" style="border-color:rgba(251,191,36,.3);color:var(--yellow)" onclick="setSevFilter('medium',this)">Medium</div>
-        <div class="sev-chip" style="border-color:rgba(52,211,153,.3);color:var(--green)" onclick="setSevFilter('low',this)">Low</div>
-        <div class="sev-chip" style="border-color:var(--border);color:var(--text3)" onclick="setSevFilter('info',this)">Info</div>
-        <span style="margin-left:auto;font-family:var(--fm);font-size:.7rem;color:var(--text3)" id="finding-count-label">— findings</span>
+      <!-- Host Summary (main vulnerability view) -->
+      <!-- Live Scan Progress -->
+      <div id="scan-progress-panel" style="display:none;margin-bottom:18px">
+        <div class="panel" style="margin:0;border-color:var(--accent);border-width:1px">
+          <div class="panel-head" style="border-bottom-color:rgba(0,212,255,.15)">
+            <div class="panel-title"><div class="panel-title-bar" style="background:var(--accent)"></div><span class="scan-pulse">●</span> Active Scans</div>
+            <span class="mc dim" style="font-size:.65rem" id="scan-progress-count"></span>
+          </div>
+          <div class="pb np" id="scan-progress-body"></div>
+        </div>
       </div>
-      <div id="findings-list"><div class="empty-state"><div class="empty-icon">⬡</div>Loading findings...</div></div>
-      <div class="panel" style="margin-top:20px"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Recent Scan Jobs</div></div>
+      <style>
+      .scan-pulse{color:var(--accent);animation:pulse-glow 1.5s ease-in-out infinite;margin-right:6px;font-size:.8rem}
+      @keyframes pulse-glow{0%,100%{opacity:1}50%{opacity:.3}}
+      .sp-job{padding:14px 16px;border-bottom:1px solid var(--border)}
+      .sp-job:last-child{border-bottom:none}
+      .sp-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+      .sp-target{font-weight:600;color:var(--text);font-size:.88rem;flex:1}
+      .sp-elapsed{font-family:var(--fm);font-size:.68rem;color:var(--accent)}
+      .sp-pct{font-family:var(--fh);font-size:1rem;font-weight:800;color:var(--accent);width:46px;text-align:right}
+      .sp-bar-track{height:6px;background:var(--surface);border-radius:3px;overflow:hidden;margin-bottom:10px}
+      .sp-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),#34d399);border-radius:3px;transition:width .5s ease}
+      .sp-current{font-family:var(--fm);font-size:.68rem;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+      .sp-current-icon{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse-glow 1s ease-in-out infinite}
+      .sp-log{display:flex;flex-wrap:wrap;gap:4px}
+      .sp-chip{font-family:var(--fm);font-size:.55rem;padding:2px 7px;border-radius:2px;letter-spacing:.04em}
+      .sp-chip.done{background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.2)}
+      .sp-chip.running{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2);animation:pulse-glow 1.5s ease-in-out infinite}
+      .sp-chip.error{background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.2)}
+      .sp-chip.timeout{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+      .sp-chip.pending{background:var(--surface);color:var(--text3);border:1px solid var(--border)}
+      .sp-stale{border-left:3px solid #f87171}
+      .sp-stale .sp-bar-fill{background:#f87171!important}
+      .sp-stale .sp-pct{color:#f87171}
+      /* Host vulnerability styles */
+      .host-bar{display:flex;height:24px;border-radius:3px;overflow:hidden;min-width:120px;flex:1;cursor:pointer;transition:opacity .15s}
+      .host-bar:hover{opacity:.85}
+      .host-seg{display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:.65rem;font-weight:700;color:#fff;min-width:0;transition:width .3s}
+      .host-seg.s-c{background:#f87171}.host-seg.s-h{background:#fb923c}.host-seg.s-m{background:#fbbf24;color:#000}.host-seg.s-l{background:#34d399;color:#000}.host-seg.s-i{background:var(--accent);color:#000}
+      .host-row{cursor:pointer;transition:background .15s}
+      .host-row:hover td{background:rgba(0,212,255,.03)}
+      .host-row td{vertical-align:middle}
+      .host-expand{display:none}
+      .host-expand.open{display:table-row}
+      .host-check{width:16px;height:16px;accent-color:var(--accent)}
+      .hf-chip{display:inline-flex;align-items:center;padding:3px 10px;font-family:var(--fm);font-size:.62rem;letter-spacing:.08em;cursor:pointer;border:1px solid var(--border);color:var(--text3);transition:all .12s;text-transform:uppercase}
+      .hf-chip.active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.06)}
+      .hf-chip:hover{border-color:var(--accent);color:var(--accent)}
+      .hf-finding{border-bottom:1px solid var(--border);padding:14px 16px;transition:background .1s}
+      .hf-finding:hover{background:rgba(0,212,255,.02)}
+      .hf-finding:last-child{border-bottom:none}
+      .hf-detail-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
+      .hf-detail-box{padding:10px 12px;background:var(--surface);border:1px solid var(--border)}
+      .hf-detail-label{font-family:var(--fm);font-size:.58rem;color:var(--text3);letter-spacing:.18em;text-transform:uppercase;margin-bottom:5px}
+      .hf-remed{margin-top:12px;padding:14px 16px;background:rgba(52,211,153,0.04);border:1px solid rgba(52,211,153,0.15);border-radius:4px}
+      .hf-section{margin-top:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--border)}
+      .hf-section-title{font-family:var(--fm);font-size:.6rem;letter-spacing:.18em;margin-bottom:6px;font-weight:700}
+      </style>
+
+      <!-- Host Summary moved to Vulnerabilities page -->
+
+      <!-- ═══ NEO4J ATTACK GRAPH ═══ -->
+      <div class="panel" style="margin-top:0">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-title-bar" style="background:var(--red)"></div>Attack Graph</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="mc dim" style="font-size:.6rem" id="graph-source-label"></span>
+            <button class="btn btn-ghost btn-sm" onclick="loadAttackGraph()" title="Reload graph">↻</button>
+          </div>
+        </div>
+        <div class="pb" style="padding:0;position:relative;height:420px;overflow:hidden;background:var(--bg)">
+          <div id="attack-graph-empty" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+            <div class="empty-state" style="padding:40px">No graph data — run a scan first</div>
+          </div>
+          <svg id="attack-graph-svg" width="100%" height="420" style="display:block"></svg>
+          <div id="graph-legend" style="position:absolute;bottom:10px;left:12px;display:flex;gap:10px;font-family:var(--fm);font-size:.55rem;color:var(--text3)">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);vertical-align:middle;margin-right:3px"></span> Asset</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f87171;vertical-align:middle;margin-right:3px"></span> Critical</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fb923c;vertical-align:middle;margin-right:3px"></span> High</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fbbf24;vertical-align:middle;margin-right:3px"></span> Medium</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#34d399;vertical-align:middle;margin-right:3px"></span> Low</span>
+          </div>
+          <div id="graph-tooltip" style="display:none;position:absolute;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-family:var(--fm);font-size:.62rem;color:var(--text);pointer-events:none;z-index:10;max-width:220px"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:18px"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Recent Scan Jobs</div></div>
         <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Status</th><th>Started</th></tr></thead>
         <tbody id="dash-jobs-body"><tr><td colspan="5"><div class="empty-state" style="padding:24px">Loading...</div></td></tr></tbody></table></div></div>
     </div>
 
+    <!-- ═══ VULNERABILITIES PAGE ═══ -->
+    <div id="page-vulns" class="page">
+      <div class="ph"><div><div class="ph-title">Vulnerability <span class="hl">Explorer</span></div><div class="ph-sub">// All vulnerabilities grouped by host</div></div>
+        <div class="ph-right"><button class="btn btn-ghost" onclick="loadDashboard(true)">↻ Refresh</button></div></div>
+      <div id="vulns-host-summary" style="margin-bottom:18px">
+        <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Vulnerabilities by Host</div><div style="display:flex;align-items:center;gap:8px"><span class="mc dim" style="font-size:.65rem" id="vulns-host-count-label"></span><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="exportFindings('csv')" title="Export CSV">📄 CSV</button><button class="btn btn-ghost btn-sm" onclick="exportFindings('html')" title="Export HTML">📊 HTML</button><button class="btn btn-ghost btn-sm" onclick="exportFindings('pdf')" title="Export PDF">📋 PDF</button></div></div></div>
+          <div class="pb np"><table class="tbl" id="vulns-host-table">
+            <thead><tr><th style="width:30px"></th><th>Host / URL</th><th>Vulnerabilities</th><th style="width:60px;text-align:right">Total</th></tr></thead>
+            <tbody id="vulns-host-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ SCAN JOBS ═══ -->
     <div id="page-jobs" class="page">
-      <div class="ph"><div><div class="ph-title">Scan <span class="hl">Jobs</span></div><div class="ph-sub">// Launch and monitor vulnerability scans</div></div></div>
+      <div class="ph"><div><div class="ph-title">Scan <span class="hl">Tasks</span></div><div class="ph-sub">// Launch and monitor vulnerability scans</div></div></div>
       <div class="g2" style="margin-bottom:20px;align-items:start">
         <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Launch Scan</div></div>
           <div class="pb">
@@ -274,6 +377,59 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <div style="display:flex;align-items:center;gap:12px"><span style="font-family:var(--fm);font-size:.67rem;color:var(--text3)" id="job-count-label">0 jobs</span><button class="btn btn-ghost btn-sm" onclick="loadJobs()">↻</button></div></div>
         <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Target</th><th>Type</th><th>Profile</th><th>Status</th><th>Started</th><th style="text-align:right">Actions</th></tr></thead>
         <tbody id="jobs-tbody"><tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr></tbody></table></div></div>
+
+      <!-- Schedule Panel -->
+      <div class="g2" style="margin-top:18px;align-items:start">
+        <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar" style="background:var(--purple)"></div>Create Schedule</div></div>
+          <div class="pb"><div id="sched-alert" style="display:none"></div>
+            <div class="fg"><label class="fl">Schedule Name</label><input id="sched-name" class="fc" placeholder="Weekly production scan"/></div>
+            <div class="fg"><label class="fl">Target</label><input id="sched-target" class="fc" placeholder="10.0.0.1 or https://example.com"/></div>
+            <div class="form-row">
+              <div class="fg"><label class="fl">Profile</label><select id="sched-profile" class="fc"><option value="">Loading...</option></select></div>
+              <div class="fg"><label class="fl">Type</label><select id="sched-type" class="fc"><option value="internal">🏠 Internal</option><option value="external">🌐 External</option></select></div>
+            </div>
+            <!-- Schedule Mode Toggle -->
+            <div class="fg"><label class="fl">Schedule Mode</label>
+              <div class="scan-toggle" style="margin-bottom:10px">
+                <button class="scan-tab active" id="sched-mode-interval" onclick="setSchedMode('interval',this)">🔄 Recurring Interval</button>
+                <button class="scan-tab" id="sched-mode-custom" onclick="setSchedMode('custom',this)">📅 Custom Date/Time</button>
+              </div>
+            </div>
+            <!-- Interval Mode -->
+            <div id="sched-interval-section">
+              <div class="fg"><label class="fl">Scan Interval</label><select id="sched-interval" class="fc">
+                <option value="1">Every hour</option>
+                <option value="6">Every 6 hours</option>
+                <option value="12">Every 12 hours</option>
+                <option value="24" selected>Daily (24h)</option>
+                <option value="168">Weekly</option>
+                <option value="720">Monthly</option>
+              </select></div>
+            </div>
+            <!-- Custom DateTime Mode -->
+            <div id="sched-custom-section" style="display:none">
+              <div class="form-row">
+                <div class="fg"><label class="fl">📅 Date</label><input id="sched-date" class="fc" type="date" style="color-scheme:dark"/></div>
+                <div class="fg"><label class="fl">🕐 Time</label><input id="sched-time" class="fc" type="time" value="09:00" style="color-scheme:dark"/></div>
+              </div>
+              <div class="fg"><label class="fl">After first run</label><select id="sched-repeat" class="fc">
+                <option value="once">Run once only (then disable)</option>
+                <option value="repeat-1h">Then repeat every hour</option>
+                <option value="repeat-6h">Then repeat every 6 hours</option>
+                <option value="repeat-12h">Then repeat every 12 hours</option>
+                <option value="repeat-24h" selected>Then repeat daily</option>
+                <option value="repeat-168h">Then repeat weekly</option>
+                <option value="repeat-720h">Then repeat monthly</option>
+              </select>
+              <div style="font-family:var(--fm);font-size:.55rem;color:var(--text3);margin-top:4px">"Run once" will auto-disable the schedule after execution</div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="createSchedule()">🕐 Create Schedule</button>
+          </div></div>
+        <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar" style="background:var(--purple)"></div>Scheduled Scans</div><button class="btn btn-ghost btn-sm" onclick="loadSchedules()">↻</button></div>
+          <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Target</th><th>Profile</th><th>Schedule</th><th>Status</th><th>Next Run</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody id="schedules-tbody"><tr><td colspan="7"><div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div></td></tr></tbody></table></div></div>
+      </div>
     </div>
 
     <!-- ═══ PROFILES ═══ -->
@@ -283,7 +439,7 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Create Profile</div></div>
           <div class="pb"><div id="profile-alert" style="display:none"></div>
             <div class="fg"><label class="fl">Profile Name</label><input id="p-name" class="fc" value="default"/></div>
-            <div class="fg"><label class="fl">Plugin Selection (JSON)</label><textarea id="p-plugins" class="fc" rows="11">{"net.port.discovery.v2":true,"fingerprint.http":true,"fingerprint.banner.multi":true,"fingerprint.web.tech":true,"fingerprint.favicon.hash":true,"cpe.builder":true,"cve.match.nvd_cpe":true,"cve.match.cms":true,"priority.cisa_kev":true,"tls.basic.version":true,"auth.ssh.inventory":false,"cve.match.packages":false}</textarea></div>
+            <div class="fg"><label class="fl">Plugin Selection (JSON)</label><textarea id="p-plugins" class="fc" rows="11">{"net.port.discovery.v2":true,"net.port.discovery.nmap":true,"fingerprint.http":true,"fingerprint.banner.multi":true,"fingerprint.web.tech":true,"fingerprint.favicon.hash":true,"cpe.builder":true,"cve.match.nvd_cpe":true,"cve.match.cms":true,"priority.cisa_kev":true,"tls.basic.version":true,"owasp.web.scanner":true,"recon.directory.crawl":true,"vuln.file.inclusion":true,"local.security.checks":true,"auth.ssh.inventory":false,"cve.match.packages":true}</textarea></div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:15px">
               <div style="font-family:var(--fh);font-size:.8rem;font-weight:600;color:var(--bright);margin-bottom:12px;display:flex;align-items:center;gap:7px"><span style="color:var(--accent)">⚙</span> Scan Options</div>
               <div class="form-row">
@@ -291,16 +447,25 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
                   <div style="font-family:var(--fm);font-size:.58rem;color:var(--text3);margin-top:4px">Must match a credential in the Credentials page</div></div>
                 <div class="fg"><label class="fl">SSH Port</label><input id="p-ssh-port" class="fc" type="number" value="22"/></div>
               </div>
-              <div class="fg"><label class="fl">Asset Criticality (1-5)</label><input id="p-criticality" class="fc" type="number" value="2" min="1" max="5"/></div>
+              <div class="fg"><label class="fl">Asset Criticality</label><select id="p-criticality" class="fc">
+                <option value="1">1 — Low (Development/Test) — risk ×0.8</option>
+                <option value="2" selected>2 — Normal (Standard systems) — risk ×1.0</option>
+                <option value="3">3 — High (Business-critical) — risk ×1.1</option>
+                <option value="4">4 — Critical (Customer data / Revenue) — risk ×1.2</option>
+                <option value="5">5 — Maximum (Regulatory / Life-safety) — risk ×1.3</option>
+              </select>
+              <div style="font-family:var(--fm);font-size:.55rem;color:var(--text3);margin-top:4px">Multiplier applied to all vulnerability risk scores for this target</div></div>
               <div class="fg"><label class="fl">CVE Dataset Kinds</label>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px" id="p-ds-kinds">
-                  <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="osv" checked> osv</label>
                   <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="nvd_cpe_cve" checked> nvd_cpe_cve</label>
                   <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="cisa_kev" checked> cisa_kev</label>
+                  <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="cvedetails_cvss" checked> cvedetails_cvss</label>
+                  <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="epss" checked> epss</label>
                   <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="cms_cve_map"> cms_cve_map</label>
+                  <label style="display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:.72rem;color:var(--text2);cursor:pointer"><input type="checkbox" value="compliance_map" checked> compliance_map</label>
                 </div></div>
             </div>
-            <div class="fg"><label class="fl">Options (JSON) — auto-generated from above</label><textarea id="p-options" class="fc" rows="3" style="font-size:.72rem;color:var(--text3)">{"auth":{"ssh_credential_id":1,"ssh_port":22},"cve":{"dataset_kinds":["osv","nvd_cpe_cve","cisa_kev"]},"asset":{"criticality":2}}</textarea></div>
+            <div class="fg"><label class="fl">Options (JSON) — auto-generated from above</label><textarea id="p-options" class="fc" rows="3" style="font-size:.72rem;color:var(--text3)">{"auth":{"ssh_credential_id":1,"ssh_port":22},"cve":{"dataset_kinds":["nvd_cpe_cve","cisa_kev","cvedetails_cvss","epss","compliance_map"]},"asset":{"criticality":2}}</textarea></div>
             <button class="btn btn-primary btn-full" onclick="createProfile()">Create Profile</button></div></div>
         <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Saved Profiles</div><button class="btn btn-ghost btn-sm" onclick="loadProfiles()">↻</button></div>
           <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="profiles-tbody"><tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr></tbody></table></div></div>
@@ -331,7 +496,7 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Upload Dataset</div></div>
           <div class="pb"><div id="ds-alert" style="display:none"></div>
             <div class="fg"><label class="fl">Dataset Kind</label>
-              <select id="ds-kind" class="fc"><option value="osv">osv — OSV Package Vulnerabilities</option><option value="nvd_cpe_cve">nvd_cpe_cve — NVD CPE→CVE Mappings</option><option value="cisa_kev">cisa_kev — CISA Known Exploited</option><option value="favicon_hash_map">favicon_hash_map — Favicon Fingerprints</option><option value="cms_cve_map">cms_cve_map — CMS CVE Map</option><option value="compliance_map">compliance_map — Compliance Framework</option></select></div>
+              <select id="ds-kind" class="fc"><option value="nvd_cpe_cve">nvd_cpe_cve — NVD CPE→CVE Mappings</option><option value="cisa_kev">cisa_kev — CISA Known Exploited</option><option value="cvedetails_cvss">cvedetails_cvss — Multi-source CNA/ADP CVSS</option><option value="epss">epss — Exploit Prediction Scores</option><option value="cms_cve_map">cms_cve_map — CMS CVE Map</option><option value="compliance_map">compliance_map — Compliance Framework</option><option value="favicon_hash_map">favicon_hash_map — Favicon Fingerprints</option></select></div>
             <div class="fg"><label class="fl">Dataset Name</label><input id="ds-name" class="fc" value="nvd-feed-2024"/></div>
             <div class="fg"><label class="fl">JSON File</label><input type="file" id="ds-file" class="fc" accept=".json"/></div>
             <button class="btn btn-primary btn-full" id="ds-upload-btn" onclick="uploadDs()"><span id="ds-spin" class="spinner" style="display:none"></span>Upload Dataset</button></div></div>
@@ -342,29 +507,81 @@ select.fc{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 
     <!-- ═══ SETTINGS ═══ -->
     <div id="page-settings" class="page">
-      <div class="ph"><div><div class="ph-title">Platform <span class="hl">Settings</span></div><div class="ph-sub">// Scan allowlist, workspace config, and system info</div></div></div>
-      <div class="g2">
-        <div>
-          <div class="panel" style="margin:0 0 18px 0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Scan Allowlist</div></div>
-            <div class="pb"><div id="settings-alert" style="display:none"></div>
-              <p style="font-size:.86rem;color:var(--text2);margin-bottom:14px;line-height:1.6">Targets must match the allowlist to be scanned. Use CIDR ranges for IPs (e.g. <code style="color:var(--accent)">10.0.0.0/8</code>) and dot-prefix for domains (e.g. <code style="color:var(--accent)">.vulnweb.com</code>).</p>
-              <div class="fl">Current Entries</div>
-              <div id="allowlist-tags" class="tag-row" style="margin-bottom:14px">Loading...</div>
-              <div class="fg"><label class="fl">Add Entry</label>
-                <div style="display:flex;gap:8px"><input id="al-new" class="fc" placeholder=".vulnweb.com or 10.0.0.0/8" style="flex:1" onkeydown="if(event.key==='Enter')addAllowEntry()"/><button class="btn btn-primary btn-sm" onclick="addAllowEntry()">+ Add</button></div></div>
-              <div class="fg"><label class="fl">Raw Allowlist (editable)</label><textarea id="al-raw" class="fc" rows="3"></textarea></div>
-              <button class="btn btn-primary btn-full" onclick="saveAllowlist()">Save Allowlist</button>
-              <div class="alert a-info" style="margin-top:12px">ℹ Changes apply to this session. Edit <code>.env</code> to persist across Docker restarts.</div>
+      <div class="ph"><div><div class="ph-title">Platform <span class="hl">Settings</span></div><div class="ph-sub">// System configuration, users, and integrations</div></div></div>
+      <div id="settings-tabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)">
+        <button class="settings-tab active" onclick="setSettingsTab('general',this)">General</button>
+        <button class="settings-tab" onclick="setSettingsTab('users',this)">Users</button>
+        <button class="settings-tab" onclick="setSettingsTab('integrations',this)">Integrations</button>
+      </div>
+      <style>.settings-tab{padding:10px 20px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--fh);font-size:.85rem;font-weight:600;letter-spacing:.08em;transition:all .15s}.settings-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(0,212,255,.06)}.settings-tab:hover{color:var(--accent)}</style>
+      <!-- General Tab -->
+      <div id="stab-general">
+        <div class="g2">
+          <div>
+            <div class="panel" style="margin:0 0 18px 0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Scan Allowlist</div></div>
+              <div class="pb"><div id="settings-alert" style="display:none"></div>
+                <p style="font-size:.86rem;color:var(--text2);margin-bottom:14px;line-height:1.6">Targets must match the allowlist. Use CIDR (e.g. <code style="color:var(--accent)">10.0.0.0/8</code>) or dot-prefix (e.g. <code style="color:var(--accent)">.vulnweb.com</code>).</p>
+                <div class="fl">Current Entries</div>
+                <div id="allowlist-tags" class="tag-row" style="margin-bottom:14px">Loading...</div>
+                <div class="fg"><label class="fl">Add Entry</label>
+                  <div style="display:flex;gap:8px"><input id="al-new" class="fc" placeholder=".vulnweb.com or 10.0.0.0/8" style="flex:1" onkeydown="if(event.key==='Enter')addAllowEntry()"/><button class="btn btn-primary btn-sm" onclick="addAllowEntry()">+ Add</button></div></div>
+                <div class="fg"><label class="fl">Raw Allowlist (editable)</label><textarea id="al-raw" class="fc" rows="3"></textarea></div>
+                <button class="btn btn-primary btn-full" onclick="saveAllowlist()">Save Allowlist</button>
+                <div class="alert a-info" style="margin-top:12px">ℹ Changes apply to this session. Edit <code>.env</code> to persist across Docker restarts.</div>
+              </div></div>
+            <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Workspace Stats</div><button class="btn btn-ghost btn-sm" onclick="loadSettingsStats()">↻</button></div>
+              <div class="pb np"><table class="tbl"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody id="ws-stats-body"><tr><td colspan="2"><div class="empty-state" style="padding:20px">Loading...</div></td></tr></tbody></table></div></div>
+          </div>
+          <div>
+            <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Platform Info</div></div>
+              <div class="pb np"><table class="tbl"><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody id="platform-info-body"><tr><td colspan="2"><div class="empty-state" style="padding:20px">Loading...</div></td></tr></tbody></table></div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Users Tab -->
+      <div id="stab-users" style="display:none">
+        <div class="g2">
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Add User</div></div>
+            <div class="pb"><div id="user-alert" style="display:none"></div>
+              <div class="fg"><label class="fl">Email</label><input id="new-user-email" class="fc" placeholder="user@company.com"/></div>
+              <div class="fg"><label class="fl">Password</label><input id="new-user-pass" class="fc" type="password" placeholder="Strong password"/></div>
+              <div class="fg"><label class="fl">Role</label><select id="new-user-role" class="fc"><option value="admin">Admin — Full access</option><option value="analyst" selected>Analyst — Scan & view</option><option value="viewer">Viewer — Read only</option></select></div>
+              <button class="btn btn-primary btn-full" onclick="createUser()">+ Create User</button>
             </div></div>
-          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Workspace Stats</div><button class="btn btn-ghost btn-sm" onclick="loadSettingsStats()">↻</button></div>
-            <div class="pb np"><table class="tbl"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody id="ws-stats-body"><tr><td colspan="2"><div class="empty-state" style="padding:20px">Loading...</div></td></tr></tbody></table></div></div>
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>User Accounts</div><button class="btn btn-ghost btn-sm" onclick="loadSettings()">↻</button></div>
+            <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody id="users-tbody"><tr><td colspan="5"><div class="empty-state" style="padding:20px">Loading...</div></td></tr></tbody></table></div></div>
         </div>
-        <div>
-          <div class="panel" style="margin:0 0 18px 0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Platform Info</div></div>
-            <div class="pb np"><table class="tbl"><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody id="platform-info-body"><tr><td colspan="2"><div class="empty-state" style="padding:20px">Loading...</div></td></tr></tbody></table></div></div>
-          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>Users</div></div>
-            <div class="pb np"><table class="tbl"><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Created</th></tr></thead><tbody id="users-tbody"><tr><td colspan="4"><div class="empty-state" style="padding:20px">Loading...</div></td></tr></tbody></table></div></div>
+      </div>
+      <!-- Integrations Tab -->
+      <div id="stab-integrations" style="display:none">
+        <div id="integ-alert" style="display:none"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>💬 Slack Webhook</div></div>
+            <div class="pb">
+              <div class="fg"><label class="fl">Webhook URL</label><input id="integ-slack" class="fc" placeholder="https://hooks.slack.com/services/..."/></div>
+              <button class="btn btn-ghost btn-sm" onclick="testIntegration('slack')">Test Slack</button>
+            </div></div>
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>📧 Email (SMTP)</div></div>
+            <div class="pb">
+              <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+                <div class="fg"><label class="fl">SMTP Host</label><input id="integ-smtp-host" class="fc" placeholder="smtp.gmail.com"/></div>
+                <div class="fg"><label class="fl">Port</label><input id="integ-smtp-port" class="fc" value="587"/></div></div>
+              <div class="fg"><label class="fl">From</label><input id="integ-email-from" class="fc" placeholder="alerts@company.com"/></div>
+              <div class="fg"><label class="fl">Password</label><input id="integ-email-pass" class="fc" type="password" placeholder="App password"/></div>
+              <div class="fg"><label class="fl">Send To</label><input id="integ-email-to" class="fc" placeholder="team@company.com"/></div>
+              <button class="btn btn-ghost btn-sm" onclick="testIntegration('email')">Send Test Email</button>
+            </div></div>
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>🔗 Generic Webhook</div></div>
+            <div class="pb">
+              <div class="fg"><label class="fl">Webhook URL</label><input id="integ-webhook" class="fc" placeholder="https://your-service.com/webhook"/></div>
+              <button class="btn btn-ghost btn-sm" onclick="testIntegration('webhook')">Test Webhook</button>
+            </div></div>
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>⚙ API Access</div></div>
+            <div class="pb">
+              <div class="terminal" style="max-height:140px;font-size:.62rem"><span style="color:var(--text3)"># Authenticate</span><br>curl -X POST /auth/login -d '{"email":"...","password":"..."}'<br><br><span style="color:var(--text3)"># Launch scan</span><br>curl -X POST /scan/jobs -H "Authorization: Bearer $TOKEN"<br><br><span style="color:var(--text3)"># Get findings</span><br>curl /scan/jobs/1 -H "Authorization: Bearer $TOKEN"</div>
+            </div></div>
         </div>
+        <button class="btn btn-primary btn-lg" style="margin-top:16px" onclick="saveIntegrations()">💾 Save All Integrations</button>
       </div>
     </div>
 
@@ -389,60 +606,21 @@ async function apiReq(path,opts={},skipAuth=false){
 
 // ─── Auth ───
 async function doLogin(){const email=gi('l-email').value.trim(),pass=gi('l-pass').value,errEl=gi('login-err');errEl.style.display='none';const btn=gi('login-btn');btn.disabled=true;gi('login-spin').style.display='inline-block';try{const data=await apiReq('/auth/login',{method:'POST',body:JSON.stringify({email,password:pass})},true);S.token=data.token;S.userEmail=email;localStorage.setItem('vs_token',data.token);localStorage.setItem('vs_email',email);showApp()}catch(e){errEl.textContent='⚠ '+(e.message||'Login failed');errEl.style.display='flex'}finally{btn.disabled=false;gi('login-spin').style.display='none'}}
-function doLogout(){S.token=null;clearInterval(S.dashInterval);clearInterval(S.jobsInterval);localStorage.removeItem('vs_token');localStorage.removeItem('vs_email');gi('login-page').classList.add('show');gi('app-sidebar').style.display='none';gi('app-main').style.display='none'}
-function showApp(){gi('login-page').classList.remove('show');gi('app-sidebar').style.display='flex';gi('app-main').style.display='flex';gi('user-email').textContent=S.userEmail;gi('user-av').textContent=S.userEmail[0].toUpperCase();startClock();loadDashboard(false);loadJobs();loadProfiles();loadCreds();loadDs();S.dashInterval=setInterval(()=>loadDashboard(false),20000);S.jobsInterval=setInterval(loadJobs,5000)}
+function doLogout(){S.token=null;clearInterval(S.dashInterval);clearInterval(S.jobsInterval);stopProgressPolling();localStorage.removeItem('vs_token');localStorage.removeItem('vs_email');gi('login-page').classList.add('show');gi('app-sidebar').style.display='none';gi('app-main').style.display='none'}
+function showApp(){gi('login-page').classList.remove('show');gi('app-sidebar').style.display='flex';gi('app-main').style.display='flex';gi('user-email').textContent=S.userEmail;gi('user-av').textContent=S.userEmail[0].toUpperCase();startClock();loadDashboard(false);loadJobs();loadProfiles();loadCreds();loadDs();S.dashInterval=setInterval(()=>loadDashboard(false),30000);S.jobsInterval=setInterval(loadJobs,15000)}
 function startClock(){const el=gi('clock-el');const tick=()=>{el.textContent=new Date().toISOString().replace('T',' ').slice(0,19)+' UTC'};tick();setInterval(tick,1000)}
 
 // ─── Nav ───
-function navTo(page){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));const pe=gi('page-'+page);if(pe)pe.classList.add('active');const ne=gi('nav-'+page);if(ne)ne.classList.add('active');const labels={dashboard:'Dashboard',jobs:'Scan Jobs',profiles:'Profiles',credentials:'Credentials',datasets:'Datasets',settings:'Settings'};gi('bc-page').textContent=labels[page]||page;if(page==='settings')loadSettings()}
+function navTo(page){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));const pe=gi('page-'+page);if(pe)pe.classList.add('active');const ne=gi('nav-'+page);if(ne)ne.classList.add('active');const labels={dashboard:'Dashboard',jobs:'Tasks',vulns:'Vulnerabilities',profiles:'Profiles',credentials:'Credentials',datasets:'Datasets',settings:'Settings'};gi('bc-page').textContent=labels[page]||page;if(page==='settings')loadSettings();if(page==='vulns')renderVulnsPage();if(page==='dashboard')loadAttackGraph()}
 function showAlert(elId,type,msg,dur=6000){const el=gi(elId);if(!el)return;el.className='alert a-'+type;el.textContent=msg;el.style.display='flex';if(dur>0)setTimeout(()=>{if(el)el.style.display='none'},dur)}
 function severityBadge(sev){const m={critical:'b-crit',high:'b-high',medium:'b-med',low:'b-low',info:'b-info'};return`<span class="badge ${m[sev]||'b-info'}">${esc(sev)||'info'}</span>`}
 function renderStatusDot(status){const dc={running:'s-run',done:'s-done',failed:'s-fail',queued:'s-queue'}[status]||'s-queue';const lbl={running:'Running',done:'Done',failed:'Failed',queued:'Queued'}[status]||status;const col={running:'var(--accent)',done:'var(--green)',failed:'var(--red)',queued:'var(--text3)'}[status]||'var(--text3)';return`<div class="sdot-wrap"><div class="sdot ${dc}"></div><span class="s-lbl" style="color:${col}">${lbl}</span></div>`}
 
 // ─── Dashboard ───
-async function loadDashboard(sl){if(sl)gi('findings-list').innerHTML='<div class="empty-state"><div class="empty-icon">⬡</div>Loading...</div>';try{const jobs=await apiReq('/scan/jobs');const vis=jobs.filter(j=>!S.deletedJobIds.has(j.id));gi('stat-jobs').textContent=vis.length;let findings=[];for(const j of vis.filter(j=>j.status==='done').slice(0,20)){try{const d=await apiReq('/scan/jobs/'+j.id);(d.findings||[]).forEach(f=>findings.push({...f,_jobId:j.id,_jobTarget:j.target,_scanType:j.scan_type}))}catch{}}S.allFindings=findings;gi('stat-crit').textContent=findings.filter(f=>f.severity==='critical').length;gi('stat-high').textContent=findings.filter(f=>f.severity==='high').length;gi('stat-med').textContent=findings.filter(f=>f.severity==='medium').length;gi('stat-kev').textContent=findings.filter(f=>f.is_kev).length;renderFindings();gi('running-badge').style.display=vis.filter(j=>j.status==='running').length>0?'inline':'none';const pm={};S.profiles.forEach(p=>pm[p.id]=p.name);gi('dash-jobs-body').innerHTML=vis.slice(0,8).map(j=>`<tr><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright">${esc(j.target)}</td><td>${j.scan_type==='external'?'<span class="badge b-ok">🌐 External</span>':'<span class="badge b-info">🏠 Internal</span>'}</td><td>${renderStatusDot(j.status)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs</div></td></tr>'}catch(e){console.error('[Dashboard]',e)}}
+async function loadDashboard(sl){try{const jobs=await apiReq('/scan/jobs');const vis=jobs.filter(j=>!S.deletedJobIds.has(j.id));gi('stat-jobs').textContent=vis.length;let findings=[];for(const j of vis.filter(j=>j.status==='done').slice(0,20)){try{const d=await apiReq('/scan/jobs/'+j.id);(d.findings||[]).forEach(f=>findings.push({...f,_jobId:j.id,_jobTarget:j.target,_scanType:j.scan_type,_jobCreatedAt:j.created_at}))}catch{}}S.allFindings=findings;gi('stat-crit').textContent=findings.filter(f=>f.severity==='critical').length;gi('stat-high').textContent=findings.filter(f=>f.severity==='high').length;gi('stat-med').textContent=findings.filter(f=>f.severity==='medium').length;gi('stat-low').textContent=findings.filter(f=>f.severity==='low').length;gi('stat-info').textContent=findings.filter(f=>f.severity==='info').length;gi('stat-kev').textContent=findings.filter(f=>f.is_kev).length;renderHostSummary(findings);loadAttackGraph();gi('running-badge').style.display=vis.filter(j=>j.status==='running').length>0?'inline':'none';if(vis.filter(j=>j.status==='running').length>0)startProgressPolling();const pm={};S.profiles.forEach(p=>pm[p.id]=p.name);gi('dash-jobs-body').innerHTML=vis.slice(0,8).map(j=>`<tr><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright">${esc(j.target)}</td><td>${j.scan_type==='external'?'<span class="badge b-ok">🌐 External</span>':'<span class="badge b-info">🏠 Internal</span>'}</td><td>${renderStatusDot(j.status)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs</div></td></tr>'}catch(e){console.error('[Dashboard]',e)}}
 function setSevFilter(sev,el){S.sevFilter=sev;document.querySelectorAll('.sev-chip').forEach(c=>c.classList.remove('active'));if(el)el.classList.add('active');renderFindings()}
-function _fmtRem(t){
-if(!t)return'';var h=esc(t);
-h=h.replace(/\[([^\]]+)\]/g,function(m,l){
-var c={'REMEDIATION':'#34d399','FIX':'#34d399','AFFECTED VERSION':'#f59e0b',
-'AFFECTED COMPONENT':'#f59e0b','CVE REFERENCE':'#60a5fa','CVE DETAILS':'#60a5fa',
-'CISA KEV':'#ef4444','CRITICAL \u2014 ACTIVELY EXPLOITED':'#ef4444',
-'CISA MANDATE':'#ef4444','IMMEDIATE ACTIONS':'#f97316','RANSOMWARE ALERT':'#ef4444',
-'SLA POLICY':'#94a3b8','URGENCY':'#f97316','GENERAL':'#94a3b8',
-'REFERENCES':'#60a5fa','AFFECTED CMS':'#f59e0b','AFFECTED':'#f59e0b',
-'COMPLIANCE':'#94a3b8','NGINX':'#06b6d4','APACHE':'#06b6d4','IIS':'#06b6d4'}[l]||'#94a3b8';
-return'<div style="margin-top:10px;margin-bottom:4px;font-family:var(--fm);font-size:.6rem;color:'+c+';letter-spacing:.14em;font-weight:600">\u25b8 '+l+'</div>';});
-return h;}
-function renderFindings(){
-var filtered=S.sevFilter==='all'?S.allFindings:S.allFindings.filter(function(f){return f.severity===S.sevFilter});
-gi('finding-count-label').textContent=filtered.length+' findings';
-if(!filtered.length){gi('findings-list').innerHTML='<div class="empty-state"><div class="empty-icon">◎</div>'+(S.allFindings.length===0?'Run a scan to see findings':'No findings match this filter')+'</div>';return}
-var html='';
-for(var i=0;i<filtered.length;i++){var f=filtered[i];
-var rc=f.risk_score>=9?'#f87171':f.risk_score>=7?'#fb923c':f.risk_score>=4?'#fbbf24':'#34d399';
-var rp=f.risk_score?Math.min(100,f.risk_score*10):0;
-html+='<div class="fcard" id="fc-'+i+'">';
-html+='<div class="fcard-hdr" onclick="toggleFinding('+i+')">';
-html+=severityBadge(f.severity);
-if(f.is_kev)html+=' <span class="kev-tag">KEV</span>';
-html+='<div class="fcard-title">'+esc(f.title)+'</div>';
-html+='<div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">'+esc(f.plugin_id||'')+'</div>';
-html+='<div class="risk-wrap" style="width:108px;flex-shrink:0"><div class="risk-track"><div class="risk-fill" style="width:'+rp+'%;background:'+rc+'"></div></div><div class="risk-num" style="color:'+rc+'">'+(f.risk_score!=null?Number(f.risk_score).toFixed(1):'\u2014')+'</div></div>';
-html+='<span class="fcard-arrow">\u25be</span></div>';
-html+='<div class="fcard-body">';
-html+='<div class="fmeta"><div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:'+rc+'">'+(f.risk_score!=null?Number(f.risk_score).toFixed(2):'\u2014')+'</div></div>';
-html+='<div class="mi"><div class="mk">CVSS Base</div><div class="mv">'+(f.cvss_base!=null?f.cvss_base:'\u2014')+'</div></div>';
-html+='<div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#'+(f._jobId||'')+' \u2014 '+esc(f._jobTarget||'')+'</div></div></div>';
-if(f.evidence){html+='<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">'+esc(f.evidence)+'</div>';}
-if(f.description){html+='<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">'+esc(f.description)+'</div>';}
-if(f.remediation&&f.remediation.length>2){html+='<div style="margin:16px 0 12px;padding:16px 18px;background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:6px"><div style="font-family:var(--fm);font-size:.62rem;color:#34d399;letter-spacing:.2em;margin-bottom:12px;font-weight:700">\u2695 REMEDIATION</div><div style="font-size:.84rem;color:var(--text);line-height:1.8;white-space:pre-wrap">'+_fmtRem(f.remediation)+'</div></div>';}
-html+='<div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
-if(f.sla_days){html+='<span style="font-family:var(--fm);font-size:.58rem;color:#94a3b8;border:1px solid rgba(148,163,184,0.3);padding:2px 8px;border-radius:3px">SLA: '+f.sla_days+' days</span>';}
-if(f.fingerprint){html+='<button class="btn btn-ghost btn-sm" onclick="suppressFinding(\x27'+esc(f.fingerprint)+'\x27,event)">\u2297 Suppress</button>';}
-html+='</div></div></div>';}
-gi('findings-list').innerHTML=html;
-}
+function renderFindings(){const f=S.sevFilter==='all'?S.allFindings:S.allFindings.filter(f=>f.severity===S.sevFilter);gi('finding-count-label').textContent=f.length+' findings';if(!f.length){gi('findings-list').innerHTML='<div class="empty-state"><div class="empty-icon">◎</div>'+(S.allFindings.length===0?'Run a scan to see findings':'No findings match this filter')+'</div>';return}gi('findings-list').innerHTML=f.map((f,i)=>{const rc=f.risk_score>=9?'#f87171':f.risk_score>=7?'#fb923c':f.risk_score>=4?'#fbbf24':'#34d399';const rp=f.risk_score?Math.min(100,f.risk_score*10):0;return`<div class="fcard" id="fc-${i}"><div class="fcard-hdr" onclick="toggleFinding(${i})">${severityBadge(f.severity)} ${f.is_kev?'<span class="kev-tag">KEV</span>':''}<div class="fcard-title">${esc(f.title)}</div><div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id||'')}</div><div class="risk-wrap" style="width:108px;flex-shrink:0"><div class="risk-track"><div class="risk-fill" style="width:${rp}%;background:${rc}"></div></div><div class="risk-num" style="color:${rc}">${f.risk_score!=null?Number(f.risk_score).toFixed(1):'—'}</div></div><span class="fcard-arrow">▾</span></div><div class="fcard-body"><div class="fmeta"><div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${rc}">${f.risk_score!=null?Number(f.risk_score).toFixed(2):'—'}</div></div><div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base??'—'}</div></div><div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget||'')}</div></div></div>${f.evidence?`<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">${esc(f.evidence)}</div>`:''} ${f.description?`<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>`:''}<div style="margin-top:14px;display:flex;gap:8px">${f.remediation?`<div style="margin:12px 0;padding:14px 16px;background:rgba(52,211,153,0.04);border:1px solid rgba(52,211,153,0.15);border-radius:4px"><div style="font-family:var(--fm);font-size:.62rem;color:#34d399;letter-spacing:.18em;margin-bottom:10px;font-weight:700">⚕ REMEDIATION</div><div style="font-size:.84rem;color:var(--text);line-height:1.7;white-space:pre-wrap">${formatRemediation(f.remediation)}</div></div>`:''}
+${f.fingerprint?`<button class="btn btn-ghost btn-sm" onclick="suppressFinding('${esc(f.fingerprint)}',event)">⊗ Suppress</button>`:''}</div></div></div>`}).join('')}
 function toggleFinding(i){gi('fc-'+i).classList.toggle('open')}
 async function suppressFinding(fp,e){e.stopPropagation();const reason=prompt('Suppression reason:');if(reason===null)return;try{await apiReq('/scan/suppress',{method:'POST',body:JSON.stringify({fingerprint:fp,reason})});await loadDashboard(false)}catch(e){alert('Error: '+e.message)}}
 
@@ -452,23 +630,23 @@ function setTarget(v){gi('job-target').value=v;clearTargetErr()}
 function clearTargetErr(){gi('job-target').classList.remove('err');gi('target-err').style.display='none'}
 
 // ─── Submit Job ───
-async function submitJob(){const target=gi('job-target').value.trim();if(!target){gi('job-target').classList.add('err');gi('target-err').textContent='Target is required';gi('target-err').style.display='block';return}clearTargetErr();const profileId=gi('job-profile').value;if(!profileId){gi('profile-err').textContent='Select a scan profile';gi('profile-err').style.display='block';return}gi('profile-err').style.display='none';const btn=gi('launch-btn');btn.disabled=true;gi('launch-spin').style.display='inline-block';gi('job-alert').style.display='none';try{const r=await apiReq('/scan/jobs',{method:'POST',body:JSON.stringify({target,profile_id:Number(profileId),scan_type:S.scanType})});showAlert('job-alert','success',`✓ Job #${r.id} launched — ${target} [${S.scanType}]`);await loadJobs();setTimeout(()=>loadDashboard(false),3000)}catch(e){showAlert('job-alert','danger','⚠ '+e.message)}finally{btn.disabled=false;gi('launch-spin').style.display='none'}}
+async function submitJob(){const target=gi('job-target').value.trim();if(!target){gi('job-target').classList.add('err');gi('target-err').textContent='Target is required';gi('target-err').style.display='block';return}clearTargetErr();const profileId=gi('job-profile').value;if(!profileId){gi('profile-err').textContent='Select a scan profile';gi('profile-err').style.display='block';return}gi('profile-err').style.display='none';const btn=gi('launch-btn');btn.disabled=true;gi('launch-spin').style.display='inline-block';gi('job-alert').style.display='none';try{const r=await apiReq('/scan/jobs',{method:'POST',body:JSON.stringify({target,profile_id:Number(profileId),scan_type:S.scanType})});showAlert('job-alert','success',`✓ Job #${r.id} launched — ${target} [${S.scanType}]`);await loadJobs();startProgressPolling();setTimeout(()=>loadDashboard(false),3000)}catch(e){showAlert('job-alert','danger','⚠ '+e.message)}finally{btn.disabled=false;gi('launch-spin').style.display='none'}}
 
 // ─── Jobs ───
-async function loadJobs(){try{const jobs=await apiReq('/scan/jobs');const vis=jobs.filter(j=>!S.deletedJobIds.has(j.id));const pm={};S.profiles.forEach(p=>pm[p.id]=p.name);gi('job-count-label').textContent=vis.length+' job'+(vis.length!==1?'s':'');gi('jobs-tbody').innerHTML=vis.length?vis.map(j=>{const errInfo=j.error_info;return`<tr id="job-row-${j.id}"><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.target)}">${esc(j.target)}</td><td>${j.scan_type==='external'?'<span class="badge b-ok">🌐 External</span>':'<span class="badge b-info">🏠 Internal</span>'}</td><td class="mc dim">${esc(pm[j.profile_id]||('#'+j.profile_id))}</td><td>${renderStatusDot(j.status)}${j.status==='failed'&&errInfo?` <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.65rem" onclick="alert('${esc((errInfo.error_detail||errInfo.error||'').replace(/'/g,"\\'").replace(/\n/g,' '))}')">Why?</button>`:''}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td><td style="text-align:right"><div style="display:flex;gap:6px;justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id})">▸ Results</button><button class="btn btn-danger btn-sm" onclick="deleteJob(${j.id},'${esc(j.target)}')" title="Delete">🗑</button></div></td></tr>`}).join(''):'<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚡</div>No scan jobs yet</div></td></tr>'}catch(e){console.error('[loadJobs]',e)}}
-function viewJobResults(jid){navTo('dashboard');setTimeout(()=>gi('findings-list')?.scrollIntoView({behavior:'smooth'}),250)}
-async function deleteJob(jid,tgt){if(!confirm(`Delete job #${jid} (${tgt}) and all findings?`))return;S.deletedJobIds.add(jid);const row=gi('job-row-'+jid);if(row){row.style.opacity='0';row.style.transition='opacity .2s';setTimeout(()=>row.remove(),220)}try{await apiReq('/scan/jobs/'+jid,{method:'DELETE'});showAlert('job-alert','success',`✓ Job #${jid} deleted`);loadDashboard(false)}catch(e){if(e.status===404){showAlert('job-alert','info',`Job #${jid} already removed`)}else{S.deletedJobIds.delete(jid);await loadJobs();showAlert('job-alert','danger','⚠ '+e.message)}}}
+async function loadJobs(){try{const jobs=await apiReq('/scan/jobs');const vis=jobs.filter(j=>!S.deletedJobIds.has(j.id));const pm={};S.profiles.forEach(p=>pm[p.id]=p.name);gi('job-count-label').textContent=vis.length+' job'+(vis.length!==1?'s':'');gi('jobs-tbody').innerHTML=vis.length?vis.map(j=>{const errInfo=j.error_info;const isDone=j.status==='done';const isFailed=j.status==='failed';return`<tr id="job-row-${j.id}"><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.target)}">${esc(j.target)}</td><td>${j.scan_type==='external'?'<span class="badge b-ok">\u{1F310} External</span>':'<span class="badge b-info">\u{1F3E0} Internal</span>'}</td><td class="mc dim">${esc(pm[j.profile_id]||('#'+j.profile_id))}</td><td>${renderStatusDot(j.status)}${isFailed&&errInfo?' <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.65rem" onclick="alert(\'Error: see logs\')">Why?</button>':''}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td><td style="text-align:right"><div style="display:flex;gap:3px;justify-content:flex-end">${isDone?'<button class="btn btn-ghost btn-sm" onclick="rescanJob('+j.id+')" title="Rescan">\u{1F504}</button><button class="btn btn-ghost btn-sm" onclick="showHistory(\''+esc(j.target)+'\')" title="History">\u{1F4CA}</button>':''}<button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id})">\u25B8</button><button class="btn btn-danger btn-sm" onclick="deleteJob(${j.id},'${esc(j.target)}')" title="Delete">\u{1F5D1}</button></div></td></tr>`}).join(''):'<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">\u26A1</div>No scan jobs yet</div></td></tr>';await loadSchedules()}catch(e){console.error('[loadJobs]',e)}}
+function viewJobResults(jid){navTo('dashboard');setTimeout(()=>gi('host-summary')?.scrollIntoView({behavior:'smooth'}),250)}
+async function deleteJob(jid,tgt){if(!confirm(`Delete job #${jid} (${tgt}) and all findings?`))return;S.deletedJobIds.add(jid);const row=gi('job-row-'+jid);if(row){row.style.opacity='0';row.style.transition='opacity .2s';setTimeout(()=>row.remove(),220)}try{await apiReq('/scan/jobs/'+jid,{method:'DELETE'});showAlert('job-alert','success',`✓ Job #${jid} deleted`);loadDashboard(false);loadAttackGraph()}catch(e){if(e.status===404){showAlert('job-alert','info',`Job #${jid} already removed`)}else{S.deletedJobIds.delete(jid);await loadJobs();showAlert('job-alert','danger','⚠ '+e.message)}}}
 
 // ─── Profiles ───
-async function loadProfiles(){try{S.profiles=await apiReq('/scan/profiles');const sel=gi('job-profile');sel.innerHTML=S.profiles.length?S.profiles.map(p=>`<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join(''):'<option value="">No profiles — create one first</option>';gi('profiles-tbody').innerHTML=S.profiles.length?S.profiles.map(p=>`<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑 Delete</button></td></tr>`).join(''):'<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>'}catch(e){console.error('[loadProfiles]',e)}}
+async function loadProfiles(){try{S.profiles=await apiReq('/scan/profiles');const sel=gi('job-profile');sel.innerHTML=S.profiles.length?S.profiles.map(p=>`<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join(''):'<option value="">No profiles — create one first</option>';const schedSel=gi('sched-profile');if(schedSel)schedSel.innerHTML=sel.innerHTML;gi('profiles-tbody').innerHTML=S.profiles.length?S.profiles.map(p=>`<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑 Delete</button></td></tr>`).join(''):'<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>'}catch(e){console.error('[loadProfiles]',e)}}
 async function createProfile(){const name=gi('p-name').value.trim(),plugins=gi('p-plugins').value.trim(),options=gi('p-options').value.trim();if(!name)return showAlert('profile-alert','danger','Profile name required');try{JSON.parse(plugins)}catch{return showAlert('profile-alert','danger','Plugin JSON invalid')}try{JSON.parse(options)}catch{return showAlert('profile-alert','danger','Options JSON invalid')}try{await apiReq('/scan/profiles',{method:'POST',body:JSON.stringify({name,plugin_selection_json:plugins,options_json:options})});showAlert('profile-alert','success','✓ Profile "'+name+'" created');await loadProfiles()}catch(e){showAlert('profile-alert','danger','⚠ '+e.message)}}
 async function deleteProfile(pid,name){if(!confirm(`Delete profile "${name}" (#${pid})?`))return;try{await apiReq('/scan/profiles/'+pid,{method:'DELETE'});showAlert('profile-alert','success',`✓ Profile #${pid} deleted`);await loadProfiles()}catch(e){showAlert('profile-alert','danger','⚠ '+e.message)}}
 
 // ─── Credentials ───
 async function loadCreds(){try{const creds=await apiReq('/credentials');S.creds=creds;gi('creds-tbody').innerHTML=creds.length?creds.map(c=>`<tr><td class="mc" style="color:var(--accent)">#${c.id}</td><td class="bright">${esc(c.name)}</td><td class="mc">${esc(c.username)}</td><td><span class="badge b-info">${esc(c.secret_type)}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteCred(${c.id},'${esc(c.name)}')">🗑 Delete</button></td></tr>`).join(''):'<tr><td colspan="5"><div class="empty-state" style="padding:28px">No credentials</div></td></tr>';populateCredDropdown(creds)}catch{}}
-function populateCredDropdown(creds){const sel=gi('p-cred');if(!sel)return;sel.innerHTML=(creds&&creds.length)?creds.map(c=>`<option value="${c.id}">#${c.id} — ${esc(c.name)} (${esc(c.username)})</option>`).join(''):'<option value="">No credentials — add one first</option>';syncProfileOptions()}
+function populateCredDropdown(creds,selectId){const sel=gi('p-cred');if(!sel)return;sel.innerHTML=(creds&&creds.length)?creds.map(c=>`<option value="${c.id}"${selectId&&c.id===selectId?' selected':''}>#${c.id} — ${esc(c.name)} (${esc(c.username)})</option>`).join(''):'<option value="">No credentials — add one first</option>';if(selectId)sel.value=String(selectId);if(creds&&creds.length&&selectId){const pe=gi('p-plugins');if(pe){try{const pj=JSON.parse(pe.value);if(!pj['auth.ssh.inventory']){pj['auth.ssh.inventory']=true;pe.value=JSON.stringify(pj);showAlert('profile-alert','info','ℹ SSH Inventory auto-enabled — credential #'+selectId+' selected')}}catch{}}}syncProfileOptions()}
 function syncProfileOptions(){const credId=parseInt(gi('p-cred')?.value)||0;const sshPort=parseInt(gi('p-ssh-port')?.value)||22;const crit=parseInt(gi('p-criticality')?.value)||2;const kinds=[];gi('p-ds-kinds')?.querySelectorAll('input:checked').forEach(cb=>kinds.push(cb.value));const opts={auth:{ssh_credential_id:credId,ssh_port:sshPort},cve:{dataset_kinds:kinds},asset:{criticality:crit}};gi('p-options').value=JSON.stringify(opts)}
-async function createCred(){try{await apiReq('/credentials',{method:'POST',body:JSON.stringify({name:gi('cr-name').value,kind:'ssh',username:gi('cr-user').value,secret_type:gi('cr-type').value,secret:gi('cr-secret').value,passphrase:gi('cr-pass').value||null})});showAlert('cred-alert','success','✓ Credential stored');gi('cr-secret').value='';gi('cr-pass').value='';await loadCreds();populateCredDropdown(S.creds)}catch(e){showAlert('cred-alert','danger','⚠ '+e.message)}}
+async function createCred(){try{const r=await apiReq('/credentials',{method:'POST',body:JSON.stringify({name:gi('cr-name').value,kind:'ssh',username:gi('cr-user').value,secret_type:gi('cr-type').value,secret:gi('cr-secret').value,passphrase:gi('cr-pass').value||null})});showAlert('cred-alert','success','✓ Credential #'+r.id+' stored — auto-selected in profile SSH dropdown');gi('cr-secret').value='';gi('cr-pass').value='';await loadCreds();populateCredDropdown(S.creds,r.id)}catch(e){showAlert('cred-alert','danger','⚠ '+e.message)}}
 async function deleteCred(cid,name){if(!confirm(`Delete credential "${name}" (#${cid})?`))return;try{await apiReq('/credentials/'+cid,{method:'DELETE'});showAlert('cred-alert','success',`✓ Credential #${cid} deleted`);await loadCreds()}catch(e){showAlert('cred-alert','danger','⚠ '+e.message)}}
 
 // ─── Datasets ───
@@ -477,22 +655,894 @@ async function uploadDs(){const file=gi('ds-file').files[0];if(!file)return show
 async function toggleDs(did){try{const r=await apiReq('/datasets/'+did+'/toggle',{method:'PATCH'});showAlert('ds-alert','success',`✓ Dataset #${did} ${r.enabled?'enabled':'disabled'}`);await loadDs()}catch(e){showAlert('ds-alert','danger','⚠ '+e.message)}}
 async function deleteDs(did,name){if(!confirm(`Delete dataset "${name}" (#${did})?`))return;try{await apiReq('/datasets/'+did,{method:'DELETE'});showAlert('ds-alert','success',`✓ Dataset #${did} deleted`);await loadDs()}catch(e){showAlert('ds-alert','danger','⚠ '+e.message)}}
 
+// ─── Severity Distribution ───
+function renderSevDist(findings){const bar=gi('sev-dist-bar');if(!findings.length){bar.style.display='none';return}bar.style.display='block';const c=findings.filter(f=>f.severity==='critical').length,h=findings.filter(f=>f.severity==='high').length,m=findings.filter(f=>f.severity==='medium').length,l=findings.filter(f=>f.severity==='low').length;const t=c+h+m+l;if(!t){bar.style.display='none';return}gi('sev-dist-total').textContent=t+' findings';const segs=[[c,'var(--red)','critical'],[h,'var(--orange)','high'],[m,'var(--yellow)','medium'],[l,'var(--green)','low']];gi('sev-dist-bars').innerHTML=segs.filter(s=>s[0]>0).map(s=>`<div style="width:${s[0]/t*100}%;background:${s[1]};transition:width .3s"></div>`).join('');gi('sev-dist-legend').innerHTML=segs.map(s=>`<div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;background:${s[1]};border-radius:1px"></div><span class="mc dim" style="font-size:.6rem;text-transform:uppercase">${s[2]} ${s[0]}</span></div>`).join('')}
+
+// ─── Host Summary ───
+S._hostFilter={};S._hostData={};S._hostKeys=[];
+function renderHostSummary(findings){const el=gi('vulns-host-summary');if(!el)return;if(!findings.length){el.style.display='none';return}el.style.display='block';
+  // Group by host, then sub-group by jobId
+  const hosts={};findings.forEach(f=>{const h=f._jobTarget||f.target||'unknown';if(!hosts[h])hosts[h]={jobs:{},scanType:f._scanType||'internal'};const jid=f._jobId||0;if(!hosts[h].jobs[jid])hosts[h].jobs[jid]={critical:0,high:0,medium:0,low:0,info:0,total:0,findings:[],jobId:jid,createdAt:f._jobCreatedAt||''};const sev=f.severity||'info';if(hosts[h].jobs[jid][sev]!==undefined)hosts[h].jobs[jid][sev]++;hosts[h].jobs[jid].total++;hosts[h].jobs[jid].findings.push(f)});
+  // Build flat list: each host+job combo is one row
+  const rows=[];
+  Object.entries(hosts).forEach(([host,hd])=>{
+    const jobEntries=Object.values(hd.jobs).sort((a,b)=>(b.jobId||0)-(a.jobId||0));
+    jobEntries.forEach((jd,ji)=>{
+      rows.push({host,scanType:hd.scanType,isFirst:ji===0,jobCount:jobEntries.length,...jd});
+    });
+  });
+  S._hostData={};S._hostKeys=[];
+  rows.forEach((r,i)=>{const key=r.host+'::'+r.jobId;S._hostData[key]=r;S._hostKeys.push(key)});
+  gi('vulns-host-count-label').textContent=Object.keys(hosts).length+' host'+(Object.keys(hosts).length!==1?'s':'')+' · '+rows.length+' scan'+(rows.length!==1?'s':'');
+  let html='';rows.forEach((d,idx)=>{
+    const maxSev=d.critical>0?'critical':d.high>0?'high':d.medium>0?'medium':d.low>0?'low':'info';
+    const icon=d.scanType==='external'?'🌐':'🏠';
+    const segs=[[d.critical,'s-c'],[d.high,'s-h'],[d.medium,'s-m'],[d.low,'s-l'],[d.info,'s-i']].filter(s=>s[0]>0);
+    const totalNonZero=segs.reduce((a,s)=>a+s[0],0);
+    const barHtml=segs.map(s=>`<div class="host-seg ${s[1]}" style="width:${Math.max(s[0]/totalNonZero*100,8)}%">${s[0]}</div>`).join('');
+    const jobLabel=d.jobId?`<span style="font-family:var(--fm);font-size:.6rem;color:var(--accent);margin-left:6px">#${d.jobId}</span>`:'';
+    const dateLabel=d.createdAt?`<span style="font-family:var(--fm);font-size:.58rem;color:var(--text3);margin-left:6px">${fmtDate(d.createdAt)}</span>`:'';
+    html+=`<tr class="host-row" onclick="toggleHostExpand(${idx})">
+      <td style="text-align:center"><input type="checkbox" class="host-check" onclick="event.stopPropagation()"/></td>
+      <td><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span>${icon}</span><span class="bright" style="font-size:.82rem">${esc(d.host)}</span>${jobLabel}${dateLabel}</div></td>
+      <td><div class="host-bar">${barHtml}</div></td>
+      <td style="text-align:right"><span class="mc" style="font-size:.85rem;font-weight:700;color:var(--${maxSev==='info'?'accent':maxSev})">${d.total}</span></td>
+    </tr>`;
+    html+=`<tr class="host-expand" id="hexp-${idx}"><td colspan="4" style="padding:0;background:var(--surface2)">
+      <div style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+          <span style="font-family:var(--fm);font-size:.65rem;color:var(--text3)">Filter:</span>
+          <div class="hf-chip active" onclick="hostSevFilter(${idx},'all',this)">All (${d.total})</div>
+          ${d.critical?`<div class="hf-chip" onclick="hostSevFilter(${idx},'critical',this)" style="border-color:rgba(248,113,113,.3);color:#f87171">Critical (${d.critical})</div>`:''}
+          ${d.high?`<div class="hf-chip" onclick="hostSevFilter(${idx},'high',this)" style="border-color:rgba(251,146,60,.3);color:#fb923c">High (${d.high})</div>`:''}
+          ${d.medium?`<div class="hf-chip" onclick="hostSevFilter(${idx},'medium',this)" style="border-color:rgba(251,191,36,.3);color:#fbbf24">Medium (${d.medium})</div>`:''}
+          ${d.low?`<div class="hf-chip" onclick="hostSevFilter(${idx},'low',this)" style="border-color:rgba(52,211,153,.3);color:#34d399">Low (${d.low})</div>`:''}
+          ${d.info?`<div class="hf-chip" onclick="hostSevFilter(${idx},'info',this)" style="border-color:rgba(0,212,255,.3);color:var(--accent)">Info (${d.info})</div>`:''}
+          <span style="flex:1"></span>
+          <button class="btn btn-ghost btn-sm" style="font-size:.6rem;padding:3px 8px" onclick="event.stopPropagation();exportHostFindings(${idx},'csv')">📄 CSV</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:.6rem;padding:3px 8px" onclick="event.stopPropagation();exportHostFindings(${idx},'html')">📊 HTML</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:.6rem;padding:3px 8px" onclick="event.stopPropagation();exportHostFindings(${idx},'pdf')">📋 PDF</button>
+        </div>
+        <div id="host-findings-${idx}">${renderHostFindings(d.findings,'all')}</div>
+      </div>
+    </td></tr>`;
+  });
+  gi('vulns-host-tbody').innerHTML=html}
+function renderHostFindings(findings,filter){
+  const fs=filter==='all'?findings:findings.filter(f=>f.severity===filter);
+  const sorted=fs.sort((a,b)=>{const o={critical:0,high:1,medium:2,low:3,info:4};return(o[a.severity]||4)-(o[b.severity]||4)});
+  if(!sorted.length)return'<div class="empty-state" style="padding:16px">No findings match</div>';
+  return sorted.map((f,i)=>{
+    const rc=f.risk_score>=9?'#f87171':f.risk_score>=7?'#fb923c':f.risk_score>=4?'#fbbf24':'#34d399';
+    const fid='hf-'+f.id+'-'+i+'-'+Date.now();
+    return`<div class="hf-finding">
+      <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="var d=this.nextElementSibling;d.style.display=d.style.display==='none'?'block':'none'">
+        ${severityBadge(f.severity)}${f.is_kev?'<span class="kev-tag">KEV</span>':''}
+        <span class="bright" style="flex:1;font-size:.84rem">${esc(f.title)}</span>
+        <span class="mc dim" style="font-size:.65rem;flex-shrink:0">${esc(f.plugin_id||'')}</span>
+        <span class="mc" style="color:${rc};font-size:.78rem;width:40px;text-align:right;flex-shrink:0">${f.risk_score!=null?Number(f.risk_score).toFixed(1):'—'}</span>
+        <span style="color:var(--text3);font-size:.7rem;flex-shrink:0">▾</span>
+      </div>
+      <div style="display:none;margin-top:12px">
+        <div class="hf-detail-grid">
+          <div class="hf-detail-box"><div class="hf-detail-label">Risk Score</div><div style="font-family:var(--fh);font-size:1.3rem;font-weight:800;color:${rc}">${f.risk_score!=null?Number(f.risk_score).toFixed(2):'—'}</div></div>
+          <div class="hf-detail-box"><div class="hf-detail-label">CVSS Base</div><div style="font-family:var(--fh);font-size:1.3rem;font-weight:800;color:var(--text)">${f.cvss_base!=null?Number(f.cvss_base).toFixed(1):'—'}</div></div>
+          <div class="hf-detail-box"><div class="hf-detail-label">Confidence</div><div style="font-family:var(--fh);font-size:1.3rem;font-weight:800;color:var(--text)">${f.confidence!=null?Number(f.confidence).toFixed(2):'—'}</div></div>
+        </div>
+        ${f.evidence?`<div class="hf-section"><div class="hf-section-title" style="color:var(--accent)">◆ EVIDENCE</div><div class="terminal" style="max-height:60px;margin:0">${esc(f.evidence)}</div></div>`:''}
+        ${f.description?`<div class="hf-section"><div class="hf-section-title" style="color:var(--text3)">◆ DESCRIPTION</div><div style="font-size:.84rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div></div>`:''}
+        ${f.remediation?`<div class="hf-remed"><div class="hf-section-title" style="color:#34d399">⚕ REMEDIATION</div><div style="font-size:.82rem;color:var(--text);line-height:1.7;white-space:pre-wrap">${typeof formatRemediation==='function'?formatRemediation(f.remediation):esc(f.remediation)}</div></div>`:''}
+        ${f.compliance_json&&f.compliance_json!=='null'&&f.compliance_json!=='[]'?`<div class="hf-section"><div class="hf-section-title" style="color:#94a3b8">◆ COMPLIANCE</div><div style="font-size:.78rem;color:var(--text2);line-height:1.6">${esc(f.compliance_json)}</div></div>`:''}
+        ${f.sla_days!=null?`<div class="hf-section"><div class="hf-section-title" style="color:#fbbf24">◆ SLA POLICY</div><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Remediation deadline: <strong style="color:var(--text)">${f.sla_days} days</strong> from discovery. Severity: <strong style="color:var(--${f.severity==='info'?'accent':f.severity})">${(f.severity||'info').toUpperCase()}</strong></div></div>`:''}
+        ${f.references_json&&f.references_json!=='[]'?`<div class="hf-section"><div class="hf-section-title" style="color:#60a5fa">◆ REFERENCES</div><div style="font-size:.78rem;color:var(--accent);line-height:1.8;word-break:break-all">${(()=>{try{const r=JSON.parse(f.references_json);return Array.isArray(r)?r.map(x=>'<div>→ '+esc(x)+'</div>').join(''):esc(f.references_json)}catch{return esc(f.references_json)}})()}</div></div>`:''}
+        <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();suppressFinding('${esc(f.fingerprint)}',event)">⊘ Suppress</button></div>
+      </div>
+    </div>`}).join('')}
+function toggleHostExpand(idx){const el=gi('hexp-'+idx);if(el)el.classList.toggle('open')}
+function hostSevFilter(idx,sev,btn){const row=btn.parentElement;row.querySelectorAll('.hf-chip').forEach(c=>c.classList.remove('active'));btn.classList.add('active');const host=S._hostKeys[idx];const d=S._hostData[host];if(!d)return;gi('host-findings-'+idx).innerHTML=renderHostFindings(d.findings,sev)}
+
+// ─── Vulnerabilities Page ───
+function renderVulnsPage(){renderHostSummary(S.allFindings||[])}
+
+// ─── Attack Graph (D3 force-directed) ───
+async function loadAttackGraph(){
+  const svg=gi('attack-graph-svg');if(!svg)return;
+  const empty=gi('attack-graph-empty');
+  try{
+    const data=await apiReq('/graph/attack-map');
+    if(!data||!data.nodes||!data.nodes.length){
+      svg.style.display='none';if(empty)empty.style.display='flex';
+      gi('graph-source-label').textContent='No data';return;
+    }
+    svg.style.display='block';if(empty)empty.style.display='none';
+    gi('graph-source-label').textContent='Source: '+data.source+' · '+data.nodes.length+' nodes · '+data.links.length+' edges';
+    renderForceGraph(svg,data);
+  }catch(e){
+    console.error('[Graph]',e);
+    svg.style.display='none';if(empty){empty.style.display='flex';empty.innerHTML='<div class="empty-state" style="padding:40px">Graph unavailable</div>'}
+  }
+}
+function renderForceGraph(svgEl,data){
+  const W=svgEl.clientWidth||800,H=420;
+  svgEl.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svgEl.innerHTML='';
+  const ns='http://www.w3.org/2000/svg';
+  const sevColors={critical:'#f87171',high:'#fb923c',medium:'#fbbf24',low:'#34d399',info:'#67e8f9'};
+
+  const nodeMap={};
+  const assets=data.nodes.filter(n=>n.type==='asset');
+  const vulns=data.nodes.filter(n=>n.type!=='asset');
+  const links=data.links.filter(l=>data.nodes.find(n=>n.id===l.source)&&data.nodes.find(n=>n.id===l.target));
+
+  // Limit vulns per host to top 15 by risk for readability
+  const MAX_PER_HOST=15;
+  const vulnsByHost={};
+  links.forEach(l=>{if(!vulnsByHost[l.source])vulnsByHost[l.source]=[];vulnsByHost[l.source].push(l)});
+  const keptVulnIds=new Set();
+  const keptLinks=[];
+  Object.entries(vulnsByHost).forEach(([host,hostLinks])=>{
+    const sorted=hostLinks.sort((a,b)=>(b.risk||0)-(a.risk||0));
+    const kept=sorted.slice(0,MAX_PER_HOST);
+    kept.forEach(l=>{keptVulnIds.add(l.target);keptLinks.push(l)});
+  });
+  const nodes=[...assets,...vulns.filter(v=>keptVulnIds.has(v.id))];
+  nodes.forEach(n=>{nodeMap[n.id]=n});
+
+  // Cluster layout: spread assets evenly, then place vulns around their host
+  const padding=60;
+  if(assets.length===1){
+    assets[0].x=W/2;assets[0].y=H/2;assets[0].fx=W/2;assets[0].fy=H/2;
+  }else if(assets.length===2){
+    assets[0].x=W*0.3;assets[0].y=H/2;assets[0].fx=W*0.3;assets[0].fy=H/2;
+    assets[1].x=W*0.7;assets[1].y=H/2;assets[1].fx=W*0.7;assets[1].fy=H/2;
+  }else{
+    assets.forEach((a,i)=>{
+      const angle=(2*Math.PI*i/assets.length)-Math.PI/2;
+      const rx=Math.min(W,H)*0.3;
+      a.x=W/2+Math.cos(angle)*rx;a.y=H/2+Math.sin(angle)*rx;
+      a.fx=a.x;a.fy=a.y;
+    });
+  }
+
+  // Place vulns in a circle around their host
+  Object.entries(vulnsByHost).forEach(([hostId,hostLinks])=>{
+    const host=nodeMap[hostId];if(!host)return;
+    const myVulns=hostLinks.slice(0,MAX_PER_HOST).map(l=>nodeMap[l.target]).filter(Boolean);
+    const count=myVulns.length;
+    const radius=Math.min(80,30+count*4);
+    myVulns.forEach((v,i)=>{
+      const angle=(2*Math.PI*i/count)-Math.PI/2;
+      v.x=host.x+Math.cos(angle)*radius;
+      v.y=host.y+Math.sin(angle)*radius;
+    });
+  });
+
+  // Light repulsion between vuln nodes only (no full N² on assets)
+  const alpha={val:1};
+  for(let iter=0;iter<60;iter++){
+    const vNodes=nodes.filter(n=>n.type!=='asset');
+    for(let i=0;i<vNodes.length;i++){
+      for(let j=i+1;j<vNodes.length;j++){
+        let dx=vNodes[j].x-vNodes[i].x,dy=vNodes[j].y-vNodes[i].y;
+        let dist=Math.sqrt(dx*dx+dy*dy)||1;
+        if(dist<40){
+          let force=(40-dist)*0.3*alpha.val;
+          vNodes[i].x-=dx/dist*force;vNodes[i].y-=dy/dist*force;
+          vNodes[j].x+=dx/dist*force;vNodes[j].y+=dy/dist*force;
+        }
+      }
+    }
+    // Pull vulns toward their host
+    keptLinks.forEach(l=>{
+      const s=nodeMap[l.source],t=nodeMap[l.target];if(!s||!t)return;
+      let dx=s.x-t.x,dy=s.y-t.y;
+      let dist=Math.sqrt(dx*dx+dy*dy)||1;
+      let ideal=Math.min(80,30+15*4);
+      let force=(dist-ideal)*0.02*alpha.val;
+      t.x+=dx/dist*force;t.y+=dy/dist*force;
+    });
+    alpha.val*=0.95;
+  }
+
+  // Clamp to viewport
+  nodes.forEach(n=>{n.x=Math.max(padding,Math.min(W-padding,n.x));n.y=Math.max(padding,Math.min(H-padding,n.y))});
+
+  // Zoom/pan container
+  let zoom=1,panX=0,panY=0;
+  const gRoot=document.createElementNS(ns,'g');
+  gRoot.setAttribute('id','graph-root');
+
+  // Render links
+  const gLinks=document.createElementNS(ns,'g');
+  keptLinks.forEach(l=>{
+    const s=nodeMap[l.source],t=nodeMap[l.target];if(!s||!t)return;
+    const line=document.createElementNS(ns,'line');
+    line.setAttribute('x1',s.x);line.setAttribute('y1',s.y);
+    line.setAttribute('x2',t.x);line.setAttribute('y2',t.y);
+    const riskColor=l.risk>=9?'rgba(248,113,113,.35)':l.risk>=7?'rgba(251,146,60,.25)':l.risk>=4?'rgba(251,191,36,.18)':'rgba(52,211,153,.12)';
+    line.setAttribute('stroke',riskColor);
+    line.setAttribute('stroke-width',Math.max(0.5,l.risk/5));
+    gLinks.appendChild(line);
+  });
+  gRoot.appendChild(gLinks);
+
+  // Render nodes
+  const gNodes=document.createElementNS(ns,'g');
+  const tooltip=gi('graph-tooltip');
+  nodes.forEach(n=>{
+    const g=document.createElementNS(ns,'g');
+    g.setAttribute('transform',`translate(${n.x},${n.y})`);
+    g.style.cursor='pointer';
+    if(n.type==='asset'){
+      const hex=document.createElementNS(ns,'circle');
+      hex.setAttribute('r',n.size||16);
+      hex.setAttribute('fill','rgba(0,212,255,.12)');
+      hex.setAttribute('stroke','#00d4ff');
+      hex.setAttribute('stroke-width','2');
+      g.appendChild(hex);
+      const inner=document.createElementNS(ns,'circle');
+      inner.setAttribute('r',4);inner.setAttribute('fill','#00d4ff');
+      g.appendChild(inner);
+      // Host label (always visible, bigger)
+      const lbl=document.createElementNS(ns,'text');
+      lbl.setAttribute('text-anchor','middle');lbl.setAttribute('dy',(n.size||16)+13);
+      lbl.setAttribute('font-size','9');lbl.setAttribute('font-weight','600');
+      lbl.setAttribute('font-family','JetBrains Mono, monospace');
+      lbl.setAttribute('fill','#00d4ff');
+      const hostLabel=n.label.length>24?n.label.slice(0,22)+'…':n.label;
+      lbl.textContent=hostLabel;
+      g.appendChild(lbl);
+      // Vuln count badge
+      const hostVulnCount=(vulnsByHost[n.id]||[]).length;
+      if(hostVulnCount>0){
+        const badge=document.createElementNS(ns,'text');
+        badge.setAttribute('text-anchor','middle');badge.setAttribute('dy','4');
+        badge.setAttribute('font-size','8');badge.setAttribute('font-weight','700');
+        badge.setAttribute('font-family','JetBrains Mono, monospace');
+        badge.setAttribute('fill','#00d4ff');
+        badge.textContent=hostVulnCount;
+        g.appendChild(badge);
+      }
+    }else{
+      const c=document.createElementNS(ns,'circle');
+      const color=sevColors[n.severity]||sevColors.info;
+      const sz=Math.max(4,Math.min(10,(n.risk||0)*0.8+3));
+      c.setAttribute('r',sz);
+      c.setAttribute('fill',color+'33');
+      c.setAttribute('stroke',color);
+      c.setAttribute('stroke-width','1.2');
+      g.appendChild(c);
+      // Label (only for higher severity or if few nodes)
+      if(n.severity!=='info'||nodes.length<30){
+        const lbl=document.createElementNS(ns,'text');
+        lbl.setAttribute('text-anchor','middle');lbl.setAttribute('dy',sz+9);
+        lbl.setAttribute('font-size','6.5');lbl.setAttribute('font-family','JetBrains Mono, monospace');
+        lbl.setAttribute('fill','rgba(255,255,255,.45)');
+        lbl.textContent=n.label.length>18?n.label.slice(0,16)+'…':n.label;
+        g.appendChild(lbl);
+      }
+    }
+    // Tooltip
+    g.addEventListener('mouseenter',e=>{
+      const info=n.type==='asset'
+        ?`<strong style="color:var(--accent)">${esc(n.label)}</strong><br>Vulnerabilities: ${(vulnsByHost[n.id]||[]).length}`
+        :`<strong style="color:${sevColors[n.severity]||'#fff'}">${esc(n.label)}</strong><br>Severity: ${n.severity||'—'}<br>Risk: ${n.risk||0}${n.title?'<br>'+esc(n.title.slice(0,80)):''}`;
+      tooltip.innerHTML=info;tooltip.style.display='block';
+      const rect=svgEl.getBoundingClientRect();
+      tooltip.style.left=Math.min(rect.width-200,(n.x*zoom+panX+20))+'px';
+      tooltip.style.top=Math.max(0,(n.y*zoom+panY-10))+'px';
+    });
+    g.addEventListener('mouseleave',()=>{tooltip.style.display='none'});
+    gNodes.appendChild(g);
+  });
+  gRoot.appendChild(gNodes);
+  svgEl.appendChild(gRoot);
+
+  // Zoom/pan with mouse wheel and drag
+  function applyTransform(){gRoot.setAttribute('transform',`translate(${panX},${panY}) scale(${zoom})`)}
+  svgEl.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const delta=e.deltaY>0?0.9:1.1;
+    const newZoom=Math.max(0.3,Math.min(3,zoom*delta));
+    // Zoom toward cursor
+    const rect=svgEl.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    panX=mx-(mx-panX)*(newZoom/zoom);
+    panY=my-(my-panY)*(newZoom/zoom);
+    zoom=newZoom;
+    applyTransform();
+  },{passive:false});
+  let isPanning=false,panStart={x:0,y:0};
+  svgEl.addEventListener('mousedown',e=>{
+    if(e.button===0){isPanning=true;panStart={x:e.clientX-panX,y:e.clientY-panY}}
+  });
+  svgEl.addEventListener('mousemove',e=>{
+    if(!isPanning)return;
+    panX=e.clientX-panStart.x;panY=e.clientY-panStart.y;
+    applyTransform();
+  });
+  svgEl.addEventListener('mouseup',()=>{isPanning=false});
+  svgEl.addEventListener('mouseleave',()=>{isPanning=false});
+}
+function svgPt(svg,e){const r=svg.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+
+// ─── Scan Progress ───
+S._progressInterval=null;
+S._progressPollCount=0;
+function startProgressPolling(){if(S._progressInterval)return;S._progressPollCount=0;S._progressInterval=setInterval(pollScanProgress,5000);pollScanProgress()}
+function stopProgressPolling(){if(S._progressInterval){clearInterval(S._progressInterval);S._progressInterval=null;S._progressPollCount=0}}
+async function pollScanProgress(){
+  S._progressPollCount++;
+  // Safety: stop polling after 10 minutes (120 cycles * 5s) to prevent infinite loops
+  if(S._progressPollCount>120){stopProgressPolling();gi('scan-progress-panel').style.display='none';return}
+  try{
+    const jobs=await apiReq('/scan/jobs');
+    const running=jobs.filter(j=>j.status==='running'&&!S.deletedJobIds.has(j.id));
+    const panel=gi('scan-progress-panel');
+    if(!running.length){panel.style.display='none';stopProgressPolling();loadDashboard(false);setTimeout(loadAttackGraph,2000);return}
+    panel.style.display='block';
+    gi('scan-progress-count').textContent=running.length+' scan'+(running.length!==1?'s':'')+' running';
+    let html='';
+    for(const j of running){
+      let progress=null;
+      try{const meta=JSON.parse(j.meta_json||'{}');progress=meta.progress||null}catch{}
+      const pct=progress?progress.pct:0;
+      const elapsed=progress?progress.elapsed:0;
+      const curName=progress?progress.current_name:'Initializing...';
+      const curStatus=progress?progress.status:'running';
+      const plugins=progress?progress.plugins:[];
+      const total=progress?progress.total:0;
+      const step=progress?progress.step:0;
+
+      // Stale detection: if job created > 5 min ago and no progress data, mark it stuck
+      const createdAt=j.created_at?new Date(j.created_at):null;
+      const ageSeconds=createdAt?((Date.now()-createdAt.getTime())/1000):0;
+      const isStale=ageSeconds>300&&(!progress||pct===100);
+
+      const elMin=Math.floor(elapsed/60);
+      const elSec=Math.floor(elapsed%60);
+      const elStr=elMin>0?elMin+'m '+elSec+'s':elapsed>0?elSec+'s':'—';
+      const icon=j.scan_type==='external'?'🌐':'🏠';
+      html+=`<div class="sp-job${isStale?' sp-stale':''}">
+        <div class="sp-hdr">
+          <span style="font-size:.85rem">${icon}</span>
+          <span class="sp-target">${esc(j.target)}</span>
+          <span class="badge b-info" style="font-size:.55rem">#${j.id}</span>
+          <span class="sp-elapsed">⏱ ${elStr}</span>
+          <span class="sp-pct">${isStale?'⚠':pct+'%'}</span>
+        </div>
+        ${isStale?`<div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:.72rem;color:#f87171">
+          <strong>⚠ Job appears stuck</strong> — The scan worker may have crashed. Delete this job and retry. 
+          <button class="btn btn-sm" style="margin-left:8px;padding:2px 10px;font-size:.65rem;background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)" onclick="deleteJob(${j.id},'${esc(j.target)}')">Delete Job #${j.id}</button>
+        </div>`:`<div class="sp-bar-track"><div class="sp-bar-fill" style="width:${pct}%"></div></div>
+        <div class="sp-current"><span class="sp-current-icon"></span> ${curStatus==='running'?'Running':'Processing'}: <strong style="color:var(--text)">${esc(curName)}</strong> <span class="dim">(${step+1}/${total})</span></div>`}
+        <div class="sp-log">${renderPluginChips(plugins,total,step)}</div>
+      </div>`;
+    }
+    gi('scan-progress-body').innerHTML=html;
+  }catch(e){console.error('[Progress]',e)}
+}
+function renderPluginChips(plugins,total,currentStep){
+  if(!plugins||!plugins.length){
+    let chips='';
+    for(let i=0;i<Math.min(total||6,14);i++)chips+=`<span class="sp-chip ${i===0?'running':'pending'}">${i===0?'plugin '+(i+1):'...'}</span>`;
+    return chips;
+  }
+  return plugins.map(p=>{
+    const icon=p.status==='done'?'✓':p.status==='running'?'►':p.status==='error'?'✗':p.status==='timeout'?'⏱':'·';
+    const shortName=p.name.length>22?p.name.slice(0,20)+'…':p.name;
+    return`<span class="sp-chip ${p.status}" title="${esc(p.plugin_id)} — ${p.t||0}s">${icon} ${esc(shortName)}</span>`
+  }).join('');
+}
+
+// ─── Export ───
+function getExportData(hostFilter){
+  let findings=S.allFindings||[];
+  if(hostFilter)findings=findings.filter(f=>(f._jobTarget||f.target||'')=== hostFilter);
+  if(!findings.length)return[];
+  return findings.map(f=>({
+    Host:f._jobTarget||f.target||'',
+    Scan_Type:f._scanType||'internal',
+    Severity:(f.severity||'info').toUpperCase(),
+    Title:f.title||'',
+    Risk_Score:f.risk_score!=null?Number(f.risk_score).toFixed(2):'',
+    CVSS_Base:f.cvss_base!=null?Number(f.cvss_base).toFixed(1):'',
+    Confidence:f.confidence!=null?Number(f.confidence).toFixed(2):'',
+    KEV:f.is_kev?'YES':'NO',
+    Plugin:f.plugin_id||'',
+    SLA_Days:f.sla_days!=null?f.sla_days:'',
+    Evidence:f.evidence||'',
+    Description:f.description||'',
+    Remediation:f.remediation||'',
+    References:(()=>{try{const r=JSON.parse(f.references_json||'[]');return Array.isArray(r)?r.join('; '):f.references_json}catch{return f.references_json||''}})(),
+    Compliance:f.compliance_json&&f.compliance_json!=='null'?f.compliance_json:'',
+    Fingerprint:f.fingerprint||''
+  }))
+}
+function exportFindings(fmt){const data=getExportData();if(!data.length)return alert('No findings to export');doExport(data,fmt,null)}
+function exportHostFindings(idx,fmt){const host=S._hostKeys[idx];if(!host)return;const data=getExportData(host);if(!data.length)return alert('No findings for this host');doExport(data,fmt,host)}
+function doExport(data,fmt,hostLabel){
+  if(fmt==='csv')exportCSV(data,hostLabel);
+  else if(fmt==='html')exportHTML(data,hostLabel);
+  else if(fmt==='pdf')exportPDF(data,hostLabel);
+}
+function exportCSV(data,hostLabel){
+  const cols=Object.keys(data[0]);
+  const csvEsc=v=>{const s=String(v).replace(/"/g,'""');return /[,"\n\r]/.test(s)?'"'+s+'"':s};
+  let csv=cols.join(',')+'\n';
+  data.forEach(r=>{csv+=cols.map(c=>csvEsc(r[c])).join(',')+'\n'});
+  const fn=hostLabel?'vulnscan_'+sanitizeFn(hostLabel)+'_'+dateStamp()+'.csv':'vulnscan_all_findings_'+dateStamp()+'.csv';
+  downloadFile(csv,fn,'text/csv')
+}
+function buildReportHTML(data,hostLabel){
+  const hosts=[...new Set(data.map(r=>r.Host))];
+  const now=new Date().toISOString().replace('T',' ').slice(0,19)+' UTC';
+  const title=hostLabel?'Security Report — '+esc(hostLabel):'Security Report — All Hosts';
+  const sevO={CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3,INFO:4};
+  data.sort((a,b)=>(sevO[a.Severity]||4)-(sevO[b.Severity]||4));
+  let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>VulnScan ${esc(title)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#1a1a1a;padding:28px;max-width:1100px;margin:0 auto}
+.hdr{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #00a8cc;padding-bottom:10px;margin-bottom:4px}
+h1{font-size:20px;color:#0a1628}
+.hdr-right{text-align:right;font-size:10px;color:#64748b}
+.meta{font-size:10px;color:#666;margin-bottom:20px}
+.summary{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.sbox{padding:10px 18px;background:#f8fafc;border:1px solid #e2e8f0;min-width:80px;text-align:center;border-radius:4px}
+.sbox .num{font-size:24px;font-weight:800}.sbox .lbl{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.12em;margin-top:2px}
+.sbox.crit{border-left:3px solid #dc2626}.sbox.crit .num{color:#dc2626}
+.sbox.high{border-left:3px solid #ea580c}.sbox.high .num{color:#ea580c}
+.sbox.med{border-left:3px solid #ca8a04}.sbox.med .num{color:#ca8a04}
+.sbox.low{border-left:3px solid #16a34a}.sbox.low .num{color:#16a34a}
+.sbox.info{border-left:3px solid #0284c7}.sbox.info .num{color:#0284c7}
+h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f1f5f9;border-left:3px solid #00a8cc}
+.sev-bar{display:flex;height:10px;border-radius:3px;overflow:hidden;margin:4px 0 12px;gap:1px}
+.sev-bar div{min-width:2px}
+.finding{border:1px solid #e2e8f0;margin-bottom:10px;border-radius:4px;overflow:hidden}
+.f-hdr{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fafbfc;border-bottom:1px solid #e2e8f0}
+.sev{display:inline-block;padding:2px 8px;border-radius:3px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase}
+.sev-critical{background:#dc2626}.sev-high{background:#ea580c}.sev-medium{background:#ca8a04}.sev-low{background:#16a34a}.sev-info{background:#0284c7}
+.kev{background:#fef2f2;color:#dc2626;padding:2px 6px;font-size:8px;font-weight:700;border:1px solid #fca5a5;border-radius:2px}
+.f-title{flex:1;font-weight:600;font-size:11px}
+.f-scores{display:flex;gap:16px;font-size:10px;color:#475569}
+.f-scores strong{color:#0f172a}
+.f-body{padding:10px 12px}
+.f-section{margin-top:8px;padding:8px 10px;background:#f8fafc;border-left:3px solid #e2e8f0;font-size:10px;color:#374151;line-height:1.6}
+.f-section.remed{border-left-color:#16a34a;background:#f0fdf4}
+.f-section.sla{border-left-color:#ca8a04;background:#fefce8}
+.f-section.ref{border-left-color:#3b82f6;background:#eff6ff}
+.f-section-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:4px}
+.footer{margin-top:24px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center}
+@media print{body{padding:12px;font-size:10px}h1{font-size:16px}.sbox .num{font-size:18px}.finding{page-break-inside:avoid}}
+</style></head><body>
+<div class="hdr"><h1>🔒 VulnScan ${esc(title)}</h1><div class="hdr-right">Generated: ${now}<br>Hosts: ${hosts.length} | Findings: ${data.length}</div></div>
+<div class="summary">
+  <div class="sbox crit"><div class="num">${data.filter(r=>r.Severity==='CRITICAL').length}</div><div class="lbl">Critical</div></div>
+  <div class="sbox high"><div class="num">${data.filter(r=>r.Severity==='HIGH').length}</div><div class="lbl">High</div></div>
+  <div class="sbox med"><div class="num">${data.filter(r=>r.Severity==='MEDIUM').length}</div><div class="lbl">Medium</div></div>
+  <div class="sbox low"><div class="num">${data.filter(r=>r.Severity==='LOW').length}</div><div class="lbl">Low</div></div>
+  <div class="sbox info"><div class="num">${data.filter(r=>r.Severity==='INFO').length}</div><div class="lbl">Info</div></div>
+  <div class="sbox"><div class="num">${data.filter(r=>r.KEV==='YES').length}</div><div class="lbl">KEV Hits</div></div>
+</div>`;
+  hosts.forEach(host=>{
+    const hf=data.filter(r=>r.Host===host);
+    const hc={c:hf.filter(r=>r.Severity==='CRITICAL').length,h:hf.filter(r=>r.Severity==='HIGH').length,m:hf.filter(r=>r.Severity==='MEDIUM').length,l:hf.filter(r=>r.Severity==='LOW').length,i:hf.filter(r=>r.Severity==='INFO').length};
+    h+=`<h2>${esc(host)} <span style="font-weight:400;font-size:11px;color:#64748b">(${hf.length} findings)</span></h2>`;
+    // Severity bar
+    const tot=hf.length||1;
+    h+=`<div class="sev-bar">${hc.c?`<div style="width:${hc.c/tot*100}%;background:#dc2626"></div>`:''}${hc.h?`<div style="width:${hc.h/tot*100}%;background:#ea580c"></div>`:''}${hc.m?`<div style="width:${hc.m/tot*100}%;background:#ca8a04"></div>`:''}${hc.l?`<div style="width:${hc.l/tot*100}%;background:#16a34a"></div>`:''}${hc.i?`<div style="width:${hc.i/tot*100}%;background:#0284c7"></div>`:''}</div>`;
+    hf.sort((a,b)=>(sevO[a.Severity]||4)-(sevO[b.Severity]||4));
+    hf.forEach(f=>{
+      h+=`<div class="finding"><div class="f-hdr"><span class="sev sev-${f.Severity.toLowerCase()}">${f.Severity}</span>${f.KEV==='YES'?'<span class="kev">KEV</span>':''}<span class="f-title">${esc(f.Title)}</span><div class="f-scores"><span>Risk: <strong>${f.Risk_Score||'—'}</strong></span><span>CVSS: <strong>${f.CVSS_Base||'—'}</strong></span><span style="color:#94a3b8;font-size:9px">${esc(f.Plugin)}</span></div></div><div class="f-body">`;
+      if(f.Evidence)h+=`<div class="f-section"><div class="f-section-label">Evidence</div>${esc(f.Evidence)}</div>`;
+      if(f.Description)h+=`<div class="f-section"><div class="f-section-label">Description</div>${esc(f.Description)}</div>`;
+      if(f.Remediation)h+=`<div class="f-section remed"><div class="f-section-label">Remediation</div>${esc(f.Remediation).replace(/\n/g,'<br>')}</div>`;
+      if(f.SLA_Days)h+=`<div class="f-section sla"><div class="f-section-label">SLA Policy</div>Remediation deadline: <strong>${f.SLA_Days} days</strong> (${f.Severity})</div>`;
+      if(f.References)h+=`<div class="f-section ref"><div class="f-section-label">References</div>${esc(f.References).replace(/; /g,'<br>')}</div>`;
+      if(f.Compliance)h+=`<div class="f-section"><div class="f-section-label">Compliance</div>${esc(f.Compliance)}</div>`;
+      h+=`</div></div>`;
+    });
+  });
+  h+=`<div class="footer">VulnScan Enterprise Security Platform — Confidential</div></body></html>`;
+  return h
+}
+function exportHTML(data,hostLabel){
+  const html=buildReportHTML(data,hostLabel);
+  const fn=hostLabel?'vulnscan_'+sanitizeFn(hostLabel)+'_'+dateStamp()+'.html':'vulnscan_all_findings_'+dateStamp()+'.html';
+  downloadFile(html,fn,'text/html')
+}
+function exportPDF(data,hostLabel){
+  const html=buildReportHTML(data,hostLabel);
+  const w=window.open('','_blank','width=960,height=700');
+  w.document.write(html);w.document.close();
+  setTimeout(()=>w.print(),600)
+}
+function dateStamp(){return new Date().toISOString().slice(0,10).replace(/-/g,'')}
+function sanitizeFn(s){return String(s).replace(/https?:\/\//g,'').replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,40)}
+function downloadFile(content,filename,mime){const blob=new Blob([content],{type:mime+';charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},100)}
+// ─── Rescan ───
+async function rescanJob(jid){
+  if(!confirm('Launch a rescan of this target?'))return;
+  try{
+    const r=await apiReq('/scan/jobs/'+jid+'/rescan',{method:'POST'});
+    showAlert('job-alert','success','✓ Rescan launched as Job #'+r.id);
+    await loadJobs();startProgressPolling()
+  }catch(e){showAlert('job-alert','danger','⚠ '+e.message)}
+}
+
+// ─── Scan History ───
+async function showHistory(target){
+  try{
+    const data=await apiReq('/scan/history/'+encodeURIComponent(target));
+    const scans=data.scans||[];
+    if(!scans.length){alert('No scan history for '+target);return}
+    const sevCols={critical:'#f87171',high:'#fb923c',medium:'#fbbf24',low:'#34d399',info:'#67e8f9'};
+    let html=`<div style="padding:20px;max-height:70vh;overflow-y:auto">
+      <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700;color:var(--bright);margin-bottom:4px">Scan History: ${esc(target)}</div>
+      <div style="font-family:var(--fm);font-size:.68rem;color:var(--text3);margin-bottom:16px">${scans.length} scan(s) recorded</div>
+      <div style="display:flex;flex-direction:column;gap:10px">`;
+    scans.forEach(s=>{
+      const sevs=s.severity_counts||{};
+      const bars=Object.entries(sevs).map(([sev,cnt])=>`<span style="display:inline-block;padding:2px 8px;border-radius:2px;font-size:.6rem;font-family:var(--fm);font-weight:700;color:#fff;background:${sevCols[sev]||'#666'}">${sev.toUpperCase()} ${cnt}</span>`).join(' ');
+      html+=`<div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;gap:12px">
+        <div style="font-family:var(--fh);font-weight:800;color:var(--accent);font-size:.85rem;width:40px">#${s.job_id}</div>
+        <div style="flex:1"><div style="font-size:.75rem;color:var(--text2);margin-bottom:4px">${fmtDate(s.created_at)} — ${s.status==='done'?'<span style="color:var(--green)">Done</span>':'<span style="color:var(--red)">'+s.status+'</span>'}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${bars||'<span style="color:var(--text3);font-size:.65rem">No findings</span>'}</div></div>
+        <div style="font-family:var(--fh);font-weight:800;font-size:1.1rem;color:var(--bright)">${s.total_findings}</div>
+      </div>`;
+    });
+    html+=`</div></div>`;
+    // Show in modal
+    const modal=document.createElement('div');
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+    modal.innerHTML=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;width:600px;max-width:90vw;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border)">
+        <span style="font-family:var(--fh);font-weight:700;color:var(--accent)">📊 Scan History</span>
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;color:var(--text3);font-size:1.2rem;cursor:pointer">✕</button>
+      </div>${html}</div>`;
+    modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()});
+    document.body.appendChild(modal);
+  }catch(e){alert('Failed to load history: '+e.message)}
+}
+
+// ─── Schedules ───
+S._schedMode='interval';
+function setSchedMode(mode,btn){
+  S._schedMode=mode;
+  document.querySelectorAll('.scan-toggle .scan-tab').forEach(t=>{
+    if(t.id&&t.id.startsWith('sched-mode-'))t.classList.remove('active')});
+  if(btn)btn.classList.add('active');
+  gi('sched-interval-section').style.display=mode==='interval'?'block':'none';
+  gi('sched-custom-section').style.display=mode==='custom'?'block':'none';
+  // Set default date to tomorrow
+  if(mode==='custom'&&!gi('sched-date').value){
+    const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+    gi('sched-date').value=tomorrow.toISOString().split('T')[0];
+  }
+}
+async function loadSchedules(){
+  const el=gi('schedules-tbody');if(!el)return;
+  try{
+    const scheds=await apiReq('/scan/schedules');
+    const pm={};S.profiles.forEach(p=>pm[p.id]=p.name);
+    const intLabels={1:'Hourly',6:'Every 6h',12:'Every 12h',24:'Daily',168:'Weekly',720:'Monthly'};
+    el.innerHTML=scheds.length?scheds.map(s=>{
+      const isCustom=s.schedule_type==='custom';
+      const schedLabel=isCustom
+        ?(s.custom_datetime?'📅 '+fmtDate(s.custom_datetime):'📅 Custom')+(s.repeat?` → ${intLabels[s.interval_hours]||s.interval_hours+'h'}`:' (once)')
+        :'🔄 '+( intLabels[s.interval_hours]||s.interval_hours+'h');
+      return`<tr>
+      <td class="mc" style="color:var(--accent)">#${s.id}</td>
+      <td class="bright" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.target)}</td>
+      <td class="mc dim">${esc(pm[s.profile_id]||'#'+s.profile_id)}</td>
+      <td class="mc" style="font-size:.7rem">${schedLabel}</td>
+      <td>${s.enabled?'<span class="badge b-ok">Active</span>':'<span class="badge b-info" style="opacity:.5">Paused</span>'}</td>
+      <td class="mc dim" style="font-size:.68rem">${s.next_run_at?fmtDate(s.next_run_at):'—'}</td>
+      <td style="text-align:right"><div style="display:flex;gap:4px;justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm" onclick="toggleSchedule(${s.id})">${s.enabled?'⏸':'▶'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})">🗑</button>
+      </div></td>
+    </tr>`}).join(''):'<tr><td colspan="7"><div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div></td></tr>';
+  }catch{}
+}
+async function createSchedule(){
+  const target=gi('sched-target').value.trim();
+  const profileId=gi('sched-profile').value;
+  const scanType=gi('sched-type').value;
+  const name=gi('sched-name').value.trim()||('Schedule: '+target);
+  if(!target||!profileId)return showAlert('sched-alert','danger','Target and profile required');
+
+  const payload={name,target,profile_id:Number(profileId),scan_type:scanType,enabled:true};
+
+  if(S._schedMode==='custom'){
+    const date=gi('sched-date').value;
+    const time=gi('sched-time').value||'09:00';
+    if(!date)return showAlert('sched-alert','danger','Please select a date');
+    payload.schedule_type='custom';
+    // Convert local date+time to UTC ISO string
+    const localDt=new Date(date+'T'+time);
+    payload.custom_datetime=localDt.toISOString();
+    const repeatVal=gi('sched-repeat').value;
+    if(repeatVal==='once'){
+      payload.repeat=false;
+      payload.interval_hours=24;
+    }else{
+      payload.repeat=true;
+      payload.interval_hours=parseInt(repeatVal.replace('repeat-','').replace('h',''))||24;
+    }
+  }else{
+    payload.schedule_type='interval';
+    payload.interval_hours=Number(gi('sched-interval').value);
+    payload.repeat=true;
+  }
+
+  try{
+    const r=await apiReq('/scan/schedules',{method:'POST',body:JSON.stringify(payload)});
+    showAlert('sched-alert','success','✓ Schedule #'+r.id+' created — next run: '+fmtDate(r.next_run_at));
+    gi('sched-target').value='';gi('sched-name').value='';
+    await loadSchedules()
+  }catch(e){showAlert('sched-alert','danger','⚠ '+e.message)}
+}
+async function toggleSchedule(sid){
+  try{await apiReq('/scan/schedules/'+sid+'/toggle',{method:'PUT'});await loadSchedules()}catch(e){alert(e.message)}
+}
+async function deleteSchedule(sid){
+  if(!confirm('Delete this schedule?'))return;
+  try{await apiReq('/scan/schedules/'+sid,{method:'DELETE'});await loadSchedules()}catch(e){alert(e.message)}
+}
+
 // ─── Settings ───
-async function loadSettings(){try{const[al,info,stats,users]=await Promise.all([apiReq('/settings/allowlist'),apiReq('/settings/info'),apiReq('/settings/stats'),apiReq('/settings/users')]);
-  gi('al-raw').value=al.raw;renderAllowTags(al.entries);
-  gi('platform-info-body').innerHTML=Object.entries(info).map(([k,v])=>`<tr><td class="mc" style="color:var(--accent)">${esc(k)}</td><td class="mc">${esc(v)}</td></tr>`).join('');
-  gi('ws-stats-body').innerHTML=Object.entries(stats).map(([k,v])=>`<tr><td class="bright">${esc(k.replace(/_/g,' '))}</td><td class="mc" style="color:var(--accent);font-size:1.1rem;font-weight:700">${v}</td></tr>`).join('');
-  gi('users-tbody').innerHTML=users.length?users.map(u=>`<tr><td class="mc" style="color:var(--accent)">#${u.id}</td><td class="bright">${esc(u.email)}</td><td><span class="badge b-info">${esc(u.role)}</span></td><td class="mc dim" style="font-size:.72rem">${fmtDate(u.created_at)}</td></tr>`).join(''):'<tr><td colspan="4"><div class="empty-state" style="padding:20px">No users</div></td></tr>'}catch(e){console.error('[loadSettings]',e)}}
-function loadSettingsStats(){loadSettings()}
-function renderAllowTags(entries){gi('allowlist-tags').innerHTML=entries.map(e=>`<div class="tag">${esc(e)}<span class="tag-x" onclick="removeAllowEntry('${esc(e)}')">✕</span></div>`).join('')||'<span class="dim">Empty allowlist — no targets can be scanned</span>'}
-function addAllowEntry(){const inp=gi('al-new'),v=inp.value.trim();if(!v)return;const raw=gi('al-raw');const cur=raw.value.trim();raw.value=cur?(cur+','+v):v;inp.value='';renderAllowTags(raw.value.split(',').map(s=>s.trim()).filter(Boolean))}
-function removeAllowEntry(entry){const raw=gi('al-raw');const entries=raw.value.split(',').map(s=>s.trim()).filter(s=>s&&s!==entry);raw.value=entries.join(',');renderAllowTags(entries)}
-async function saveAllowlist(){try{await apiReq('/settings/allowlist',{method:'PUT',body:JSON.stringify({allowlist:gi('al-raw').value.trim()})});showAlert('settings-alert','success','✓ Allowlist saved for this session');await loadSettings()}catch(e){showAlert('settings-alert','danger','⚠ '+e.message)}}
+function setSettingsTab(tab,btn){document.querySelectorAll('.settings-tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');['general','users','integrations'].forEach(t=>{const el=gi('stab-'+t);if(el)el.style.display=t===tab?'block':'none'});if(tab==='users')loadUsers();if(tab==='integrations')loadIntegrations()}
+
+async function loadSettings(){
+  try{
+    // Load allowlist
+    const al=await apiReq('/settings/allowlist');
+    if(al.entries&&al.entries.length){
+      gi('allowlist-tags').innerHTML=al.entries.map(e=>`<span class="tag">${esc(e)} <span class="tag-x" onclick="removeAllowEntry('${esc(e)}')">×</span></span>`).join('');
+    }else{gi('allowlist-tags').innerHTML='<span class="dim" style="font-size:.75rem">No entries (all targets allowed)</span>'}
+    gi('al-raw').value=al.raw||'';
+
+    // Load platform info
+    const info=await apiReq('/settings/info');
+    gi('platform-info-body').innerHTML=Object.entries(info).map(([k,v])=>`<tr><td class="bright" style="font-family:var(--fm);font-size:.75rem">${esc(k)}</td><td class="mc dim" style="font-family:var(--fm);font-size:.72rem">${esc(String(v))}</td></tr>`).join('');
+
+    // Load stats
+    await loadSettingsStats();
+  }catch(e){console.error('[Settings]',e)}
+}
+
+async function loadSettingsStats(){
+  try{
+    const stats=await apiReq('/settings/stats');
+    gi('ws-stats-body').innerHTML=Object.entries(stats).map(([k,v])=>{
+      const label=k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+      return`<tr><td class="bright">${label}</td><td class="mc" style="font-family:var(--fh);font-weight:700;color:var(--accent)">${v}</td></tr>`
+    }).join('');
+  }catch(e){gi('ws-stats-body').innerHTML='<tr><td colspan="2" class="dim">Failed to load</td></tr>'}
+}
+
+async function loadUsers(){
+  try{
+    const users=await apiReq('/settings/users');
+    gi('users-tbody').innerHTML=users.length?users.map(u=>`<tr>
+      <td class="mc" style="color:var(--accent)">#${u.id}</td>
+      <td class="bright">${esc(u.email)}</td>
+      <td><span class="badge ${u.role==='admin'?'b-crit':u.role==='analyst'?'b-info':'b-ok'}">${u.role}</span></td>
+      <td class="mc dim" style="font-size:.72rem">${u.created_at?fmtDate(u.created_at):'—'}</td>
+      <td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${esc(u.email)}')">🗑</button></td>
+    </tr>`).join(''):'<tr><td colspan="5"><div class="empty-state" style="padding:20px">No users</div></td></tr>';
+  }catch(e){gi('users-tbody').innerHTML='<tr><td colspan="5" class="dim">Failed to load users (admin only)</td></tr>'}
+}
+
+async function createUser(){
+  const email=gi('new-user-email').value.trim(),pass=gi('new-user-pass').value,role=gi('new-user-role').value;
+  if(!email||!pass)return showAlert('user-alert','danger','Email and password required');
+  try{
+    await apiReq('/settings/users',{method:'POST',body:JSON.stringify({email,password:pass,role})});
+    showAlert('user-alert','success','✓ User '+email+' created');
+    gi('new-user-email').value='';gi('new-user-pass').value='';
+    await loadUsers();
+  }catch(e){showAlert('user-alert','danger','⚠ '+e.message)}
+}
+
+async function deleteUser(uid,email){
+  if(!confirm('Delete user "'+email+'" (#'+uid+')?'))return;
+  try{
+    await apiReq('/settings/users/'+uid,{method:'DELETE'});
+    showAlert('user-alert','success','✓ User deleted');
+    await loadUsers();
+  }catch(e){showAlert('user-alert','danger','⚠ '+e.message)}
+}
+
+function addAllowEntry(){
+  const input=gi('al-new'),raw=gi('al-raw');
+  const val=input.value.trim();if(!val)return;
+  const current=raw.value.trim();
+  raw.value=current?(current+','+val):val;
+  input.value='';
+  // Update tags preview
+  const entries=raw.value.split(',').map(e=>e.trim()).filter(Boolean);
+  gi('allowlist-tags').innerHTML=entries.map(e=>`<span class="tag">${esc(e)} <span class="tag-x" onclick="removeAllowEntry('${esc(e)}')">×</span></span>`).join('');
+}
+
+function removeAllowEntry(entry){
+  const raw=gi('al-raw');
+  const entries=raw.value.split(',').map(e=>e.trim()).filter(e=>e&&e!==entry);
+  raw.value=entries.join(',');
+  gi('allowlist-tags').innerHTML=entries.length?entries.map(e=>`<span class="tag">${esc(e)} <span class="tag-x" onclick="removeAllowEntry('${esc(e)}')">×</span></span>`).join(''):'<span class="dim" style="font-size:.75rem">No entries</span>';
+}
+
+async function saveAllowlist(){
+  try{
+    const raw=gi('al-raw').value.trim();
+    await apiReq('/settings/allowlist',{method:'PUT',body:JSON.stringify({allowlist:raw})});
+    showAlert('settings-alert','success','✓ Allowlist saved for this session');
+    await loadSettings();
+  }catch(e){showAlert('settings-alert','danger','⚠ '+e.message)}
+}
+
+function loadIntegrations(){/* Integrations are client-side only for now */}
+
+async function testIntegration(type){
+  try{
+    const payload={type};
+    if(type==='slack')payload.url=gi('integ-slack').value;
+    if(type==='email'){payload.host=gi('integ-smtp-host').value;payload.port=gi('integ-smtp-port').value;payload.from=gi('integ-email-from').value;payload.password=gi('integ-email-pass').value;payload.to=gi('integ-email-to').value}
+    if(type==='webhook')payload.url=gi('integ-webhook').value;
+    await apiReq('/settings/integrations/test',{method:'POST',body:JSON.stringify(payload)});
+    showAlert('integ-alert','success','✓ '+type+' test sent');
+  }catch(e){showAlert('integ-alert','danger','⚠ '+type+' test failed: '+e.message)}
+}
 
 // ─── Init ───
 window.addEventListener('load',()=>{const t=localStorage.getItem('vs_token'),e=localStorage.getItem('vs_email')||'admin@local';if(t){S.token=t;S.userEmail=e;showApp()}document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&gi('login-page').classList.contains('show'))doLogin()});['p-cred','p-ssh-port','p-criticality'].forEach(id=>{const el=gi(id);if(el)el.addEventListener('change',syncProfileOptions)});gi('p-ds-kinds')?.querySelectorAll('input').forEach(cb=>cb.addEventListener('change',syncProfileOptions))});
 
 
+// ── Remediation formatter (injected by patch) ──
+function formatRemediation(text) {
+  if (!text) return '';
+  return esc(text).replace(/\[([^\]]+)\]/g, function(m, label) {
+    var colors = {
+      'REMEDIATION':'#34d399','FIX':'#34d399','AFFECTED VERSION':'#f59e0b',
+      'AFFECTED COMPONENT':'#f59e0b','CVE REFERENCE':'#60a5fa','CVE DETAILS':'#60a5fa',
+      'CISA KEV':'#ef4444','CRITICAL — ACTIVELY EXPLOITED':'#ef4444',
+      'CISA MANDATE':'#ef4444','IMMEDIATE ACTIONS':'#f97316','RANSOMWARE ALERT':'#ef4444',
+      'SLA POLICY':'#94a3b8','URGENCY':'#f97316','GENERAL':'#94a3b8',
+      'REFERENCES':'#60a5fa','AFFECTED CMS':'#f59e0b','AFFECTED':'#f59e0b',
+      'COMPLIANCE':'#94a3b8'
+    };
+    var c = colors[label] || '#94a3b8';
+    return '<span style="display:block;margin-top:10px;font-family:var(--fm);font-size:.6rem;color:'+c+';letter-spacing:.14em;font-weight:600">▸ '+label+'</span>';
+  });
+}
+
+</script>
+<script src="remediation-fix.js"></script>
+<script>
+// ─── Login Background: Hexagonal Threat Matrix ───
+(function(){
+  const canvas=document.getElementById('login-canvas');
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  let W,H,hexGrid=[],threats=[],time=0,mouse={x:-999,y:-999};
+  const HEX_SIZE=35;
+  const COLORS={bg:'#07090f',grid:'rgba(0,212,255,.04)',gridHover:'rgba(0,212,255,.12)',
+    threat:'#f87171',warn:'#fb923c',safe:'#34d399',accent:'#00d4ff',purple:'#8b5cf6'};
+
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;buildGrid();buildThreats()}
+  
+  function hexCorner(cx,cy,size,i){const a=Math.PI/180*(60*i-30);return{x:cx+size*Math.cos(a),y:cy+size*Math.sin(a)}}
+  
+  function buildGrid(){
+    hexGrid=[];
+    const h=HEX_SIZE*Math.sqrt(3);
+    for(let row=0;row*h*.75<H+h;row++){
+      for(let col=0;col*(HEX_SIZE*1.5)<W+HEX_SIZE*2;col++){
+        const x=col*HEX_SIZE*1.5;
+        const y=row*h*.75+(col%2?h*.375:0);
+        hexGrid.push({x,y,pulse:Math.random()*Math.PI*2,state:Math.random()<.03?'threat':Math.random()<.05?'warn':Math.random()<.92?'normal':'active',
+          scanT:Math.random()*100,decay:0});
+      }
+    }
+  }
+  
+  function buildThreats(){
+    threats=[];
+    for(let i=0;i<5;i++){
+      threats.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,
+        r:Math.random()*60+30,pulseSpeed:.02+Math.random()*.02,phase:Math.random()*Math.PI*2});
+    }
+  }
+
+  function drawHex(cx,cy,size,fill,stroke,lw){
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const c=hexCorner(cx,cy,size,i);i===0?ctx.moveTo(c.x,c.y):ctx.lineTo(c.x,c.y)}
+    ctx.closePath();
+    if(fill){ctx.fillStyle=fill;ctx.fill()}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw||.5;ctx.stroke()}
+  }
+  
+  function draw(){
+    if(!document.getElementById('login-page')?.classList.contains('show')){requestAnimationFrame(draw);return}
+    time+=.016;
+    ctx.clearRect(0,0,W,H);
+    
+    // Update threats
+    threats.forEach(t=>{t.x+=t.vx;t.y+=t.vy;t.phase+=t.pulseSpeed;
+      if(t.x<-50)t.x=W+50;if(t.x>W+50)t.x=-50;if(t.y<-50)t.y=H+50;if(t.y>H+50)t.y=-50});
+    
+    // Draw hex grid
+    hexGrid.forEach(h=>{
+      h.pulse+=.015;
+      const mdx=h.x-mouse.x,mdy=h.y-mouse.y;
+      const mDist=Math.sqrt(mdx*mdx+mdy*mdy);
+      const isNearMouse=mDist<120;
+      const mouseAlpha=isNearMouse?(.15*(1-mDist/120)):0;
+      
+      // Check proximity to threats
+      let threatProx=0;
+      threats.forEach(t=>{const d=Math.sqrt((h.x-t.x)**2+(h.y-t.y)**2);
+        if(d<t.r){threatProx=Math.max(threatProx,(1-d/t.r)*Math.sin(t.phase)*.5+.5)}});
+      
+      // Scan wave effect
+      const scanWave=Math.sin(h.x*.005+h.y*.003-time*1.5)*.5+.5;
+      const scanAlpha=scanWave>.85?.06*(scanWave-.85)*6.67:0;
+      
+      if(h.state==='threat'){
+        const ta=Math.sin(h.pulse*2)*.3+.5;
+        drawHex(h.x,h.y,HEX_SIZE-2,`rgba(248,113,113,${ta*.06})`,`rgba(248,113,113,${ta*.25})`,1);
+      }else if(h.state==='warn'){
+        const wa=Math.sin(h.pulse*1.5)*.2+.3;
+        drawHex(h.x,h.y,HEX_SIZE-2,`rgba(251,146,60,${wa*.05})`,`rgba(251,146,60,${wa*.15})`,1);
+      }else if(threatProx>.3){
+        drawHex(h.x,h.y,HEX_SIZE-2,`rgba(248,113,113,${threatProx*.04})`,`rgba(248,113,113,${threatProx*.12})`,1);
+      }else if(isNearMouse){
+        drawHex(h.x,h.y,HEX_SIZE-2,`rgba(0,212,255,${mouseAlpha*.3})`,COLORS.gridHover,.8);
+      }else if(scanAlpha>0){
+        drawHex(h.x,h.y,HEX_SIZE-2,`rgba(0,212,255,${scanAlpha})`,`rgba(0,212,255,${scanAlpha*2})`,.5);
+      }else{
+        drawHex(h.x,h.y,HEX_SIZE-2,null,COLORS.grid,.3);
+      }
+    });
+    
+    // Floating data streams
+    const streams=6;
+    for(let i=0;i<streams;i++){
+      const sx=((time*30+i*W/streams)%(W+200))-100;
+      const sy=H*.15+i*(H*.7/streams)+Math.sin(time+i)*20;
+      ctx.fillStyle=`rgba(0,212,255,${.03+Math.sin(time*2+i)*.02})`;
+      for(let j=0;j<8;j++){
+        const bx=sx+j*12;const by=sy+Math.sin(time*3+j+i)*.8;
+        ctx.fillRect(bx,by,8,1.5);
+      }
+    }
+    
+    // Threat pulse rings
+    threats.forEach(t=>{
+      const ringAlpha=Math.sin(t.phase)*.12+.08;
+      ctx.beginPath();ctx.arc(t.x,t.y,t.r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(248,113,113,${ringAlpha})`;ctx.lineWidth=1;ctx.stroke();
+      ctx.beginPath();ctx.arc(t.x,t.y,t.r*.6,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(248,113,113,${ringAlpha*.5})`;ctx.lineWidth=.5;ctx.stroke();
+    });
+    
+    // Mouse glow
+    if(mouse.x>0){
+      const g=ctx.createRadialGradient(mouse.x,mouse.y,0,mouse.x,mouse.y,140);
+      g.addColorStop(0,'rgba(0,212,255,.06)');g.addColorStop(.6,'rgba(139,92,246,.02)');g.addColorStop(1,'transparent');
+      ctx.fillStyle=g;ctx.fillRect(mouse.x-140,mouse.y-140,280,280);
+    }
+    
+    requestAnimationFrame(draw);
+  }
+  
+  canvas.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+  canvas.addEventListener('mouseleave',()=>{mouse.x=-999;mouse.y=-999});
+  window.addEventListener('resize',resize);
+  resize();draw();
+})();
 </script>
 </body>
 </html>

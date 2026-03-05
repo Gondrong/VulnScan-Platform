@@ -8,6 +8,7 @@ const TITLES = {
   "/profiles": ["PROFILES", "Plugin Configuration"],
   "/credentials": ["CREDENTIALS", "SSH Keys & Passwords"],
   "/datasets": ["DATASETS", "Threat Intelligence Feeds"],
+  "/settings": ["SETTINGS", "Platform Configuration"],
 };
 
 export default function Topbar() {

@@ -10,6 +10,7 @@ import Jobs from "./pages/Jobs.jsx";
 import JobDetail from "./pages/JobDetail.jsx";
 import Credentials from "./pages/Credentials.jsx";
 import Datasets from "./pages/Datasets.jsx";
+import Settings from "./pages/Settings.jsx";
 
 export default function App() {
   const [token, setTokenState] = useState(getToken());
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/jobs/:id" element={<JobDetail />} />
               <Route path="/credentials" element={<Credentials />} />
               <Route path="/datasets" element={<Datasets />} />
+              <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </div>

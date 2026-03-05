@@ -3,17 +3,19 @@ import { api } from "../api";
 import { Panel, Alert } from "../components/ui.jsx";
 
 const KINDS = [
-  ["osv", "OSV package vulnerability database"],
-  ["nvd_cpe_cve", "NVD CPE→CVE match table"],
+  ["nvd_cpe_cve", "NVD CPE→CVE match table (NIST)"],
   ["cisa_kev", "CISA Known Exploited Vulnerabilities"],
-  ["favicon_hash_map", "Favicon hash fingerprint map"],
+  ["cvedetails_cvss", "Multi-source CNA/ADP CVSS scores"],
+  ["epss", "Exploit Prediction Scoring System"],
   ["cms_cve_map", "CMS-specific CVE mapping"],
   ["compliance_map", "ISO/NIST/PCI-DSS compliance map"],
+  ["favicon_hash_map", "Favicon hash fingerprint map"],
 ];
 
 const SCAN_FLOW = [
   "Port Discovery", "Banner Grab", "Web Tech Detect",
-  "CPE Build", "CVE Match", "KEV Prioritize",
+  "CPE Build", "CVE Match (NVD)", "CVE Enrich (CNA/ADP)",
+  "KEV Prioritize", "EPSS Score",
   "CVSS Score", "SLA Assign", "Compliance Map", "Graph Push"
 ];
 
@@ -46,6 +48,15 @@ export default function Datasets() {
       await load();
     } catch (e) { setMsg({ type: "danger", text: e.message }); }
     finally { setLoading(false); }
+  }
+
+  async function toggleDataset(id, enabled) {
+    try {
+      await api(`/datasets/${id}`, { method: "PATCH", body: { enabled: !enabled } });
+      await load();
+    } catch (e) {
+      setMsg({ type: "danger", text: e.message });
+    }
   }
 
   return (
@@ -86,7 +97,7 @@ export default function Datasets() {
           </button>
 
           <div style={{ marginTop: 20 }}>
-            <div className="form-label">Supported Formats</div>
+            <div className="form-label">Available Dataset Types</div>
             <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
               {KINDS.map(([k, desc]) => (
                 <div key={k} style={{
@@ -157,8 +168,10 @@ export default function Datasets() {
               fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "var(--text-dim)",
               lineHeight: 1.8,
             }}>
-              <div style={{ color: "var(--low)", marginBottom: 6 }}>▸ RISK FORMULA</div>
-              <div>Risk = (CVSS × exploit_weight) + KEV_bonus + asset_criticality × confidence</div>
+              <div style={{ color: "var(--low)", marginBottom: 6 }}>▸ MULTI-SOURCE RISK FORMULA</div>
+              <div>CVSS = max(NVD_score, CNA_score, ADP_score)</div>
+              <div>Risk = (CVSS × exploit_weight) + KEV_bonus + EPSS_boost + asset_criticality × confidence</div>
+              <div style={{ marginTop: 4, color: "var(--text-dim)", opacity: 0.7 }}>confidence = 1.0 when NVD + CNA agree, 0.95 single source</div>
             </div>
           </Panel>
         </div>

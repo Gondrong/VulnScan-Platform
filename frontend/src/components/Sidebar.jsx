@@ -2,12 +2,12 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 
 const NAV = [
-  { to: "/dashboard", icon: "◈", label: "Dashboard", group: "Core" },
-  { to: "/jobs",      icon: "⚡", label: "Scan Jobs" },
-  { to: "/findings",  icon: "◎", label: "Findings" },
-  { to: "/profiles",  icon: "⬡", label: "Profiles",    group: "Config" },
+  { to: "/dashboard", icon: "◈", label: "Dashboard", group: "Monitoring" },
+  { to: "/jobs",      icon: "⚡", label: "Scan Jobs", group: "Scanning" },
+  { to: "/profiles",  icon: "⬡", label: "Profiles",    group: "Configuration" },
   { to: "/credentials", icon: "⊕", label: "Credentials" },
   { to: "/datasets",  icon: "▦", label: "Datasets" },
+  { to: "/settings",  icon: "⚙", label: "Settings" },
 ];
 
 const styles = {
