@@ -1,7 +1,5 @@
 # VulnScan Platform
-<img width="1902" height="902" alt="image" src="https://github.com/user-attachments/assets/4bcef821-8aae-4c22-aefa-de84204eab55" />
-<img width="1918" height="910" alt="image" src="https://github.com/user-attachments/assets/aa053b3d-391b-4286-b85b-41af2c303b37" />
-
+<img width="1915" height="905" alt="image" src="https://github.com/user-attachments/assets/e67c5351-d161-4e1b-af2d-ad2019b93eaa" />
 
 Plugin-based internal vulnerability management platform with:
 - Web UI + API (FastAPI + React)
@@ -29,8 +27,38 @@ Features:
 - Compliance mapping (ISO/NIST/PCI)
 - Neo4j attack graph modeling
 
----
+List of Embed Plugins:
+| No	| Plugins 	| Descriptions  	|
+|:-:	|---	|---	|
+|  1 	| port_scan  	| discovers open ports  	|
+|  2 	| nmap_portscan  	| full port range + service banners  	|
+|  3 	| http_fingerprint  	| HTTP headers  	|
+|  4 	| banner_grabber  	| service version banners  	|
+|  5 	| web_tech  	| CMS/framework detection  	|
+|  6 	| favicon_hash  	| technology fingerprinting  	|
+|  7 	| dir_crawl  	| directory/file discovery  	|
+|  8 	| owasp_scanner  	| OWASP Top 10 active tests  	|
+|  9 	| file_inclusion  	| LFI/RFI deep scan  	|
+|  10 	| cpe_builder  	| builds CPE strings  	|
+|  11	| nvd_match  	| CPE→CVE matching  	|
+|  12 	| cms_match  	| CMS-specific CVEs  	|
+|  13 	| cisa_kev  	| KEV cross-reference  	|
+|  14 	| tls_basic  	| TLS version check  	|
+|  15 	| ssh_inventory  	| SSH package collection  	|
+|  16 	| local_security  	| distro advisory matching  	|
+|  17 	| cve_packages  	| package→CVE matching  	|
 
+---
+Asset criticality describe:
+|  Level 	|  Label 	|  Risk Multiplier 	|  Use For 	|
+|:-:	|---	|:-:	|---	|
+|  1 | Low (Development/Test) |  ×0.8 	| Dev servers, sandbox, staging  	|
+|  2 | Normal (Standard systems)  	|  ×1.0 	| Internal tools, standard workstations  	|
+|  3 | High (Business-critical)  	|  ×1.1 	| Production apps, internal APIs  	|
+|  4 | Critical (Customer data / Revenue)  	|  ×1.2 	| Payment systems, databases with PII  	|
+|  5 | Maximum (Regulatory / Life-safety)  	|  ×1.3 	| HIPAA/PCI systems, SCADA, public-facing auth  	|
+
+---
 ## Requirements
 
 - Docker
@@ -78,8 +106,10 @@ Supported dataset kinds:
 ---
 
 ## Export Report
-
-<img width="843" height="202" alt="image" src="https://github.com/user-attachments/assets/2ad6c63e-f9cf-4f37-9bf8-094917cfa175" />
+|  Location |  Scope | Buttons |
+|:-:	|---	|:-:	|
+|  Panel header (top) | All hosts combined |  📄 CSV · 📊 HTML · 📋 PDF	| 
+|  Inside each host expand | Single host only |  📄 CSV · 📊 HTML · 📋 PDF 	|
 
 ---
 
@@ -95,7 +125,6 @@ Supported dataset kinds:
 8. Assign SLA
 9. Map Compliance
 10. Push to Neo4j attack graph
-
 ---
 
 ## Risk Formula
@@ -137,6 +166,7 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
 
 
