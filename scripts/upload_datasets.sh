@@ -74,6 +74,7 @@ upload_one "cisa_kev" "kev_auto" "${OUT_DIR}/cisa_kev.json"
 upload_one "epss" "epss_auto" "${OUT_DIR}/epss.json"
 upload_one "cms_cve_map" "cms_auto" "${OUT_DIR}/cms_cve_map.json"
 upload_one "compliance_map" "compliance_auto" "${OUT_DIR}/compliance_map.json"
+upload_one "cvedetails_cvss" "cvedetails_auto" "${OUT_DIR}/cvedetails_cvss.json"
 
 # Optional: if you maintain these manually, uncomment:
 # upload_one "osv" "osv_manual" "${OUT_DIR}/osv.json"

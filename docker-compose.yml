@@ -52,6 +52,7 @@ services:
         condition: service_healthy
     volumes:
       - ./data:/data
+      - ./backend:/app
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
@@ -73,19 +74,20 @@ services:
         condition: service_healthy
     volumes:
       - ./data:/data
+      - ./backend:/app
     command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} scans
     restart: unless-stopped
 
   frontend:
     build: ./frontend
     environment:
-      # Inside Docker, the proxy must reach the backend via its service name.
-      # VITE_API_URL here is used by Vite's SSR proxy (server-side), NOT the browser.
-      # The browser uses window.location.origin-relative paths via the Vite proxy.
       - VITE_API_URL=http://backend:8080
     depends_on:
       backend:
         condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     command: npm run dev -- --host 0.0.0.0 --port 5173
