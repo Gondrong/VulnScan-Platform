@@ -74,7 +74,40 @@ To running this docker or platform you can run this command:
 
 **└─# ./bootstrap.sh**
 
-and then you can access platform with this port
+<img width="1695" height="832" alt="image" src="https://github.com/user-attachments/assets/5b8933ac-3b65-4daa-879d-8cd7a2ebb662" />
+
+bootstrap.sh now creates 3 scan profiles :
+
+| Profile	| Nmap Mode | OWASP	| SSH | Use |
+|---	|---	|:-:	|:-:	|---	|
+| default  	| top100 (120 ports)  	| ✓ 	| ✗ 	| Quick daily scan 	|
+| owasp-web-full  	| top1000 (~500 ports)  	| ✓ 	| ✗ 	| Web app assessment |
+| infra-full-audit  	| full (65535 ports)  	| ✓ 	| ✓ 	| Full infrastructure audit |
+
+Profile **infra-full-audit** automatic reading credentials after you added on the menu credentials.
+
+After you running **bootstrap.sh** you must get NVD API KEY and running datasets to fetch CVSS Data and then can you upload to platform
+```bash
+Option A: Everything at once (NVD + CVE.org + CISA + EPSS)      <--- I recommend this option is better.
+NVD_API_KEY=your-key python3 scripts/fast_update_datasets.py
+
+Option B: Just the CNA/ADP scores (since you already have NVD)
+python3 scripts/multi_cvss_fetch.py \
+  --nvd-data data/cve/nvd_cpe_cve.json \
+  --out data/cve/cvedetails_cvss.json \
+  --workers 5
+
+Quick test with 100 CVEs first
+python3 scripts/multi_cvss_fetch.py \
+  --nvd-data data/cve/nvd_cpe_cve.json \
+  --out data/cve/cvedetails_cvss.json \
+  --max 100
+```
+Waiting the process is done and then upload:
+```
+bash scripts/upload_datasets.sh
+```
+<img width="1287" height="848" alt="image" src="https://github.com/user-attachments/assets/097638ae-b4a9-456b-826b-a8fc5819e801" />
 
 Platform:
 **http://[YOUR_IP]:5173**
@@ -87,17 +120,10 @@ after you access and login the dashboard with:
 
 ## Upload Datasets
 
-**First**, you must running this script to update/fetch datasets.
-<img width="812" height="728" alt="image" src="https://github.com/user-attachments/assets/18d527ee-7860-415b-93cc-6c0f43e40c14" />
-
-**Second**, after that you can run this script to upload datasets into platform.
-<img width="857" height="248" alt="image" src="https://github.com/user-attachments/assets/69612b22-26ff-407b-b583-b7588786051e" />
-
-Or you can upload your datasets and place JSON files inside:
+Or you can manually upload your datasets and place JSON files inside:
 data/cve/
 
 Supported dataset kinds:
-- osv
 - nvd_cpe_cve
 - cisa_kev
 - favicon_hash_map
@@ -167,6 +193,7 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
 
 
