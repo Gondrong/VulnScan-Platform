@@ -1,5 +1,6 @@
 # VulnScan Platform
-<img width="1915" height="905" alt="image" src="https://github.com/user-attachments/assets/e67c5351-d161-4e1b-af2d-ad2019b93eaa" />
+<img width="1918" height="901" alt="image" src="https://github.com/user-attachments/assets/d92a962a-2d08-4389-acbc-8e65699b758e" />
+
 
 Plugin-based internal vulnerability management platform with:
 - Web UI + API (FastAPI + React)
@@ -166,6 +167,7 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
 
 
