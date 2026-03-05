@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from redis import Redis
@@ -221,6 +222,7 @@ def list_jobs(
             "scan_type": r.scan_type or "internal",
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "meta_json": r.meta_json if r.status == "running" else None,
             "error_info": _extract_error_info(r.meta_json) if r.status == "failed" else None,
         }
         for r in rows
@@ -325,14 +327,40 @@ def delete_job(
     if not job:
         raise HTTPException(404, "job not found")
 
+    target = job.target
+    ws_id = user["ws"]
+
     db.query(models.Finding).filter(
         models.Finding.job_id == job_id,
-        models.Finding.workspace_id == user["ws"],
+        models.Finding.workspace_id == ws_id,
     ).delete()
 
     db.delete(job)
     db.commit()
     logger.info("Deleted scan job #%d", job_id)
+
+    # Rebuild Neo4j graph from remaining findings
+    try:
+        from app.graph.neo4j_client import Neo4jClient
+        neo = Neo4jClient()
+        remaining = (
+            db.query(models.Finding)
+            .filter(models.Finding.workspace_id == ws_id)
+            .all()
+        )
+        neo.sync_from_findings(ws_id, [
+            {
+                "target": f.target,
+                "cve": f.evidence.split("CVE-")[1].split(" ")[0].split(")")[0] if "CVE-" in (f.evidence or "") else "",
+                "plugin_id": f.plugin_id,
+                "risk_score": f.risk_score,
+            }
+            for f in remaining
+        ])
+        neo.close()
+    except Exception as e:
+        logger.debug("Neo4j graph sync after delete: %s", e)
+
     return {"ok": True, "deleted_job_id": job_id}
 
 
@@ -362,5 +390,227 @@ def suppress(
             workspace_id=user["ws"], fingerprint=fp, reason=reason
         )
         db.add(row)
+    db.commit()
+    return {"ok": True}
+
+# ─── Rescan ────────────────────────────────────────────────────────────────────
+
+@router.post("/jobs/{job_id}/rescan")
+def rescan_job(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Create a new scan job with the same target/profile/type as an existing job."""
+    original = (
+        db.query(models.ScanJob)
+        .filter(
+            models.ScanJob.workspace_id == user["ws"],
+            models.ScanJob.id == job_id,
+        )
+        .first()
+    )
+    if not original:
+        raise HTTPException(404, "job not found")
+
+    new_job = models.ScanJob(
+        workspace_id=user["ws"],
+        target=original.target,
+        profile_id=original.profile_id,
+        status="queued",
+        scan_type=original.scan_type or "internal",
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+
+    try:
+        q = Queue("scans", connection=_redis())
+        q.enqueue(run_scan_job, new_job.id, job_timeout=600)
+        logger.info("Rescan enqueued: job #%d (from #%d) target=%s", new_job.id, job_id, original.target)
+    except Exception as e:
+        new_job.status = "failed"
+        new_job.meta_json = json.dumps({"error": f"Failed to enqueue rescan: {e}"})
+        db.commit()
+        raise HTTPException(503, f"Could not enqueue rescan: {e}")
+
+    return {
+        "id": new_job.id,
+        "original_job_id": job_id,
+        "target": new_job.target,
+        "status": new_job.status,
+    }
+
+
+# ─── Scan History (per host) ──────────────────────────────────────────────────
+
+@router.get("/history/{target:path}")
+def scan_history(
+    target: str,
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Get all scan jobs and finding summaries for a specific target."""
+    ws = user["ws"]
+    jobs = (
+        db.query(models.ScanJob)
+        .filter(
+            models.ScanJob.workspace_id == ws,
+            models.ScanJob.target == target,
+        )
+        .order_by(models.ScanJob.created_at.desc())
+        .all()
+    )
+
+    history = []
+    for j in jobs:
+        finding_counts = {}
+        findings = (
+            db.query(models.Finding.severity, models.Finding.id)
+            .filter(models.Finding.job_id == j.id, models.Finding.workspace_id == ws)
+            .all()
+        )
+        for f_sev, _ in findings:
+            finding_counts[f_sev] = finding_counts.get(f_sev, 0) + 1
+
+        history.append({
+            "job_id": j.id,
+            "target": j.target,
+            "scan_type": j.scan_type or "internal",
+            "profile_id": j.profile_id,
+            "status": j.status,
+            "created_at": j.created_at.isoformat() if j.created_at else None,
+            "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+            "severity_counts": finding_counts,
+            "total_findings": sum(finding_counts.values()),
+        })
+
+    return {"target": target, "scans": history, "total_scans": len(history)}
+
+
+# ─── Scan Schedules ───────────────────────────────────────────────────────────
+
+@router.get("/schedules")
+def list_schedules(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.workspace_id == user["ws"])
+        .order_by(models.ScanSchedule.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "target": r.target,
+            "profile_id": r.profile_id,
+            "scan_type": r.scan_type,
+            "schedule_type": r.schedule_type or "interval",
+            "interval_hours": r.interval_hours,
+            "custom_datetime": r.custom_datetime.isoformat() if r.custom_datetime else None,
+            "repeat": r.repeat if r.repeat is not None else True,
+            "enabled": r.enabled,
+            "last_run_at": r.last_run_at.isoformat() if r.last_run_at else None,
+            "next_run_at": r.next_run_at.isoformat() if r.next_run_at else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/schedules")
+def create_schedule(
+    body: dict,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    target = (body.get("target") or "").strip()
+    if not target:
+        raise HTTPException(400, "target is required")
+
+    profile_id = body.get("profile_id")
+    if not profile_id:
+        raise HTTPException(400, "profile_id is required")
+
+    schedule_type = body.get("schedule_type", "interval")  # "interval" or "custom"
+    interval = int(body.get("interval_hours", 24))
+    if interval < 1:
+        interval = 1
+
+    now_utc = datetime.now(timezone.utc)
+    custom_dt = None
+    repeat = body.get("repeat", True)
+
+    if schedule_type == "custom":
+        # Parse custom datetime from ISO string
+        raw_dt = body.get("custom_datetime", "")
+        if not raw_dt:
+            raise HTTPException(400, "custom_datetime is required for custom schedule type")
+        try:
+            custom_dt = datetime.fromisoformat(raw_dt.replace("Z", "+00:00"))
+            if custom_dt.tzinfo is None:
+                custom_dt = custom_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(400, f"Invalid datetime format: {raw_dt}. Use ISO 8601 (e.g. 2026-03-10T14:30:00)")
+        next_run = custom_dt
+    else:
+        next_run = now_utc + timedelta(hours=interval)
+
+    sched = models.ScanSchedule(
+        workspace_id=user["ws"],
+        name=body.get("name", f"Schedule: {target}"),
+        target=target,
+        profile_id=int(profile_id),
+        scan_type=body.get("scan_type", "internal"),
+        schedule_type=schedule_type,
+        interval_hours=interval,
+        custom_datetime=custom_dt,
+        repeat=repeat,
+        enabled=body.get("enabled", True),
+        next_run_at=next_run,
+    )
+    db.add(sched)
+    db.commit()
+    db.refresh(sched)
+    mode = f"custom ({custom_dt.isoformat()})" if schedule_type == "custom" else f"every {interval}h"
+    logger.info("Schedule #%d created: %s %s", sched.id, target, mode)
+    return {"id": sched.id, "name": sched.name, "next_run_at": sched.next_run_at.isoformat() if sched.next_run_at else None}
+
+
+@router.put("/schedules/{sched_id}/toggle")
+def toggle_schedule(
+    sched_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    sched = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.workspace_id == user["ws"], models.ScanSchedule.id == sched_id)
+        .first()
+    )
+    if not sched:
+        raise HTTPException(404, "schedule not found")
+    sched.enabled = not sched.enabled
+    db.commit()
+    return {"id": sched.id, "enabled": sched.enabled}
+
+
+@router.delete("/schedules/{sched_id}")
+def delete_schedule(
+    sched_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    sched = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.workspace_id == user["ws"], models.ScanSchedule.id == sched_id)
+        .first()
+    )
+    if not sched:
+        raise HTTPException(404, "schedule not found")
+    db.delete(sched)
     db.commit()
     return {"ok": True}

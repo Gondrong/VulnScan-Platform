@@ -57,6 +57,81 @@ class Neo4jClient:
         except Exception as e:
             logger.debug("Neo4j upsert error: %s", e)
 
+    def delete_target(self, workspace_id: int, target: str) -> None:
+        """Remove all nodes and relationships for a target."""
+        if not self._driver:
+            return
+        try:
+            with self._driver.session() as session:
+                # Delete relationships and orphaned vulnerability nodes
+                session.run(
+                    """
+                    MATCH (a:Asset {target: $target, workspace: $ws})-[r:HAS_VULN]->(v:Vulnerability)
+                    DELETE r
+                    WITH a, v
+                    WHERE NOT (v)<-[:HAS_VULN]-()
+                    DELETE v
+                    WITH a
+                    DELETE a
+                    """,
+                    target=target,
+                    ws=workspace_id,
+                )
+        except Exception as e:
+            logger.debug("Neo4j delete_target error: %s", e)
+
+    def delete_workspace(self, workspace_id: int) -> None:
+        """Remove all graph data for a workspace."""
+        if not self._driver:
+            return
+        try:
+            with self._driver.session() as session:
+                session.run(
+                    """
+                    MATCH (a:Asset {workspace: $ws})-[r:HAS_VULN]->(v:Vulnerability)
+                    DELETE r
+                    WITH a, v
+                    WHERE NOT (v)<-[:HAS_VULN]-()
+                    DELETE v
+                    WITH a
+                    DELETE a
+                    """,
+                    ws=workspace_id,
+                )
+        except Exception as e:
+            logger.debug("Neo4j delete_workspace error: %s", e)
+
+    def sync_from_findings(self, workspace_id: int, findings: list) -> int:
+        """
+        Rebuild graph from a list of finding dicts.
+        Clears existing workspace data and re-inserts.
+        Returns count of nodes created.
+        """
+        if not self._driver:
+            return 0
+        try:
+            self.delete_workspace(workspace_id)
+            count = 0
+            for f in findings:
+                cve = f.get("cve") or ""
+                if not cve.startswith("CVE-"):
+                    continue
+                target = f.get("target", "")
+                if not target:
+                    continue
+                self.upsert_finding(
+                    workspace_id=workspace_id,
+                    target=target,
+                    plugin_id=f.get("plugin_id", ""),
+                    cve=cve,
+                    risk_score=f.get("risk_score", 0) or 0,
+                )
+                count += 1
+            return count
+        except Exception as e:
+            logger.debug("Neo4j sync error: %s", e)
+            return 0
+
     def close(self) -> None:
         if self._driver:
             try:

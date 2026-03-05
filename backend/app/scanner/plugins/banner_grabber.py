@@ -20,7 +20,7 @@ async def grab_tcp(host, port, payload=None, timeout=3.0):
             w.write(payload); await w.drain()
         data = await asyncio.wait_for(r.read(1024), timeout=timeout)
         w.close(); await w.wait_closed()
-        return data.decode("utf-8", errors="ignore").strip()
+        return data.decode("utf-8", errors="ignore").replace("\x00", "").strip()
     except:
         return ""
 

@@ -109,6 +109,26 @@ class SuppressedFinding(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ScanSchedule(Base):
+    __tablename__ = "scan_schedules"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    target: Mapped[str] = mapped_column(String(512))
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    scan_type: Mapped[str] = mapped_column(String(20), default="internal")
+    # Schedule mode: "interval" (recurring) or "custom" (specific datetime)
+    schedule_type: Mapped[str] = mapped_column(String(20), default="interval")
+    interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+    # For custom: specific datetime + optional repeat
+    custom_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    repeat: Mapped[bool] = mapped_column(Boolean, default=True)  # False = run once then disable
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ from app.api.routes_credentials import router as cred_router
 from app.api.routes_datasets import router as ds_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_settings import router as settings_router
+from app.api.routes_graph import router as graph_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
@@ -92,6 +94,41 @@ def startup() -> None:
     try:
         _run_migrations(db)
 
+        # Add scan_schedules table migration
+        try:
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS scan_schedules (
+                    id SERIAL PRIMARY KEY,
+                    workspace_id INTEGER REFERENCES workspaces(id),
+                    name VARCHAR(255) NOT NULL,
+                    target VARCHAR(512) NOT NULL,
+                    profile_id INTEGER REFERENCES profiles(id),
+                    scan_type VARCHAR(20) DEFAULT 'internal',
+                    schedule_type VARCHAR(20) DEFAULT 'interval',
+                    interval_hours INTEGER DEFAULT 24,
+                    custom_datetime TIMESTAMPTZ,
+                    repeat BOOLEAN DEFAULT TRUE,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    last_run_at TIMESTAMPTZ,
+                    next_run_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """))
+            db.commit()
+            # Add columns to existing table if missing
+            for col, coltype in [
+                ("schedule_type", "VARCHAR(20) DEFAULT 'interval'"),
+                ("custom_datetime", "TIMESTAMPTZ"),
+                ("repeat", "BOOLEAN DEFAULT TRUE"),
+            ]:
+                try:
+                    db.execute(text(f"ALTER TABLE scan_schedules ADD COLUMN IF NOT EXISTS {col} {coltype}"))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+        except Exception:
+            db.rollback()
+
         ws = (
             db.query(models.Workspace)
             .filter(models.Workspace.name == settings.DEFAULT_WORKSPACE)
@@ -124,7 +161,79 @@ def startup() -> None:
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    return {"ok": True, "version": "1.0.0"}
+    return {"ok": True, "version": "1.1.0"}
+
+
+# ─── Schedule Runner (background) ─────────────────────────────────────────────
+import asyncio as _asyncio
+import threading as _threading
+
+def _schedule_loop():
+    """Background thread that checks for due scan schedules every 60s."""
+    import time
+    from redis import Redis
+    from rq import Queue
+    from app.worker_tasks import run_scan_job
+
+    logger.info("Scheduler started")
+    while True:
+        time.sleep(60)
+        try:
+            db = SessionLocal()
+            now_utc = datetime.now(timezone.utc)
+            due = (
+                db.query(models.ScanSchedule)
+                .filter(
+                    models.ScanSchedule.enabled == True,
+                    models.ScanSchedule.next_run_at <= now_utc,
+                )
+                .all()
+            )
+            for sched in due:
+                try:
+                    job = models.ScanJob(
+                        workspace_id=sched.workspace_id,
+                        target=sched.target,
+                        profile_id=sched.profile_id,
+                        status="queued",
+                        scan_type=sched.scan_type or "internal",
+                    )
+                    db.add(job)
+                    db.commit()
+                    db.refresh(job)
+
+                    q = Queue("scans", connection=Redis.from_url(settings.REDIS_URL))
+                    q.enqueue(run_scan_job, job.id, job_timeout=600)
+
+                    sched.last_run_at = now_utc
+
+                    sched_type = getattr(sched, 'schedule_type', 'interval') or 'interval'
+                    is_repeat = getattr(sched, 'repeat', True)
+
+                    if sched_type == "custom" and not is_repeat:
+                        # One-time custom schedule — disable after running
+                        sched.enabled = False
+                        sched.next_run_at = None
+                    elif sched_type == "custom" and is_repeat:
+                        # Repeating custom — use interval_hours for next run
+                        sched.next_run_at = now_utc + timedelta(hours=sched.interval_hours)
+                    else:
+                        # Standard interval schedule
+                        sched.next_run_at = now_utc + timedelta(hours=sched.interval_hours)
+
+                    db.commit()
+                    logger.info("Scheduled scan #%d for %s (schedule #%d)", job.id, sched.target, sched.id)
+                except Exception as e:
+                    logger.warning("Schedule #%d failed: %s", sched.id, e)
+                    db.rollback()
+            db.close()
+        except Exception as e:
+            logger.warning("Scheduler tick error: %s", e)
+
+@app.on_event("startup")
+def start_scheduler():
+    t = _threading.Thread(target=_schedule_loop, daemon=True)
+    t.start()
 
 
 @app.middleware("http")
@@ -160,3 +269,4 @@ app.include_router(cred_router)
 app.include_router(ds_router)
 app.include_router(scan_router)
 app.include_router(settings_router)
+app.include_router(graph_router)

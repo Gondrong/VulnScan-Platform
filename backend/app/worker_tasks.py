@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 import logging
@@ -15,6 +16,7 @@ from app.risk.cvss_engine import severity_from_score
 from app.risk.risk_engine import compute_risk
 from app.risk.sla_engine import assign_sla_days
 from app.scanner.engine import scan_target
+from app.cve.enricher import CveSeverityEnricher
 
 logger = logging.getLogger("vulnscan.worker")
 
@@ -95,8 +97,58 @@ def run_scan_job(job_id: int) -> None:
         # Pass scan_type to engine so external scans bypass allowlist
         scan_type = job.scan_type or "internal"
 
+        # Progress callback — updates meta_json so frontend can poll
+        # Uses a SEPARATE db session to avoid corrupting the main session
+        _scan_start = datetime.now(timezone.utc)
+        _plugin_log = []
+
+        def _progress(step, total, plugin_id, plugin_name, status):
+            elapsed = (datetime.now(timezone.utc) - _scan_start).total_seconds()
+            entry = {"plugin_id": plugin_id, "name": plugin_name, "status": status, "t": round(elapsed, 1)}
+            # Update log (replace if same plugin, append if new)
+            existing = next((i for i, e in enumerate(_plugin_log) if e["plugin_id"] == plugin_id), None)
+            if existing is not None:
+                _plugin_log[existing] = entry
+            else:
+                _plugin_log.append(entry)
+
+            progress_json = json.dumps({
+                "progress": {
+                    "step": step,
+                    "total": total,
+                    "pct": round((step + (1 if status != "running" else 0)) / max(total, 1) * 100),
+                    "current_plugin": plugin_id,
+                    "current_name": plugin_name,
+                    "status": status,
+                    "elapsed": round(elapsed, 1),
+                    "plugins": _plugin_log[-20:],
+                }
+            })
+
+            # Use a separate session so failures don't corrupt the main session
+            progress_db = None
+            try:
+                progress_db = SessionLocal()
+                progress_db.query(models.ScanJob).filter(
+                    models.ScanJob.id == job_id
+                ).update({"meta_json": progress_json})
+                progress_db.commit()
+            except Exception as exc:
+                logger.debug("Progress update failed for job #%d: %s", job_id, exc)
+                if progress_db:
+                    try:
+                        progress_db.rollback()
+                    except Exception:
+                        pass
+            finally:
+                if progress_db:
+                    try:
+                        progress_db.close()
+                    except Exception:
+                        pass
+
         try:
-            findings = _run_async(scan_target(job.target, profile, ws_id, scan_type))
+            findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress))
         except Exception as e:
             tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)
@@ -136,6 +188,14 @@ def run_scan_job(job_id: int) -> None:
         except Exception as e:
             logger.warning("Neo4j unavailable: %s", e)
 
+        # Initialize multi-source CVE enricher (NVD + CVEDetails)
+        data_dir = os.environ.get("CVE_DATA_DIR", "/app/data/cve")
+        try:
+            enricher = CveSeverityEnricher(data_dir)
+        except Exception as e:
+            logger.warning("CVE enricher init failed: %s (using NVD only)", e)
+            enricher = None
+
         saved_count = 0
         for f in findings:
             if f.fingerprint in suppressed:
@@ -145,6 +205,15 @@ def run_scan_job(job_id: int) -> None:
             cvss = getattr(f, "cvss", None)
             confidence = float(getattr(f, "confidence", 1.0) or 1.0)
             exploit_known = kev
+
+            # Enrich CVSS with multi-source data (NVD + CVEDetails)
+            cve_id = getattr(f, "cve", None)
+            if enricher and cve_id and str(cve_id).startswith("CVE-"):
+                enriched_cvss, enriched_conf = enricher.enrich_finding_cvss(cve_id, cvss)
+                if enriched_cvss is not None:
+                    cvss = enriched_cvss
+                    # Use enriched confidence (1.0 if multi-source agrees, 0.95 single)
+                    confidence = max(confidence, enriched_conf)
 
             # Pass plugin original severity so info findings stay info
             plugin_sev = getattr(f, "severity", "") or ""
@@ -187,17 +256,25 @@ def run_scan_job(job_id: int) -> None:
                 getattr(f, "cve", None), f.plugin_id, compliance_db
             )
 
+            # Sanitize NUL bytes — PostgreSQL text columns reject \x00
+            def _sanitize(s):
+                if not s:
+                    return s
+                if isinstance(s, str):
+                    return s.replace("\x00", "")
+                return s
+
             row = models.Finding(
                 workspace_id=ws_id,
                 job_id=job.id,
                 target=job.target,
                 plugin_id=f.plugin_id,
-                title=f.title,
+                title=_sanitize(f.title),
                 severity=sev,
-                description=f.description or "",
-                remediation=remediation_text,
+                description=_sanitize(f.description or ""),
+                remediation=_sanitize(remediation_text),
                 references_json=json.dumps(getattr(f, "references", []) or []),
-                evidence=f.evidence or "",
+                evidence=_sanitize(f.evidence or ""),
                 fingerprint=f.fingerprint,
                 cvss_base=cvss,
                 risk_score=risk,
@@ -231,19 +308,35 @@ def run_scan_job(job_id: int) -> None:
         tb = traceback.format_exc()
         logger.exception("Unhandled error in run_scan_job #%d: %s", job_id, e)
         try:
+            db.rollback()  # Reset corrupted session state
             job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
             if job:
                 job.status = "failed"
                 job.meta_json = json.dumps({
-                    "error": str(e),
+                    "error": str(e)[:500],
                     "error_type": "unhandled",
                     "error_detail": f"An unexpected error occurred during scan processing.\n\nTechnical detail: {str(e)[:500]}",
                     "traceback": tb[:2000],
                 })
                 job.finished_at = datetime.now(timezone.utc)
                 db.commit()
-        except Exception:
-            pass
+        except Exception as inner_e:
+            logger.error("Failed to mark job #%d as failed: %s", job_id, inner_e)
+            # Last resort — raw SQL update to unstick the job
+            try:
+                db.rollback()
+                db.execute(
+                    models.ScanJob.__table__.update()
+                    .where(models.ScanJob.id == job_id)
+                    .values(
+                        status="failed",
+                        finished_at=datetime.now(timezone.utc),
+                        meta_json=json.dumps({"error": str(e)[:200], "error_type": "crash"}),
+                    )
+                )
+                db.commit()
+            except Exception:
+                logger.critical("CRITICAL: Job #%d is permanently stuck as running!", job_id)
     finally:
         if neo:
             try:

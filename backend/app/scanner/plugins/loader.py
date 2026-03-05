@@ -13,6 +13,7 @@ logger = logging.getLogger("vulnscan.loader")
 # All built-in plugin modules (relative to app.scanner.plugins)
 _BUILTIN_PLUGINS = [
     "port_scan",
+    "nmap_portscan",
     "http_fingerprint",
     "banner_grabber",
     "web_tech",
@@ -24,6 +25,10 @@ _BUILTIN_PLUGINS = [
     "tls_basic",
     "ssh_inventory",
     "cve_packages",
+    "local_security",
+    "owasp_scanner",
+    "dir_crawl",
+    "file_inclusion",
 ]
 
 

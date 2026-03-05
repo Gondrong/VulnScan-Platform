@@ -1,6 +1,7 @@
 """
 Settings API — manage platform configuration from the UI.
 """
+import hashlib
 import json
 import logging
 import os
@@ -131,6 +132,106 @@ def list_users(
         }
         for u in users
     ]
+
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    role: str = "analyst"
+
+
+@router.post("/users")
+def create_user(
+    body: UserCreate,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    ws = user["ws"]
+    if not body.email or not body.password:
+        raise HTTPException(400, "Email and password required")
+    if body.role not in ("admin", "analyst", "viewer"):
+        raise HTTPException(400, "Role must be admin, analyst, or viewer")
+
+    existing = db.query(models.User).filter(
+        models.User.workspace_id == ws,
+        models.User.email == body.email,
+    ).first()
+    if existing:
+        raise HTTPException(409, f"User '{body.email}' already exists")
+
+    pw_hash = hashlib.sha256(body.password.encode("utf-8")).hexdigest()
+    new_user = models.User(
+        workspace_id=ws,
+        email=body.email,
+        password_hash=pw_hash,
+        role=body.role,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    logger.info("User created: %s (role=%s) by %s", body.email, body.role, user.get("sub", "?"))
+    return {"id": new_user.id, "email": new_user.email, "role": new_user.role}
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    ws = user["ws"]
+    target = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.workspace_id == ws,
+    ).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.email == user.get("sub"):
+        raise HTTPException(400, "Cannot delete your own account")
+    db.delete(target)
+    db.commit()
+    logger.info("User deleted: #%d %s by %s", user_id, target.email, user.get("sub", "?"))
+    return {"ok": True}
+
+
+# ─── Integration Tests ────────────────────────────────────────────────────────
+
+class IntegrationTest(BaseModel):
+    type: str
+    url: str | None = None
+    host: str | None = None
+    port: str | None = None
+    from_addr: str | None = None
+    password: str | None = None
+    to: str | None = None
+
+
+@router.post("/integrations/test")
+def test_integration(
+    body: IntegrationTest,
+    user=Depends(require_role("admin")),
+):
+    """Test an integration (Slack, Email, Webhook). Best-effort — returns success or error."""
+    if body.type == "slack":
+        if not body.url or "hooks.slack" not in body.url:
+            raise HTTPException(400, "Invalid Slack webhook URL")
+        # In production, you'd POST to the URL. For now, validate format.
+        logger.info("Slack test by %s: %s", user.get("sub", "?"), body.url[:60])
+        return {"ok": True, "message": "Slack webhook URL validated. Deliver test message in production."}
+
+    elif body.type == "email":
+        if not body.host or not body.to:
+            raise HTTPException(400, "SMTP host and recipient required")
+        logger.info("Email test by %s: %s -> %s", user.get("sub", "?"), body.host, body.to)
+        return {"ok": True, "message": f"SMTP config validated: {body.host}:{body.port or 587} → {body.to}"}
+
+    elif body.type == "webhook":
+        if not body.url or not body.url.startswith("http"):
+            raise HTTPException(400, "Invalid webhook URL")
+        logger.info("Webhook test by %s: %s", user.get("sub", "?"), body.url[:60])
+        return {"ok": True, "message": "Webhook URL validated."}
+
+    raise HTTPException(400, f"Unknown integration type: {body.type}")
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────

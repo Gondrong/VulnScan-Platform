@@ -391,11 +391,14 @@ def _enrich_finding_description(finding: Finding, target: str, scan_type: str) -
 
 
 async def scan_target(
-    target: str, profile: dict, workspace_id: int, scan_type: str = "internal"
+    target: str, profile: dict, workspace_id: int, scan_type: str = "internal",
+    progress_callback=None,
 ) -> list[Finding]:
     """
     Main scan entry point.
     Returns a list of Finding objects (not dicts).
+
+    progress_callback: optional async/sync callable(step, total, plugin_id, plugin_name, status)
     """
     # Allowlist check — external scans bypass the internal allowlist
     if not _allowlisted(target, scan_type):
@@ -441,8 +444,17 @@ async def scan_target(
     findings_out: list[Finding] = []
     enabled = _enabled(profile.get("plugin_selection_json", "{}"))
 
-    for pid in enabled:
+    for step_idx, pid in enumerate(enabled):
         chk = PLUGINS[pid]
+        # Report progress
+        if progress_callback:
+            try:
+                _r = progress_callback(step_idx, len(enabled), pid, chk.meta.name, "running")
+                if asyncio.iscoroutine(_r):
+                    await _r
+            except Exception:
+                pass
+
         # External scans get extra timeout for network latency
         effective_timeout = chk.meta.timeout_seconds
         if scan_type == "external":
@@ -464,6 +476,13 @@ async def scan_target(
                     remediation="The plugin exceeded its timeout. This may indicate network latency or a heavily filtered target. Try increasing SCAN_TIMEOUT_SECONDS in .env.",
                 )
             )
+            if progress_callback:
+                try:
+                    _r = progress_callback(step_idx, len(enabled), pid, chk.meta.name, "timeout")
+                    if asyncio.iscoroutine(_r):
+                        await _r
+                except Exception:
+                    pass
             continue
         except Exception as exc:
             findings_out.append(
@@ -477,6 +496,13 @@ async def scan_target(
                     remediation=f"The {chk.meta.name} plugin encountered an error. Check target connectivity and plugin configuration.",
                 )
             )
+            if progress_callback:
+                try:
+                    _r = progress_callback(step_idx, len(enabled), pid, chk.meta.name, "error")
+                    if asyncio.iscoroutine(_r):
+                        await _r
+                except Exception:
+                    pass
             continue
 
         # Merge artifacts
@@ -489,6 +515,15 @@ async def scan_target(
             if not ctx.dedup(f.fingerprint):
                 continue
             findings_out.append(f)
+
+        # Report plugin completed
+        if progress_callback:
+            try:
+                _r = progress_callback(step_idx, len(enabled), pid, chk.meta.name, "done")
+                if asyncio.iscoroutine(_r):
+                    await _r
+            except Exception:
+                pass
 
     # Enrich all findings with remediation and description details
     for f in findings_out:
