@@ -108,6 +108,7 @@ Waiting the process is done and then upload:
 bash scripts/upload_datasets.sh
 ```
 <img width="1287" height="848" alt="image" src="https://github.com/user-attachments/assets/097638ae-b4a9-456b-826b-a8fc5819e801" />
+<img width="993" height="642" alt="image" src="https://github.com/user-attachments/assets/92b0672d-b44b-4a34-8632-34fe14307f85" />
 
 Platform:
 **http://[YOUR_IP]:5173**
@@ -193,6 +194,7 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
 
 
