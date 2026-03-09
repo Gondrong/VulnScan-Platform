@@ -27,6 +27,7 @@ Features:
 - SLA tracking + MTTR
 - Compliance mapping (ISO/NIST/PCI)
 - Neo4j attack graph modeling
+- Integration (e.g. Slack, SMTP) to notify if scheduled scan is done
 
 List of Embed Plugins:
 | No	| Plugins 	| Descriptions  	|
@@ -194,6 +195,7 @@ Future:
 - Risk heatmap
 - Attack path traversal scoring
 - Multi-tenant RBAC hardening
+
 
 
 
