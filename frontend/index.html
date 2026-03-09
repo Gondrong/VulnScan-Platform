@@ -2008,6 +2008,7 @@
                 <thead>
                   <tr>
                     <th>ID</th>
+                    <th>Name</th>
                     <th>Target</th>
                     <th>Profile</th>
                     <th>Schedule</th>
@@ -2018,7 +2019,7 @@
                 </thead>
                 <tbody id="schedules-tbody">
                   <tr>
-                    <td colspan="7">
+                    <td colspan="8">
                       <div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div>
                     </td>
                   </tr>
@@ -2563,7 +2564,8 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     async function deleteJob(jid, tgt) { if (!confirm(`Delete job #${jid} (${tgt}) and all findings?`)) return; S.deletedJobIds.add(jid); const row = gi('job-row-' + jid); if (row) { row.style.opacity = '0'; row.style.transition = 'opacity .2s'; setTimeout(() => row.remove(), 220) } try { await apiReq('/scan/jobs/' + jid, { method: 'DELETE' }); showAlert('job-alert', 'success', `✓ Job #${jid} deleted`); loadDashboard(false); loadAttackGraph() } catch (e) { if (e.status === 404) { showAlert('job-alert', 'info', `Job #${jid} already removed`) } else { S.deletedJobIds.delete(jid); await loadJobs(); showAlert('job-alert', 'danger', '⚠ ' + e.message) } } }
 
     // ─── Profiles ───
-    async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; gi('profiles-tbody').innerHTML = S.profiles.length ? S.profiles.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑 Delete</button></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>' } catch (e) { console.error('[loadProfiles]', e) } }
+    async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; gi('profiles-tbody').innerHTML = S.profiles.length ? S.profiles.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="loadProfileAsTemplate(${p.id})">📋 Use as Template</button> <button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑 Delete</button></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>' } catch (e) { console.error('[loadProfiles]', e) } }
+    function loadProfileAsTemplate(pid) { const p = S.profiles.find(x => x.id === pid); if (!p) return; gi('p-name').value = p.name + ' (Copy)'; gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2); const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json); gi('p-options').value = optStr; try { const o = JSON.parse(optStr); if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); } if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality); if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); } } catch (e) { console.error('Error parsing profile options', e); } window.scrollTo({ top: 0, behavior: 'smooth' }); showAlert('profile-alert', 'info', `ℹ Loaded profile #${pid} as template`); }
     async function createProfile() { const name = gi('p-name').value.trim(), plugins = gi('p-plugins').value.trim(), options = gi('p-options').value.trim(); if (!name) return showAlert('profile-alert', 'danger', 'Profile name required'); try { JSON.parse(plugins) } catch { return showAlert('profile-alert', 'danger', 'Plugin JSON invalid') } try { JSON.parse(options) } catch { return showAlert('profile-alert', 'danger', 'Options JSON invalid') } try { await apiReq('/scan/profiles', { method: 'POST', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) }); showAlert('profile-alert', 'success', '✓ Profile "' + name + '" created'); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
     async function deleteProfile(pid, name) { if (!confirm(`Delete profile "${name}" (#${pid})?`)) return; try { await apiReq('/scan/profiles/' + pid, { method: 'DELETE' }); showAlert('profile-alert', 'success', `✓ Profile #${pid} deleted`); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
 
@@ -3164,7 +3166,8 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
             : '🔄 ' + (intLabels[s.interval_hours] || s.interval_hours + 'h');
           return `<tr>
       <td class="mc" style="color:var(--accent)">#${s.id}</td>
-      <td class="bright" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.target)}</td>
+      <td class="bright" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.name)}">${esc(s.name)}</td>
+      <td class="dim" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.target)}">${esc(s.target)}</td>
       <td class="mc dim">${esc(pm[s.profile_id] || '#' + s.profile_id)}</td>
       <td class="mc" style="font-size:.7rem">${schedLabel}</td>
       <td>${s.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge b-info" style="opacity:.5">Paused</span>'}</td>
@@ -3173,7 +3176,7 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
         <button class="btn btn-ghost btn-sm" onclick="toggleSchedule(${s.id})">${s.enabled ? '⏸' : '▶'}</button>
         <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})">🗑</button>
       </div></td>
-    </tr>`}).join('') : '<tr><td colspan="7"><div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div></td></tr>';
+    </tr>`}).join('') : '<tr><td colspan="8"><div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div></td></tr>';
       } catch { }
     }
     async function createSchedule() {
@@ -3282,8 +3285,96 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
       try {
         await apiReq('/settings/users/' + uid, { method: 'DELETE' });
         showAlert('user-alert', 'success', '✓ User deleted');
-        await loadUsers();
       } catch (e) { showAlert('user-alert', 'danger', '⚠ ' + e.message) }
+    }
+
+    async function loadIntegrations() {
+      try {
+        const integrations = await apiReq('/integrations');
+        // Reset fields
+        gi('integ-slack').value = '';
+        gi('integ-smtp-host').value = ''; gi('integ-smtp-port').value = '587';
+        gi('integ-email-from').value = ''; gi('integ-email-pass').value = ''; gi('integ-email-to').value = '';
+        gi('integ-webhook').value = '';
+
+        for (let integ of integrations) {
+          if (!integ.enabled) continue;
+          let c = integ.config || {};
+          if (integ.provider === 'slack') gi('integ-slack').value = c.webhook_url || '';
+          if (integ.provider === 'webhook') gi('integ-webhook').value = c.url || '';
+          if (integ.provider === 'email') {
+            gi('integ-smtp-host').value = c.smtp_host || '';
+            gi('integ-smtp-port').value = c.smtp_port || '587';
+            gi('integ-email-from').value = c.from_email || '';
+            gi('integ-email-pass').value = c.smtp_pass || '';
+            gi('integ-email-to').value = c.to_email || '';
+          }
+        }
+      } catch (e) { console.error('[Integrations]', e); }
+    }
+
+    async function saveIntegrations() {
+      try {
+        gi('integ-alert').style.display = 'none';
+
+        const slackUrl = gi('integ-slack').value.trim();
+        await apiReq('/integrations/slack', {
+          method: 'POST',
+          body: JSON.stringify({ enabled: !!slackUrl, config: { webhook_url: slackUrl } })
+        });
+
+        const webhookUrl = gi('integ-webhook').value.trim();
+        await apiReq('/integrations/webhook', {
+          method: 'POST',
+          body: JSON.stringify({ enabled: !!webhookUrl, config: { url: webhookUrl } })
+        });
+
+        const smtpHost = gi('integ-smtp-host').value.trim();
+        const emailTo = gi('integ-email-to').value.trim();
+        const hasEmail = smtpHost && emailTo;
+        await apiReq('/integrations/email', {
+          method: 'POST',
+          body: JSON.stringify({
+            enabled: !!hasEmail,
+            config: {
+              smtp_host: smtpHost,
+              smtp_port: parseInt(gi('integ-smtp-port').value) || 587,
+              smtp_user: gi('integ-email-from').value.trim(),
+              smtp_pass: gi('integ-email-pass').value,
+              from_email: gi('integ-email-from').value.trim() || 'vulnscan@noreply.local',
+              to_email: emailTo,
+            }
+          })
+        });
+
+        showAlert('integ-alert', 'success', '✓ Integrations saved successfully!');
+      } catch (e) {
+        showAlert('integ-alert', 'danger', '⚠ Failed to save integrations: ' + e.message);
+      }
+    }
+
+    async function testIntegration(provider) {
+      gi('integ-alert').style.display = 'none';
+      let config = {};
+      if (provider === 'slack') config = { webhook_url: gi('integ-slack').value.trim() };
+      if (provider === 'webhook') config = { url: gi('integ-webhook').value.trim() };
+      if (provider === 'email') config = {
+        smtp_host: gi('integ-smtp-host').value.trim(),
+        smtp_port: parseInt(gi('integ-smtp-port').value) || 587,
+        smtp_user: gi('integ-email-from').value.trim(),
+        smtp_pass: gi('integ-email-pass').value,
+        from_email: gi('integ-email-from').value.trim() || 'vulnscan@noreply.local',
+        to_email: gi('integ-email-to').value.trim(),
+      };
+
+      try {
+        await apiReq(`/integrations/${provider}/test`, {
+          method: 'POST', body: JSON.stringify({ enabled: true, config })
+        });
+        showAlert('integ-alert', 'success', `✓ Test ${provider} notification sent successfully!`);
+      } catch (e) {
+        showAlert('integ-alert', 'danger', `⚠ Failed to send ${provider} test: ` + e.message);
+      }
     }
 
     function addAllowEntry() {
