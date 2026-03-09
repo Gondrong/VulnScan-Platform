@@ -197,6 +197,7 @@ def run_scan_job(job_id: int) -> None:
             enricher = None
 
         saved_count = 0
+        sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
         for f in findings:
             if f.fingerprint in suppressed:
                 continue
@@ -224,6 +225,7 @@ def run_scan_job(job_id: int) -> None:
                 plugin_severity=plugin_sev,
             )
             sev = severity_from_score(risk)
+            sev_counts[sev] = sev_counts.get(sev, 0) + 1
             sla_days = assign_sla_days(sev)
 
             # Build remediation text with correct SLA using FINAL severity
@@ -303,6 +305,49 @@ def run_scan_job(job_id: int) -> None:
             {"findings_total": len(findings), "findings_saved": saved_count}
         )
         db.commit()
+
+        # Send notifications
+        from app.scanner.notifier import (
+            send_slack_notification,
+            send_webhook_notification,
+            send_email_notification,
+        )
+        integrations = (
+            db.query(models.Integration)
+            .filter(models.Integration.workspace_id == ws_id, models.Integration.enabled == True)
+            .all()
+        )
+        if integrations:
+            crit = sev_counts.get("critical", 0)
+            high = sev_counts.get("high", 0)
+            med = sev_counts.get("medium", 0)
+            low = sev_counts.get("low", 0)
+            info = sev_counts.get("info", 0)
+            
+            msg = (
+                f"VulnScan Job #{job_id} on {job.target} completed. "
+                f"Found {saved_count} issues "
+                f"({crit} Critical, {high} High, {med} Medium, {low} Low, {info} Info)."
+            )
+            payload = {
+                "job_id": job_id,
+                "target": job.target,
+                "status": "done",
+                "findings_total": saved_count,
+                "severities": sev_counts
+            }
+            
+            for integ in integrations:
+                try:
+                    cfg = json.loads(integ.config_json)
+                    if integ.provider == "slack":
+                        send_slack_notification(cfg, f"✅ {msg}")
+                    elif integ.provider == "webhook":
+                        send_webhook_notification(cfg, {"event": "scan_done", "data": payload})
+                    elif integ.provider == "email":
+                        send_email_notification(cfg, f"Scan Complete: {job.target}", msg)
+                except Exception as e:
+                    logger.warning("Failed to run integration %s for job #%d: %s", integ.provider, job_id, e)
 
     except Exception as e:
         tb = traceback.format_exc()

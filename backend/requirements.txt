@@ -13,3 +13,4 @@ neo4j==5.20.0
 cryptography==42.0.8
 mmh3==4.1.0
 packaging==24.0
+requests>=2.31.0

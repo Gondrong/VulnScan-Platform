@@ -16,6 +16,7 @@ from app.api.routes_datasets import router as ds_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_graph import router as graph_router
+from app.api.routes_integrations import router as integrations_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
@@ -115,6 +116,20 @@ def startup() -> None:
                 )
             """))
             db.commit()
+            
+            # Add integrations table migration
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS integrations (
+                    id SERIAL PRIMARY KEY,
+                    workspace_id INTEGER REFERENCES workspaces(id),
+                    provider VARCHAR(50) NOT NULL,
+                    enabled BOOLEAN DEFAULT FALSE,
+                    config_json TEXT DEFAULT '{}',
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """))
+            db.commit()
+
             # Add columns to existing table if missing
             for col, coltype in [
                 ("schedule_type", "VARCHAR(20) DEFAULT 'interval'"),
@@ -270,3 +285,4 @@ app.include_router(ds_router)
 app.include_router(scan_router)
 app.include_router(settings_router)
 app.include_router(graph_router)
+app.include_router(integrations_router)
