@@ -9,6 +9,7 @@ from requests.packages.urllib3.util.retry import Retry
 
 logger = logging.getLogger("vulnscan.notifier")
 
+
 def _get_session():
     session = requests.Session()
     retry = Retry(connect=3, backoff_factor=0.5)
@@ -18,13 +19,18 @@ def _get_session():
     return session
 
 
-def send_slack_notification(config: dict, message: str) -> bool:
+def send_slack_notification(config: dict, message) -> bool:
     webhook_url = config.get("webhook_url")
     if not webhook_url:
         logger.error("Slack integration missing webhook_url")
         return False
 
-    payload = {"text": message}
+    if isinstance(message, dict):
+        payload = message
+        payload.setdefault("text", "VulnScan notification")
+    else:
+        payload = {"text": str(message)}
+
     try:
         session = _get_session()
         resp = session.post(webhook_url, json=payload, timeout=10)
@@ -40,7 +46,7 @@ def send_webhook_notification(config: dict, payload: dict) -> bool:
     if not url:
         logger.error("Webhook integration missing url")
         return False
-        
+
     secret = config.get("secret", "")
     headers = {"Content-Type": "application/json"}
     if secret:
@@ -93,11 +99,11 @@ def send_email_notification(config: dict, subject: str, body: str) -> bool:
 
 def dispatch_test_notification(provider: str, config: dict) -> bool:
     if provider == "slack":
-        return send_slack_notification(config, "✅ Test notification from VulnScan Platform!")
+        return send_slack_notification(config, "Test notification from VulnScan Platform!")
     elif provider == "webhook":
         return send_webhook_notification(config, {"event": "test", "message": "Test notification from VulnScan Platform!"})
     elif provider == "email":
         return send_email_notification(config, "VulnScan Test", "This is a test notification from the VulnScan Platform.")
-    
+
     logger.error("Unknown integration provider: %s", provider)
     return False

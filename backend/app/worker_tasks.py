@@ -1,4 +1,4 @@
-import os
+﻿import os
 import asyncio
 import json
 import logging
@@ -79,7 +79,7 @@ def run_scan_job(job_id: int) -> None:
                 "error": "Profile not found",
                 "error_type": "configuration",
                 "error_detail": f"Profile ID {job.profile_id} does not exist in workspace {ws_id}. "
-                                "Create a scan profile first under Configuration → Profiles.",
+                                "Create a scan profile first under Configuration -> Profiles.",
             })
             job.finished_at = datetime.now(timezone.utc)
             db.commit()
@@ -97,7 +97,7 @@ def run_scan_job(job_id: int) -> None:
         # Pass scan_type to engine so external scans bypass allowlist
         scan_type = job.scan_type or "internal"
 
-        # Progress callback — updates meta_json so frontend can poll
+        # Progress callback - updates meta_json so frontend can poll
         # Uses a SEPARATE db session to avoid corrupting the main session
         _scan_start = datetime.now(timezone.utc)
         _plugin_log = []
@@ -258,7 +258,7 @@ def run_scan_job(job_id: int) -> None:
                 getattr(f, "cve", None), f.plugin_id, compliance_db
             )
 
-            # Sanitize NUL bytes — PostgreSQL text columns reject \x00
+            # Sanitize NUL bytes - PostgreSQL text columns reject \x00
             def _sanitize(s):
                 if not s:
                     return s
@@ -323,10 +323,26 @@ def run_scan_job(job_id: int) -> None:
             med = sev_counts.get("medium", 0)
             low = sev_counts.get("low", 0)
             info = sev_counts.get("info", 0)
-            
+
+            duration_secs = 0
+            if job.created_at and job.finished_at:
+                duration_secs = max(0, int((job.finished_at - job.created_at).total_seconds()))
+            mins, secs = divmod(duration_secs, 60)
+            duration_text = f"{mins}m {secs}s" if mins else f"{secs}s"
+
+            risk_level = "INFO"
+            if crit > 0:
+                risk_level = "CRITICAL"
+            elif high > 0:
+                risk_level = "HIGH"
+            elif med > 0:
+                risk_level = "MEDIUM"
+            elif low > 0:
+                risk_level = "LOW"
+
             msg = (
-                f"VulnScan Job #{job_id} on {job.target} completed. "
-                f"Found {saved_count} issues "
+                f"VulnScan Job #{job_id} on {job.target} completed in {duration_text}. "
+                f"Risk posture: {risk_level}. Findings: {saved_count} "
                 f"({crit} Critical, {high} High, {med} Medium, {low} Low, {info} Info)."
             )
             payload = {
@@ -334,18 +350,91 @@ def run_scan_job(job_id: int) -> None:
                 "target": job.target,
                 "status": "done",
                 "findings_total": saved_count,
-                "severities": sev_counts
+                "duration_seconds": duration_secs,
+                "risk_level": risk_level,
+                "severities": sev_counts,
             }
-            
+
+            top_findings = (
+                db.query(models.Finding)
+                .filter(models.Finding.job_id == job.id)
+                .order_by(models.Finding.risk_score.desc(), models.Finding.id.desc())
+                .limit(3)
+                .all()
+            )
+            top_findings_text = "\n".join(
+                f"- [{(f.severity or 'info').upper()}] {f.title[:90]}"
+                for f in top_findings
+                if getattr(f, "title", None)
+            ) or "- No findings recorded"
+
             for integ in integrations:
                 try:
                     cfg = json.loads(integ.config_json)
                     if integ.provider == "slack":
-                        send_slack_notification(cfg, f"✅ {msg}")
+                        slack_payload = {
+                            "text": (
+                                f"Scan complete: {job.target} | Job #{job_id} | "
+                                f"{saved_count} findings | Risk {risk_level}"
+                            ),
+                            "blocks": [
+                                {
+                                    "type": "header",
+                                    "text": {"type": "plain_text", "text": "VulnScan Scan Completed", "emoji": True},
+                                },
+                                {
+                                    "type": "section",
+                                    "fields": [
+                                        {"type": "mrkdwn", "text": f"*Target*\n`{job.target}`"},
+                                        {"type": "mrkdwn", "text": f"*Job*\n#{job_id}"},
+                                        {"type": "mrkdwn", "text": f"*Type*\n{(job.scan_type or 'internal').upper()}"},
+                                        {"type": "mrkdwn", "text": f"*Duration*\n{duration_text}"},
+                                        {"type": "mrkdwn", "text": f"*Findings*\n{saved_count}"},
+                                        {"type": "mrkdwn", "text": f"*Risk*\n{risk_level}"},
+                                    ],
+                                },
+                                {
+                                    "type": "section",
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": (
+                                            "*Severity breakdown*\n"
+                                            f"Critical: *{crit}* | High: *{high}* | "
+                                            f"Medium: *{med}* | Low: *{low}* | Info: *{info}*"
+                                        ),
+                                    },
+                                },
+                                {
+                                    "type": "section",
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": f"*Top findings*\n{top_findings_text}",
+                                    },
+                                },
+                            ],
+                        }
+
+                        dashboard_url = cfg.get("dashboard_url")
+                        if dashboard_url:
+                            slack_payload["blocks"].append(
+                                {
+                                    "type": "actions",
+                                    "elements": [
+                                        {
+                                            "type": "button",
+                                            "text": {"type": "plain_text", "text": "Open Dashboard", "emoji": True},
+                                            "url": dashboard_url,
+                                        }
+                                    ],
+                                }
+                            )
+
+                        send_slack_notification(cfg, slack_payload)
                     elif integ.provider == "webhook":
                         send_webhook_notification(cfg, {"event": "scan_done", "data": payload})
                     elif integ.provider == "email":
-                        send_email_notification(cfg, f"Scan Complete: {job.target}", msg)
+                        email_body = f"{msg}\n\nTop findings:\n{top_findings_text}"
+                        send_email_notification(cfg, f"Scan Complete: {job.target}", email_body)
                 except Exception as e:
                     logger.warning("Failed to run integration %s for job #%d: %s", integ.provider, job_id, e)
 
@@ -367,7 +456,7 @@ def run_scan_job(job_id: int) -> None:
                 db.commit()
         except Exception as inner_e:
             logger.error("Failed to mark job #%d as failed: %s", job_id, inner_e)
-            # Last resort — raw SQL update to unstick the job
+            # Last resort - raw SQL update to unstick the job
             try:
                 db.rollback()
                 db.execute(

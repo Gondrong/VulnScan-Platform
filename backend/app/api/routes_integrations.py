@@ -93,3 +93,4 @@ def test_integration(provider: str, body: IntegrationSaveRequest, claims=Depends
         raise HTTPException(status_code=500, detail=f"Failed to send test notification via {provider}")
     
     return {"status": "ok", "message": "Test notification sent"}
+
