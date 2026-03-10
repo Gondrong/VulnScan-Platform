@@ -29,11 +29,11 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div style={{ display: "flex", minHeight: "100vh" }}>
+      <div className="app-shell">
         <Sidebar onLogout={logout} />
-        <div style={{ marginLeft: "var(--sidebar-w)", flex: 1, display: "flex", flexDirection: "column" }}>
+        <div className="main-area">
           <Topbar />
-          <div style={{ padding: 28, flex: 1 }}>
+          <div className="page-content">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" />} />
               <Route path="/dashboard" element={<Dashboard />} />

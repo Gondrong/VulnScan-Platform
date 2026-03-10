@@ -35,7 +35,7 @@ export default function Login() {
       }} />
 
       <div style={{
-        width: 400, position: "relative",
+        width: "min(400px, calc(100vw - 28px))", position: "relative",
         background: "var(--surface)",
         border: "1px solid var(--border)",
         animation: "fadeIn 0.3s ease both",
@@ -73,7 +73,7 @@ export default function Login() {
               fontFamily: "var(--font-mono)", fontSize: "0.72rem",
               borderRadius: 2,
             }}>
-              ⚠ {err}
+              ! {err}
             </div>
           )}
 
@@ -95,7 +95,7 @@ export default function Login() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="********"
               onKeyDown={e => e.key === "Enter" && submit()}
             />
           </div>

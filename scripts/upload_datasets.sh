@@ -12,7 +12,7 @@ for envfile in "${ROOT_DIR}/.env" "${ROOT_DIR}/.env.example"; do
   fi
 done
 
-API_BASE="${API_BASE:-http://localhost:8080}"
+API_BASE="${API_BASE:-http://localhost:8888}"
 DEFAULT_ADMIN_EMAIL="${DEFAULT_ADMIN_EMAIL:-admin@local}"
 DEFAULT_ADMIN_PASSWORD="${DEFAULT_ADMIN_PASSWORD:-admin123}"
 

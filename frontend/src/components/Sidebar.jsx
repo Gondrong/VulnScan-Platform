@@ -2,12 +2,12 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 
 const NAV = [
-  { to: "/dashboard", icon: "◈", label: "Dashboard", group: "Monitoring" },
-  { to: "/jobs",      icon: "⚡", label: "Scan Jobs", group: "Scanning" },
-  { to: "/profiles",  icon: "⬡", label: "Profiles",    group: "Configuration" },
-  { to: "/credentials", icon: "⊕", label: "Credentials" },
-  { to: "/datasets",  icon: "▦", label: "Datasets" },
-  { to: "/settings",  icon: "⚙", label: "Settings" },
+  { to: "/dashboard", icon: "D", label: "Dashboard", group: "Monitoring" },
+  { to: "/jobs", icon: "J", label: "Scan Jobs", group: "Scanning" },
+  { to: "/profiles", icon: "P", label: "Profiles", group: "Configuration" },
+  { to: "/credentials", icon: "C", label: "Credentials" },
+  { to: "/datasets", icon: "T", label: "Datasets" },
+  { to: "/settings", icon: "S", label: "Settings" },
 ];
 
 const styles = {
@@ -67,12 +67,12 @@ export default function Sidebar({ onLogout }) {
   let lastGroup = null;
 
   return (
-    <nav style={styles.sidebar}>
+    <nav className="sidebar" style={styles.sidebar}>
       <div style={styles.topBar} />
-      <div style={styles.logo}>
-        <div style={styles.logoText}>VULNSCAN</div>
-        <div style={styles.logoSub}>// THREAT INTELLIGENCE</div>
-        <div style={styles.logoBadge}>v1.0.0 ENTERPRISE</div>
+      <div className="sidebar-logo" style={styles.logo}>
+        <div className="sidebar-logo-text" style={styles.logoText}>VULNSCAN</div>
+        <div className="sidebar-logo-sub" style={styles.logoSub}>// THREAT INTELLIGENCE</div>
+        <div className="sidebar-logo-badge" style={styles.logoBadge}>v1.0.0 ENTERPRISE</div>
       </div>
 
       <div style={styles.navArea}>
@@ -81,9 +81,10 @@ export default function Sidebar({ onLogout }) {
           if (item.group) lastGroup = item.group;
           return (
             <React.Fragment key={item.to}>
-              {showLabel && <div style={styles.navLabel}>{item.group}</div>}
+              {showLabel && <div className="sidebar-nav-label" style={styles.navLabel}>{item.group}</div>}
               <NavLink
                 to={item.to}
+                className="sidebar-nav-link"
                 style={({ isActive }) => ({
                   display: "flex", alignItems: "center", gap: 10,
                   padding: "9px 20px",
@@ -99,15 +100,15 @@ export default function Sidebar({ onLogout }) {
                   borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
                 })}
               >
-                <span style={{ width: 16, textAlign: "center" }}>{item.icon}</span>
-                {item.label}
+                <span className="sidebar-nav-icon" style={{ width: 16, textAlign: "center" }}>{item.icon}</span>
+                <span className="sidebar-nav-text">{item.label}</span>
               </NavLink>
             </React.Fragment>
           );
         })}
       </div>
 
-      <div style={styles.footer}>
+      <div className="sidebar-footer" style={styles.footer}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
           <div style={{
             width: 6, height: 6, borderRadius: "50%",
@@ -115,9 +116,10 @@ export default function Sidebar({ onLogout }) {
             boxShadow: "0 0 8px var(--accent4)",
             animation: "pulse 2s infinite",
           }} />
-          SYSTEM ONLINE
+          <span className="sidebar-system-text">SYSTEM ONLINE</span>
         </div>
         <button
+          className="sidebar-logout"
           onClick={onLogout}
           style={{
             marginTop: 10, width: "100%",
@@ -128,10 +130,10 @@ export default function Sidebar({ onLogout }) {
             padding: "5px", cursor: "pointer",
             letterSpacing: "0.1em", transition: "all 0.15s",
           }}
-          onMouseOver={e => { e.target.style.borderColor="var(--accent2)"; e.target.style.color="var(--accent2)"; }}
-          onMouseOut={e => { e.target.style.borderColor="var(--border)"; e.target.style.color="var(--text-dim)"; }}
+          onMouseOver={(e) => { e.target.style.borderColor = "var(--accent2)"; e.target.style.color = "var(--accent2)"; }}
+          onMouseOut={(e) => { e.target.style.borderColor = "var(--border)"; e.target.style.color = "var(--text-dim)"; }}
         >
-          ↪ LOGOUT
+          LOGOUT
         </button>
       </div>
     </nav>

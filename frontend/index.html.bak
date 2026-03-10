@@ -2639,7 +2639,7 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     }
     function renderHostFindings(findings, filter) {
       const fs = filter === 'all' ? findings : findings.filter(f => f.severity === filter);
-      const sorted = fs.sort((a, b) => { const o = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }; return ((o[a.severity] ?? 4) - (o[b.severity] ?? 4)) });
+      const sorted = fs.sort((a, b) => { const o = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }; return (o[a.severity] || 4) - (o[b.severity] || 4) });
       if (!sorted.length) return '<div class="empty-state" style="padding:16px">No findings match</div>';
       return sorted.map((f, i) => {
         const rc = f.risk_score >= 9 ? '#f87171' : f.risk_score >= 7 ? '#fb923c' : f.risk_score >= 4 ? '#fbbf24' : '#34d399';
@@ -3010,7 +3010,7 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
       const title = hostLabel ? 'Security Report — ' + esc(hostLabel) : 'Security Report — All Hosts';
       const sevO = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
-      data.sort((a, b) => ((sevO[a.Severity] ?? 4) - (sevO[b.Severity] ?? 4)));
+      data.sort((a, b) => (sevO[a.Severity] || 4) - (sevO[b.Severity] || 4));
       let h = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>VulnScan ${esc(title)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -3063,7 +3063,7 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
         // Severity bar
         const tot = hf.length || 1;
         h += `<div class="sev-bar">${hc.c ? `<div style="width:${hc.c / tot * 100}%;background:#dc2626"></div>` : ''}${hc.h ? `<div style="width:${hc.h / tot * 100}%;background:#ea580c"></div>` : ''}${hc.m ? `<div style="width:${hc.m / tot * 100}%;background:#ca8a04"></div>` : ''}${hc.l ? `<div style="width:${hc.l / tot * 100}%;background:#16a34a"></div>` : ''}${hc.i ? `<div style="width:${hc.i / tot * 100}%;background:#0284c7"></div>` : ''}</div>`;
-        hf.sort((a, b) => ((sevO[a.Severity] ?? 4) - (sevO[b.Severity] ?? 4)));
+        hf.sort((a, b) => (sevO[a.Severity] || 4) - (sevO[b.Severity] || 4));
         hf.forEach(f => {
           h += `<div class="finding"><div class="f-hdr"><span class="sev sev-${f.Severity.toLowerCase()}">${f.Severity}</span>${f.KEV === 'YES' ? '<span class="kev">KEV</span>' : ''}<span class="f-title">${esc(f.Title)}</span><div class="f-scores"><span>Risk: <strong>${f.Risk_Score || '—'}</strong></span><span>CVSS: <strong>${f.CVSS_Base || '—'}</strong></span><span style="color:#94a3b8;font-size:9px">${esc(f.Plugin)}</span></div></div><div class="f-body">`;
           if (f.Evidence) h += `<div class="f-section"><div class="f-section-label">Evidence</div>${esc(f.Evidence)}</div>`;
