@@ -29,7 +29,7 @@ META = PluginMeta(
     consumes=["fingerprint.http", "recon.directories"],
     provides=["vuln.lfi_rfi"],
     enabled_by_default=True,
-    timeout_seconds=45.0,
+    timeout_seconds=180.0,
 )
 
 # ── LFI Payloads ─────────────────────────────────────────────────────────────
@@ -175,15 +175,37 @@ class Check(Plugin):
         target_raw = ctx.get("target_raw", target)
         findings = []
 
-        if re.match(r"^https?://", target_raw, re.I):
+        has_explicit_url = bool(re.match(r"^https?://", target_raw, re.I))
+        if has_explicit_url:
             base_url = target_raw.rstrip("/")
         elif http_items:
             base_url = http_items[0].get("url", f"http://{target}").rstrip("/")
         else:
             base_url = f"http://{target}"
 
+        if not has_explicit_url and not http_items:
+            return PluginResult(
+                findings=[
+                    Finding(
+                        severity="info",
+                        plugin_id=META.plugin_id,
+                        title="File inclusion scan skipped - no web service detected",
+                        description=(
+                            "No HTTP fingerprint was discovered for this target. "
+                            "Skipping LFI/RFI checks to avoid timeout findings on non-web hosts."
+                        ),
+                        evidence=f"target={target} http_fingerprint=none",
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, META.plugin_id, "skipped_no_http"),
+                    )
+                ],
+                artifacts={"vuln.lfi_rfi": 0},
+            )
+
+        request_timeout = min(max(float(ctx.policy.timeout_seconds), 8.0), 25.0)
+
         async with httpx.AsyncClient(
-            timeout=8.0,
+            timeout=request_timeout,
             verify=False,
             follow_redirects=True,
             limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
