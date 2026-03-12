@@ -1,8 +1,9 @@
 """
 Authenticated SSH Inventory plugin.
-Connects to the target via SSH, collects OS and package information.
+Connects to the target via SSH and collects OS and package information.
 """
-import re
+from datetime import datetime, timezone
+
 from app.scanner.plugins.base import Plugin, PluginMeta, PluginResult, Finding
 from app.db.session import SessionLocal
 from app.db import models
@@ -15,9 +16,9 @@ META = PluginMeta(
     category="authenticated",
     depends_on=["net.port.discovery.v2"],
     consumes=["net.open_ports"],
-    provides=["inventory.os", "inventory.packages"],
+    provides=["inventory.os", "inventory.packages", "inventory.meta"],
     enabled_by_default=False,
-    timeout_seconds=30.0,  # SSH needs more time than 12s
+    timeout_seconds=30.0,
 )
 
 
@@ -30,31 +31,68 @@ def parse_os_release(text: str) -> dict:
     return out
 
 
-def parse_dpkg(text: str):
+def parse_dpkg(text: str) -> list[dict]:
     pkgs = []
     for line in (text or "").splitlines():
         parts = line.split("\t")
-        if len(parts) == 2:
-            pkgs.append({"name": parts[0].strip(), "version": parts[1].strip(), "ecosystem": "deb"})
+        if len(parts) < 2:
+            continue
+        name = (parts[0] or "").strip()
+        version = (parts[1] or "").strip()
+        status_raw = (parts[2] if len(parts) >= 3 else "").strip()
+        status = status_raw[:2].lower() if status_raw else ""
+        if not name or not version:
+            continue
+        pkgs.append(
+            {
+                "name": name,
+                "version": version,
+                "ecosystem": "deb",
+                "status": status,
+                "installed": status == "ii",
+            }
+        )
     return pkgs
 
 
-def parse_rpm(text: str):
+def parse_rpm(text: str) -> list[dict]:
     pkgs = []
     for line in (text or "").splitlines():
         parts = line.split("\t")
-        if len(parts) == 2:
-            pkgs.append({"name": parts[0].strip(), "version": parts[1].strip(), "ecosystem": "rpm"})
+        if len(parts) != 2:
+            continue
+        name = (parts[0] or "").strip()
+        version = (parts[1] or "").strip()
+        if not name or not version:
+            continue
+        pkgs.append(
+            {
+                "name": name,
+                "version": version,
+                "ecosystem": "rpm",
+                "status": "installed",
+                "installed": True,
+            }
+        )
     return pkgs
 
 
-def parse_apk(text: str):
+def parse_apk(text: str) -> list[dict]:
     pkgs = []
     for line in (text or "").splitlines():
         line = line.strip()
         if not line:
             continue
-        pkgs.append({"name": line.split("-", 1)[0], "version": line, "ecosystem": "apk"})
+        name = line.split("-", 1)[0]
+        pkgs.append(
+            {
+                "name": name,
+                "version": line,
+                "ecosystem": "apk",
+                "status": "installed",
+                "installed": True,
+            }
+        )
     return pkgs
 
 
@@ -70,19 +108,23 @@ class Check(Plugin):
         ssh_port = int(auth.get("ssh_port", 22))
 
         if not cred_id:
-            return PluginResult(findings=[Finding(
-                severity="info",
-                plugin_id=META.plugin_id,
-                title="SSH inventory skipped — no credential configured",
-                description=(
-                    "The scan profile has auth.ssh.inventory enabled but no "
-                    "ssh_credential_id is set in the profile options. "
-                    "Go to Profiles → Scan Options → SSH Credential to select one."
-                ),
-                evidence="ssh_credential_id=None",
-                affected=target,
-                fingerprint=stable_fingerprint(target, META.plugin_id, "no_cred_configured"),
-            )])
+            return PluginResult(
+                findings=[
+                    Finding(
+                        severity="info",
+                        plugin_id=META.plugin_id,
+                        title="SSH inventory skipped - no credential configured",
+                        description=(
+                            "The scan profile has auth.ssh.inventory enabled but no "
+                            "ssh_credential_id is set in the profile options. "
+                            "Go to Profiles > Scan Options > SSH Credential to select one."
+                        ),
+                        evidence="ssh_credential_id=None",
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, META.plugin_id, "no_cred_configured"),
+                    )
+                ]
+            )
 
         ws_id = ctx.get("workspace_id")
         db = SessionLocal()
@@ -97,29 +139,31 @@ class Check(Plugin):
             )
 
             if not cred:
-                # List available credentials to help the user
-                avail = db.query(models.Credential).filter(
-                    models.Credential.workspace_id == ws_id
-                ).all()
-                avail_str = ", ".join(
-                    f"#{c.id} ({c.name})" for c in avail
-                ) if avail else "none — add one in Credentials page"
+                avail = (
+                    db.query(models.Credential)
+                    .filter(models.Credential.workspace_id == ws_id)
+                    .all()
+                )
+                avail_str = ", ".join(f"#{c.id} ({c.name})" for c in avail) if avail else "none - add one in Credentials page"
 
-                return PluginResult(findings=[Finding(
-                    severity="medium",
-                    plugin_id=META.plugin_id,
-                    title=f"SSH credential #{cred_id} not found",
-                    description=(
-                        f"The scan profile references credential ID #{cred_id} but it "
-                        f"doesn't exist in this workspace. Available credentials: {avail_str}. "
-                        f"Update the profile's SSH Credential dropdown to match an existing credential."
-                    ),
-                    evidence=f"requested_id={cred_id} available=[{avail_str}]",
-                    affected=target,
-                    fingerprint=stable_fingerprint(target, META.plugin_id, "cred_not_found", str(cred_id)),
-                )])
+                return PluginResult(
+                    findings=[
+                        Finding(
+                            severity="medium",
+                            plugin_id=META.plugin_id,
+                            title=f"SSH credential #{cred_id} not found",
+                            description=(
+                                f"The scan profile references credential ID #{cred_id} but it "
+                                f"does not exist in this workspace. Available credentials: {avail_str}. "
+                                "Update the profile SSH Credential value to an existing credential."
+                            ),
+                            evidence=f"requested_id={cred_id} available=[{avail_str}]",
+                            affected=target,
+                            fingerprint=stable_fingerprint(target, META.plugin_id, "cred_not_found", str(cred_id)),
+                        )
+                    ]
+                )
 
-            # Attempt SSH connection and inventory
             raw = ssh_inventory(
                 target,
                 ssh_port,
@@ -136,58 +180,82 @@ class Check(Plugin):
                 + parse_rpm(raw.get("rpm", ""))
                 + parse_apk(raw.get("apk", ""))
             )
+            installed_pkgs = [p for p in pkgs if p.get("installed")]
 
             os_name = osinfo.get("PRETTY_NAME") or osinfo.get("NAME", "unknown")
             uname = raw.get("uname", "")
+            inventory_ts = raw.get("inventory_timestamp") or datetime.now(timezone.utc).isoformat()
+            host_identifier = raw.get("host_identifier") or raw.get("hostname") or target
+            scan_ts = ctx.get("scan.started_at") or ""
 
             return PluginResult(
-                findings=[Finding(
-                    severity="info",
-                    plugin_id=META.plugin_id,
-                    title=f"SSH inventory collected ({os_name}, {len(pkgs)} packages)",
-                    evidence=f"os={os_name} uname={uname[:80]} packages={len(pkgs)}",
-                    affected=target,
-                    fingerprint=stable_fingerprint(target, META.plugin_id, "success"),
-                )],
+                findings=[
+                    Finding(
+                        severity="info",
+                        plugin_id=META.plugin_id,
+                        title=f"SSH inventory collected ({os_name}, {len(installed_pkgs)} installed packages)",
+                        evidence=(
+                            f"os={os_name} uname={uname[:80]} "
+                            f"packages_total={len(pkgs)} packages_installed={len(installed_pkgs)} "
+                            f"inventory_ts={inventory_ts} host_id={host_identifier} scan_ts={scan_ts}"
+                        ),
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, META.plugin_id, "success"),
+                    )
+                ],
                 artifacts={
                     "inventory.os": {
                         "os_release": osinfo,
                         "uname": uname,
+                        "inventory_timestamp": inventory_ts,
+                        "host_identifier": host_identifier,
+                        "hostname": raw.get("hostname", ""),
+                        "machine_id": raw.get("machine_id", ""),
+                        "scan_timestamp": scan_ts,
                     },
                     "inventory.packages": pkgs,
+                    "inventory.meta": {
+                        "inventory_timestamp": inventory_ts,
+                        "host_identifier": host_identifier,
+                        "scan_timestamp": scan_ts,
+                        "target": target,
+                    },
                 },
             )
 
         except Exception as e:
             err_msg = str(e)
-            # Provide specific remediation based on error type
             if "authentication failed" in err_msg.lower():
                 remediation = (
-                    "Check that the SSH username and key/password are correct. "
-                    "Verify the key type matches what the server accepts (ssh -v user@host). "
+                    "Check that SSH username and key/password are correct. "
+                    "Verify key type matches what the server accepts (ssh -v user@host). "
                     "Ensure the user has SSH access on the target."
                 )
             elif "timed out" in err_msg.lower() or "timeout" in err_msg.lower():
                 remediation = (
-                    "SSH connection timed out. Check that port 22 is open and not firewalled. "
+                    "SSH connection timed out. Check that port 22 is open and reachable. "
                     "Try increasing SCAN_TIMEOUT_SECONDS in your .env file."
                 )
             elif "unable to parse" in err_msg.lower() or "key" in err_msg.lower():
                 remediation = (
-                    "The SSH key format may not be supported. Ensure the key is in OpenSSH or PEM format. "
+                    "The SSH key format may not be supported. Ensure key is OpenSSH or PEM format. "
                     "Try regenerating with: ssh-keygen -t ed25519 -f mykey"
                 )
             else:
                 remediation = f"SSH connection failed: {err_msg}"
 
-            return PluginResult(findings=[Finding(
-                severity="medium",
-                plugin_id=META.plugin_id,
-                title="SSH inventory failed",
-                description=remediation,
-                evidence=err_msg[:512],
-                affected=target,
-                fingerprint=stable_fingerprint(target, META.plugin_id, "failed"),
-            )])
+            return PluginResult(
+                findings=[
+                    Finding(
+                        severity="medium",
+                        plugin_id=META.plugin_id,
+                        title="SSH inventory failed",
+                        description=remediation,
+                        evidence=err_msg[:512],
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, META.plugin_id, "failed"),
+                    )
+                ]
+            )
         finally:
             db.close()
