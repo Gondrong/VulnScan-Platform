@@ -35,7 +35,7 @@ META = PluginMeta(
     consumes=["fingerprint.http"],
     provides=["owasp.findings"],
     enabled_by_default=True,
-    timeout_seconds=90.0,
+    timeout_seconds=300.0,
 )
 
 # ─── SQL Injection payloads (safe — cause errors, never modify data) ──────────
@@ -210,15 +210,37 @@ class Check(Plugin):
         findings: list[Finding] = []
 
         # Determine base URL
-        if re.match(r"^https?://", target_raw, re.I):
+        has_explicit_url = bool(re.match(r"^https?://", target_raw, re.I))
+        if has_explicit_url:
             base_url = target_raw.rstrip("/")
         elif http_items:
             base_url = http_items[0].get("url", f"http://{target}").rstrip("/")
         else:
             base_url = f"http://{target}"
 
+        if not has_explicit_url and not http_items:
+            return PluginResult(
+                findings=[
+                    Finding(
+                        severity="info",
+                        plugin_id=META.plugin_id,
+                        title="OWASP scan skipped - no web service detected",
+                        description=(
+                            "No HTTP fingerprint was discovered for this target. "
+                            "Skipping OWASP web checks to avoid false timeouts on non-web hosts."
+                        ),
+                        evidence=f"target={target} http_fingerprint=none",
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, META.plugin_id, "skipped_no_http"),
+                    )
+                ],
+                artifacts={"owasp.findings": 0},
+            )
+
+        request_timeout = min(max(float(ctx.policy.timeout_seconds), 10.0), 30.0)
+
         async with httpx.AsyncClient(
-            timeout=10.0,
+            timeout=request_timeout,
             verify=False,
             follow_redirects=True,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
