@@ -296,6 +296,7 @@ def job_detail(
                 "remediation": f.remediation,
                 "evidence": f.evidence,
                 "fingerprint": f.fingerprint,
+                "references_json": f.references_json,
                 "cvss_base": f.cvss_base,
                 "risk_score": f.risk_score,
                 "confidence": f.confidence,
