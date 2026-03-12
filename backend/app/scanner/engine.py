@@ -3,6 +3,7 @@ import ipaddress
 import json
 import re
 import urllib.parse
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.scanner.context import ScanContext, ScanPolicy, stable_fingerprint
@@ -434,6 +435,7 @@ async def scan_target(
     ctx.set("target_host", host)
     ctx.set("target_scheme", scheme)
     ctx.set("scan_type", scan_type)
+    ctx.set("scan.started_at", datetime.now(timezone.utc).isoformat())
 
     try:
         options = json.loads(profile.get("options_json", "{}") or "{}")
@@ -470,10 +472,18 @@ async def scan_target(
                     severity="info",
                     plugin_id=pid,
                     title=f"Plugin timed out: {chk.meta.name}",
-                    evidence=f"timeout={chk.meta.timeout_seconds}s",
+                    evidence=(
+                        f"plugin_timeout={chk.meta.timeout_seconds}s "
+                        f"effective_timeout={effective_timeout}s "
+                        f"scan_timeout_seconds={ctx.policy.timeout_seconds}"
+                    ),
                     affected=target,
                     fingerprint=stable_fingerprint(target, pid, "timeout"),
-                    remediation="The plugin exceeded its timeout. This may indicate network latency or a heavily filtered target. Try increasing SCAN_TIMEOUT_SECONDS in .env.",
+                    remediation=(
+                        "The plugin exceeded its execution budget. Increase this plugin's "
+                        "META.timeout_seconds in the plugin file, or disable the plugin "
+                        "for this profile if the target is not applicable."
+                    ),
                 )
             )
             if progress_callback:
