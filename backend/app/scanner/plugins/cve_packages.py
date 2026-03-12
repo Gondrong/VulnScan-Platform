@@ -21,7 +21,7 @@ META = PluginMeta(
     name="CVE Matching (Packages)",
     category="cve",
     depends_on=["auth.ssh.inventory"],
-    consumes=["inventory.packages"],
+    consumes=["inventory.packages", "inventory.os"],
     provides=["cve.package_hits"],
     enabled_by_default=False,
     timeout_seconds=15.0,
@@ -219,6 +219,15 @@ def range_ok(installed: str | None, m: dict) -> bool:
     return True
 
 
+def _is_installed_package(pkg: dict) -> bool:
+    ecosystem = (pkg.get("ecosystem") or "").lower()
+    if ecosystem == "deb":
+        status = (pkg.get("status") or "").lower()
+        if status:
+            return status == "ii"
+    return bool(pkg.get("installed", True))
+
+
 def match_osv(pkgs, db_data):
     """Match packages against OSV-format dataset."""
     hits = []
@@ -300,9 +309,15 @@ def match_nvd(pkgs, nvd_data):
 
 class Check(Plugin):
     async def run(self, target, ctx):
-        pkgs = ctx.get("inventory.packages", []) or []
+        pkgs_all = ctx.get("inventory.packages", []) or []
+        pkgs = [p for p in pkgs_all if _is_installed_package(p)]
         if not pkgs:
             return PluginResult()
+
+        os_info = ctx.get("inventory.os", {}) or {}
+        inventory_ts = os_info.get("inventory_timestamp") or ""
+        host_identifier = os_info.get("host_identifier") or target
+        scan_ts = os_info.get("scan_timestamp") or ctx.get("scan.started_at") or ""
 
         ws_id = ctx.get("workspace_id")
         db = SessionLocal()
@@ -338,7 +353,6 @@ class Check(Plugin):
         finally:
             db.close()
 
-        # Build findings
         findings = []
         for h in all_hits[:3000]:
             cve = h.get("cve") or h.get("id") or "UNKNOWN"
@@ -354,8 +368,8 @@ class Check(Plugin):
                     references=h.get("refs", []),
                     evidence=(
                         f"package={h.get('package')} installed={h.get('installed')} "
-                        f"ecosystem={h.get('ecosystem', '')} "
-                        f"matched_cpe={h.get('matched_cpe', '')}"
+                        f"ecosystem={h.get('ecosystem', '')} matched_cpe={h.get('matched_cpe', '')} "
+                        f"scan_ts={scan_ts} inventory_ts={inventory_ts} host_id={host_identifier}"
                     ),
                     affected=target,
                     fingerprint=fp,
@@ -365,6 +379,4 @@ class Check(Plugin):
                 )
             )
 
-        return PluginResult(
-            findings=findings, artifacts={"cve.package_hits": all_hits}
-        )
+        return PluginResult(findings=findings, artifacts={"cve.package_hits": all_hits})
