@@ -1,23 +1,9 @@
 """
-Linux Local Security Checks — matches installed packages against
-OS-specific security advisories.
-
-Supported distros:
-  - Ubuntu/Debian (USN advisories via dpkg)
-  - Amazon Linux (ALAS advisories via rpm)
-  - RHEL/CentOS/Rocky (RHSA advisories via rpm)
-  - Alpine (via apk)
-
-This plugin runs AFTER ssh_inventory collects package lists and
-os_release info via SSH. It checks each installed package version
-against known-vulnerable version ranges for the detected distro.
-
-Differs from cve.match.packages in that it checks distro-specific
-patched versions rather than upstream CPE matching. A package might
-have a CVE patched via a distro backport (e.g., openssh 1:8.9p1-3ubuntu0.10)
-that NVD/CPE matching wouldn't catch.
+Linux Local Security Checks.
+Matches installed packages against distro-specific advisories with release-aware fixed versions.
 """
 import re
+
 from app.scanner.plugins.base import Plugin, PluginMeta, PluginResult, Finding
 from app.scanner.context import stable_fingerprint
 
@@ -32,11 +18,6 @@ META = PluginMeta(
     timeout_seconds=15.0,
 )
 
-# ── Known vulnerable package versions by distro ──────────────────────────────
-# In production, this would be loaded from downloaded advisory databases
-# (USN, ALAS, RHSA feeds). Here we include high-profile CVEs as examples
-# and the framework for matching.
-
 UBUNTU_ADVISORIES = [
     {
         "id": "USN-6560-2",
@@ -44,44 +25,68 @@ UBUNTU_ADVISORIES = [
         "package": "linux-image-generic",
         "fixed_version": "6.5.0-15",
         "severity": "high",
-        "title": "Linux kernel (GSM) use-after-free privilege escalation",
-        "description": "A race condition in the GSM multiplexing driver allows local privilege escalation.",
+        "title": "Linux kernel use-after-free privilege escalation",
+        "description": "Race condition in GSM multiplexing driver may allow local privilege escalation.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-6560-2",
+        "releases": ["noble", "24.04", "jammy", "22.04"],
     },
     {
         "id": "USN-6885-3",
         "cve": "CVE-2024-6387",
         "package": "openssh-server",
-        "fixed_version": "1:9.6p1-3ubuntu13.5",
+        "fixed_by_release": {
+            "noble": "1:9.6p1-3ubuntu13.5",
+            "24.04": "1:9.6p1-3ubuntu13.5",
+            "jammy": "1:8.9p1-3ubuntu0.10",
+            "22.04": "1:8.9p1-3ubuntu0.10",
+        },
         "severity": "critical",
-        "title": "OpenSSH regreSSHion — remote code execution",
-        "description": "Signal handler race condition in sshd allows unauthenticated remote code execution.",
+        "title": "OpenSSH regreSSHion remote code execution",
+        "description": "Signal handler race condition in sshd may allow unauthenticated remote code execution.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-6885-3",
     },
     {
         "id": "USN-6862-1",
         "cve": "CVE-2024-2961",
         "package": "libc6",
-        "fixed_version": "2.39-0ubuntu8.2",
+        "fixed_by_release": {
+            "noble": "2.39-0ubuntu8.2",
+            "24.04": "2.39-0ubuntu8.2",
+            "jammy": "2.35-0ubuntu3.8",
+            "22.04": "2.35-0ubuntu3.8",
+        },
         "severity": "high",
         "title": "glibc iconv buffer overflow",
-        "description": "Out-of-bounds write in glibc iconv function for ISO-2022-CN-EXT encoding.",
+        "description": "Out-of-bounds write in glibc iconv for ISO-2022-CN-EXT encoding.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-6862-1",
     },
     {
         "id": "USN-7060-1",
         "cve": "CVE-2024-47076",
         "package": "cups-browsed",
-        "fixed_version": "2.0.0-0ubuntu10.1",
+        "fixed_by_release": {
+            "noble": "2.0.0-0ubuntu10.1",
+            "24.04": "2.0.0-0ubuntu10.1",
+        },
         "severity": "critical",
         "title": "CUPS remote code execution via IPP",
         "description": "Unauthenticated remote code execution via CUPS browsed service.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-7060-1",
     },
     {
         "id": "USN-6951-1",
         "cve": "CVE-2024-6409",
         "package": "openssh-server",
-        "fixed_version": "1:9.6p1-3ubuntu13.4",
+        "fixed_by_release": {
+            "noble": "1:9.6p1-3ubuntu13.4",
+            "24.04": "1:9.6p1-3ubuntu13.4",
+            "jammy": "1:8.9p1-3ubuntu0.9",
+            "22.04": "1:8.9p1-3ubuntu0.9",
+        },
         "severity": "high",
         "title": "OpenSSH signal handler race condition",
-        "description": "Secondary signal handler race condition in OpenSSH's privsep child.",
+        "description": "Secondary signal handler race condition in OpenSSH privsep child.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-6951-1",
     },
     {
         "id": "USN-6564-1",
@@ -89,8 +94,10 @@ UBUNTU_ADVISORIES = [
         "package": "nginx",
         "fixed_version": "1.24.0-2ubuntu1",
         "severity": "high",
-        "title": "HTTP/2 Rapid Reset DDoS vulnerability",
-        "description": "HTTP/2 rapid reset attack allows denial of service.",
+        "title": "HTTP/2 rapid reset DoS",
+        "description": "HTTP/2 rapid reset attack can lead to denial-of-service.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-6564-1",
+        "releases": ["noble", "24.04", "jammy", "22.04"],
     },
     {
         "id": "USN-7166-1",
@@ -98,8 +105,10 @@ UBUNTU_ADVISORIES = [
         "package": "libpam-modules",
         "fixed_version": "1.5.3-5ubuntu5.2",
         "severity": "high",
-        "title": "PAM pam_access bypass with hostname-based rules",
-        "description": "PAM access control can be bypassed when hostname-based rules are used.",
+        "title": "PAM pam_access bypass",
+        "description": "pam_access can be bypassed when hostname-based rules are used.",
+        "advisory_url": "https://ubuntu.com/security/notices/USN-7166-1",
+        "releases": ["noble", "24.04"],
     },
 ]
 
@@ -110,7 +119,9 @@ AMAZON_LINUX_ADVISORIES = [
         "package": "openssh",
         "fixed_version": "8.7p1-8.amzn2023.0.11",
         "severity": "critical",
-        "title": "OpenSSH regreSSHion — remote code execution",
+        "title": "OpenSSH regreSSHion remote code execution",
+        "advisory_url": "https://explore.alas.aws.amazon.com/CVE-2024-6387.html",
+        "releases": ["2023"],
     },
     {
         "id": "ALAS-2024-2601",
@@ -119,6 +130,8 @@ AMAZON_LINUX_ADVISORIES = [
         "fixed_version": "2.34-52.amzn2023.0.12",
         "severity": "high",
         "title": "glibc iconv buffer overflow",
+        "advisory_url": "https://explore.alas.aws.amazon.com/CVE-2024-2961.html",
+        "releases": ["2023"],
     },
     {
         "id": "ALAS-2024-2437",
@@ -126,15 +139,9 @@ AMAZON_LINUX_ADVISORIES = [
         "package": "nginx",
         "fixed_version": "1.24.0-1.amzn2023.0.2",
         "severity": "high",
-        "title": "HTTP/2 Rapid Reset DDoS vulnerability",
-    },
-    {
-        "id": "ALAS-2024-689",
-        "cve": "CVE-2024-47076",
-        "package": "cups",
-        "fixed_version": "2.3.3op2-18.amzn2023.0.9",
-        "severity": "critical",
-        "title": "CUPS remote code execution",
+        "title": "HTTP/2 rapid reset DoS",
+        "advisory_url": "https://explore.alas.aws.amazon.com/CVE-2023-44487.html",
+        "releases": ["2023"],
     },
 ]
 
@@ -146,6 +153,8 @@ RHEL_ADVISORIES = [
         "fixed_version": "8.7p1-38.el9_4.1",
         "severity": "critical",
         "title": "OpenSSH regreSSHion",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:4312",
+        "releases": ["9", "9.4", "el9"],
     },
     {
         "id": "RHSA-2024:3588",
@@ -154,39 +163,35 @@ RHEL_ADVISORIES = [
         "fixed_version": "2.34-83.el9_4.1",
         "severity": "high",
         "title": "glibc iconv buffer overflow",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3588",
+        "releases": ["9", "9.4", "el9"],
     },
 ]
 
 
 def _parse_version(v: str) -> list:
-    """Parse a version string into comparable parts."""
-    # Remove epoch (1:xxx) and deb/rpm suffixes
+    v = (v or "").strip()
     v = v.split(":")[-1] if ":" in v else v
-    # Extract numeric/string segments
     parts = re.findall(r"(\d+|[a-zA-Z]+)", v)
-    result = []
-    for p in parts:
-        try:
-            result.append(int(p))
-        except ValueError:
-            result.append(p)
-    return result
+    out = []
+    for part in parts:
+        if part.isdigit():
+            out.append(int(part))
+        else:
+            out.append(part.lower())
+    return out
 
 
 def _version_lt(installed: str, fixed: str) -> bool:
-    """Check if installed version is less than fixed version."""
     try:
-        vi = _parse_version(installed)
-        vf = _parse_version(fixed)
-        return vi < vf
+        return _parse_version(installed) < _parse_version(fixed)
     except Exception:
         return False
 
 
-def _detect_distro(os_info: dict) -> str:
-    """Detect the Linux distribution from os-release data."""
-    os_id = (os_info.get("ID") or "").lower()
-    id_like = (os_info.get("ID_LIKE") or "").lower()
+def _detect_distro(os_release: dict) -> str:
+    os_id = (os_release.get("ID") or "").lower()
+    id_like = (os_release.get("ID_LIKE") or "").lower()
 
     if "ubuntu" in os_id:
         return "ubuntu"
@@ -201,15 +206,92 @@ def _detect_distro(os_info: dict) -> str:
     return "unknown"
 
 
+def _release_tokens(os_release: dict) -> set[str]:
+    tokens = set()
+    for key in ["VERSION_CODENAME", "UBUNTU_CODENAME", "DEBIAN_CODENAME", "VERSION_ID"]:
+        raw = (os_release.get(key) or "").strip().lower()
+        if not raw:
+            continue
+        tokens.add(raw)
+        if "." in raw:
+            tokens.add(raw.split(".", 1)[0])
+    platform_id = (os_release.get("PLATFORM_ID") or "").strip().lower()
+    if platform_id:
+        # Example: platform:el9
+        tokens.add(platform_id)
+        if "el" in platform_id:
+            m = re.search(r"el\d+", platform_id)
+            if m:
+                tokens.add(m.group(0))
+    return tokens
+
+
+def _advisory_fixed_version(adv: dict, host_release_tokens: set[str]) -> str:
+    by_release = adv.get("fixed_by_release") or {}
+    if by_release:
+        normalized = {str(k).strip().lower(): v for k, v in by_release.items()}
+        for token in host_release_tokens:
+            if token in normalized:
+                return normalized[token]
+        return ""
+    return adv.get("fixed_version", "")
+
+
+def _advisory_applies_release(adv: dict, host_release_tokens: set[str]) -> bool:
+    rels = adv.get("releases")
+    if rels:
+        allowed = {str(x).strip().lower() for x in rels if str(x).strip()}
+        return bool(allowed & host_release_tokens)
+    if adv.get("fixed_by_release"):
+        mapped = {str(x).strip().lower() for x in adv.get("fixed_by_release", {}).keys()}
+        return bool(mapped & host_release_tokens)
+    return True
+
+
+def _is_installed_package(pkg: dict) -> bool:
+    ecosystem = (pkg.get("ecosystem") or "").lower()
+    if ecosystem == "deb":
+        status = (pkg.get("status") or "").lower()
+        if status:
+            return status == "ii"
+    return bool(pkg.get("installed", True))
+
+
+def _build_pkg_index(pkgs: list[dict]) -> dict[str, list[dict]]:
+    idx: dict[str, list[dict]] = {}
+    for p in pkgs:
+        if not _is_installed_package(p):
+            continue
+        name = (p.get("name") or "").strip().lower()
+        ver = (p.get("version") or "").strip()
+        if not name or not ver:
+            continue
+        idx.setdefault(name, []).append(p)
+        base = name.split("-")[0]
+        if base and base != name:
+            idx.setdefault(base, []).append(p)
+    return idx
+
+
+def _find_package(pkg_name: str, pkg_index: dict[str, list[dict]]) -> dict | None:
+    exact = pkg_index.get(pkg_name)
+    if exact:
+        return exact[0]
+
+    for name, entries in pkg_index.items():
+        if pkg_name in name or name in pkg_name:
+            return entries[0]
+    return None
+
+
 def _get_advisories(distro: str) -> list:
-    """Return advisories for the detected distro."""
     if distro in ("ubuntu", "debian"):
         return UBUNTU_ADVISORIES
     if distro == "amazon":
         return AMAZON_LINUX_ADVISORIES
-    if distro in ("rhel", "centos", "rocky"):
+    if distro == "rhel":
         return RHEL_ADVISORIES
-    return UBUNTU_ADVISORIES + AMAZON_LINUX_ADVISORIES + RHEL_ADVISORIES
+    return []
 
 
 class Check(Plugin):
@@ -219,97 +301,133 @@ class Check(Plugin):
         if not pkgs:
             return PluginResult()
 
-        os_release = os_info.get("os_release", {})
+        os_release = os_info.get("os_release", {}) or {}
         distro = _detect_distro(os_release)
         os_name = os_release.get("PRETTY_NAME", distro)
-        advisories = _get_advisories(distro)
+        release_tokens = _release_tokens(os_release)
+        release_label = (
+            os_release.get("VERSION_CODENAME")
+            or os_release.get("UBUNTU_CODENAME")
+            or os_release.get("DEBIAN_CODENAME")
+            or os_release.get("VERSION_ID")
+            or "unknown"
+        )
 
-        # Build package index: name -> version
-        pkg_index = {}
-        for p in pkgs:
-            name = p.get("name", "").lower().strip()
-            ver = p.get("version", "")
-            if name and ver:
-                pkg_index[name] = ver
-                # Also index without version suffix (e.g., "openssh-server" -> "openssh")
-                base = name.split("-")[0]
-                if base not in pkg_index:
-                    pkg_index[base] = ver
+        advisories = _get_advisories(distro)
+        pkg_index = _build_pkg_index(pkgs)
+        installed_count = sum(1 for p in pkgs if _is_installed_package(p))
+
+        inventory_ts = os_info.get("inventory_timestamp") or ""
+        host_identifier = os_info.get("host_identifier") or target
+        scan_ts = os_info.get("scan_timestamp") or ctx.get("scan.started_at") or ""
 
         findings = []
         matched_advisories = 0
 
         for adv in advisories:
-            pkg_name = adv["package"].lower()
-            installed = pkg_index.get(pkg_name)
-            if not installed:
-                # Try partial match
-                for pname, pver in pkg_index.items():
-                    if pkg_name in pname or pname in pkg_name:
-                        installed = pver
-                        break
-
-            if not installed:
+            pkg_name = (adv.get("package") or "").lower().strip()
+            if not pkg_name:
                 continue
 
-            fixed = adv.get("fixed_version", "")
-            if fixed and _version_lt(installed, fixed):
+            if not _advisory_applies_release(adv, release_tokens):
+                continue
+
+            fixed = _advisory_fixed_version(adv, release_tokens)
+            if not fixed:
+                continue
+
+            installed_pkg = _find_package(pkg_name, pkg_index)
+            if not installed_pkg:
+                continue
+
+            installed_version = installed_pkg.get("version", "")
+            installed_status = installed_pkg.get("status", "")
+            if not installed_version:
+                continue
+
+            if _version_lt(installed_version, fixed):
                 matched_advisories += 1
                 cve = adv.get("cve", "")
                 adv_id = adv.get("id", "")
                 sev = adv.get("severity", "medium")
+                advisory_url = adv.get("advisory_url", "")
 
-                findings.append(Finding(
-                    severity=sev,
-                    plugin_id=META.plugin_id,
-                    title=f"[{adv_id}] {adv.get('title', cve)}",
-                    description=(
-                        f"{adv.get('description', '')}\n\n"
-                        f"Distro: {os_name}\n"
-                        f"Package: {pkg_name} (installed: {installed}, fixed: {fixed})\n"
-                        f"Advisory: {adv_id}"
-                    ),
-                    evidence=(
-                        f"advisory={adv_id} cve={cve} package={pkg_name} "
-                        f"installed={installed} fixed={fixed} distro={distro}"
-                    ),
-                    affected=target,
-                    fingerprint=stable_fingerprint(target, META.plugin_id, adv_id, pkg_name),
-                    cve=cve if cve.startswith("CVE-") else None,
-                    confidence=0.85,
-                    remediation=(
-                        f"[{distro.upper()} SECURITY UPDATE]\n"
-                        f"Advisory: {adv_id}\n"
-                        f"Update {pkg_name} to version {fixed} or later:\n"
-                        f"  Ubuntu/Debian: sudo apt update && sudo apt upgrade {pkg_name}\n"
-                        f"  Amazon/RHEL:   sudo yum update {pkg_name}\n"
-                        f"  Alpine:        sudo apk upgrade {pkg_name}\n\n"
-                        f"Verify: dpkg -l {pkg_name} (Debian) or rpm -q {pkg_name} (RPM)"
-                    ),
-                    references=[
-                        f"https://nvd.nist.gov/vuln/detail/{cve}" if cve else "",
-                        f"https://ubuntu.com/security/notices/{adv_id}" if "USN" in adv_id else "",
-                        f"https://alas.aws.amazon.com/{adv_id}.html" if "ALAS" in adv_id else "",
-                        f"https://access.redhat.com/errata/{adv_id}" if "RHSA" in adv_id else "",
-                    ],
-                ))
+                refs = [
+                    f"https://nvd.nist.gov/vuln/detail/{cve}" if cve else "",
+                    advisory_url,
+                    "https://ubuntu.com/security/notices" if distro in ("ubuntu", "debian") else "",
+                    "https://www.debian.org/security/" if distro == "debian" else "",
+                    "https://explore.alas.aws.amazon.com/" if distro == "amazon" else "",
+                    "https://alas.aws.amazon.com/alas2.html" if distro == "amazon" else "",
+                    "https://access.redhat.com/security/security-updates/security-advisories" if distro == "rhel" else "",
+                ]
 
-        # Summary finding
-        if pkgs:
-            findings.append(Finding(
+                findings.append(
+                    Finding(
+                        severity=sev,
+                        plugin_id=META.plugin_id,
+                        title=f"[{adv_id}] {adv.get('title', cve)}",
+                        description=(
+                            f"{adv.get('description', '')}\n\n"
+                            f"Distro: {os_name} (release: {release_label})\n"
+                            f"Package: {pkg_name} (installed: {installed_version}, fixed: {fixed}, status: {installed_status or 'installed'})\n"
+                            f"Advisory: {adv_id}"
+                        ),
+                        evidence=(
+                            f"advisory={adv_id} cve={cve} package={pkg_name} "
+                            f"installed={installed_version} status={installed_status or 'installed'} fixed={fixed} "
+                            f"distro={distro} release={release_label} "
+                            f"scan_ts={scan_ts} inventory_ts={inventory_ts} host_id={host_identifier}"
+                        ),
+                        affected=target,
+                        fingerprint=stable_fingerprint(
+                            target,
+                            META.plugin_id,
+                            adv_id,
+                            pkg_name,
+                            release_label,
+                            fixed,
+                        ),
+                        cve=cve if cve.startswith("CVE-") else None,
+                        confidence=0.9,
+                        remediation=(
+                            f"[{distro.upper()} SECURITY UPDATE]\n"
+                            f"Advisory: {adv_id}\n"
+                            f"Release: {release_label}\n"
+                            f"Update {pkg_name} to {fixed} or later.\n"
+                            "Ubuntu/Debian: sudo apt update && sudo apt upgrade <package>\n"
+                            "Amazon/RHEL:   sudo yum update <package>\n"
+                            "Alpine:        sudo apk upgrade <package>\n\n"
+                            "Verification (Ubuntu/Debian): dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\\n' <package>"
+                        ),
+                        references=[r for r in refs if r],
+                    )
+                )
+
+        findings.append(
+            Finding(
                 severity="info",
                 plugin_id=META.plugin_id,
-                title=f"Local security check: {distro} — {len(pkgs)} packages, {matched_advisories} advisories matched",
-                evidence=f"distro={distro} os={os_name} packages={len(pkgs)} advisories_checked={len(advisories)} hits={matched_advisories}",
-                affected=target,
-                fingerprint=stable_fingerprint(target, META.plugin_id, "summary"),
-                remediation=(
-                    f"Run full system update:\n"
-                    f"  Ubuntu/Debian: sudo apt update && sudo apt upgrade -y\n"
-                    f"  Amazon/RHEL:   sudo yum update -y\n"
-                    f"  Alpine:        sudo apk upgrade"
+                title=(
+                    "Local security check summary: "
+                    f"{distro} release={release_label} installed_packages={installed_count} matches={matched_advisories}"
                 ),
-            ))
+                evidence=(
+                    f"distro={distro} os={os_name} release={release_label} "
+                    f"packages_total={len(pkgs)} packages_installed={installed_count} "
+                    f"advisories_checked={len(advisories)} hits={matched_advisories} "
+                    f"scan_ts={scan_ts} inventory_ts={inventory_ts} host_id={host_identifier}"
+                ),
+                affected=target,
+                fingerprint=stable_fingerprint(target, META.plugin_id, "summary", release_label, host_identifier),
+                remediation=(
+                    "Validate package state before remediation to reduce false positives:\n"
+                    "Ubuntu/Debian: dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\\n'\n"
+                    "Amazon/RHEL: rpm -qa\n"
+                    "Alpine: apk info -v"
+                ),
+            )
+        )
 
         return PluginResult(
             findings=findings,
