@@ -218,7 +218,8 @@ def _schedule_loop():
                     db.refresh(job)
 
                     q = Queue("scans", connection=Redis.from_url(settings.REDIS_URL))
-                    q.enqueue(run_scan_job, job.id, job_timeout=600)
+                    rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+                    q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
 
                     sched.last_run_at = now_utc
 

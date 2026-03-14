@@ -176,8 +176,10 @@ def create_job(
 
     try:
         q = Queue("scans", connection=_redis())
-        q.enqueue(run_scan_job, job.id, job_timeout=600)
-        logger.info("Enqueued scan job #%d target=%s type=%s", job.id, target, scan_type)
+        # RQ timeout = scan budget + 300s headroom for post-processing & DB writes
+        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
+        logger.info("Enqueued scan job #%d target=%s type=%s timeout=%ds", job.id, target, scan_type, rq_timeout)
     except Exception as e:
         job.status = "failed"
         job.meta_json = json.dumps({
@@ -427,7 +429,8 @@ def rescan_job(
 
     try:
         q = Queue("scans", connection=_redis())
-        q.enqueue(run_scan_job, new_job.id, job_timeout=600)
+        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        q.enqueue(run_scan_job, new_job.id, job_timeout=rq_timeout)
         logger.info("Rescan enqueued: job #%d (from #%d) target=%s", new_job.id, job_id, original.target)
     except Exception as e:
         new_job.status = "failed"

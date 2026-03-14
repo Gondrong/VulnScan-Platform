@@ -271,16 +271,41 @@ class Check(Plugin):
         target_raw = ctx.get("target_raw", target)
         findings = []
 
+        has_explicit_url = bool(re.match(r"^https?://", target_raw, re.I))
+
+        # Skip if no web service detected (like OWASP scanner does)
+        if not has_explicit_url and not http_items:
+            return PluginResult(
+                findings=[
+                    Finding(
+                        severity="info",
+                        plugin_id=META.plugin_id,
+                        title="Directory crawl skipped — no web service detected",
+                        description=(
+                            "No HTTP fingerprint was discovered for this target. "
+                            "Skipping directory crawl to avoid wasting time on non-web hosts."
+                        ),
+                        evidence=f"target={target} http_fingerprint=none",
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, META.plugin_id, "skipped_no_http"),
+                    )
+                ],
+                artifacts={"recon.directories": []},
+            )
+
         # Determine base URL
-        if re.match(r"^https?://", target_raw, re.I):
+        if has_explicit_url:
             base_url = target_raw.rstrip("/")
         elif http_items:
             base_url = http_items[0].get("url", f"http://{target}").rstrip("/")
         else:
             base_url = f"http://{target}"
 
+        effective = ctx.get("_effective_timeout", 60.0)
+        req_timeout = min(8.0, effective * 0.1)  # 10% of budget per request
+
         async with httpx.AsyncClient(
-            timeout=8.0,
+            timeout=req_timeout,
             verify=False,
             follow_redirects=True,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),

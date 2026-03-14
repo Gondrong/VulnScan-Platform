@@ -64,12 +64,33 @@ async def http_fingerprint(
         ) as client:
             r = await client.get(url)
             headers = {k.lower(): v for k, v in r.headers.items()}
+
+            # Extract generator meta tag from HTML
+            generator = ""
+            ct = headers.get("content-type", "")
+            if "html" in ct:
+                import re as _re
+                gen_match = _re.search(
+                    r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']+)["\']',
+                    r.text[:8192], _re.I,
+                )
+                if not gen_match:
+                    gen_match = _re.search(
+                        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']generator["\']',
+                        r.text[:8192], _re.I,
+                    )
+                if gen_match:
+                    generator = gen_match.group(1).strip()
+
             return {
                 "url": str(r.url),
                 "status": r.status_code,
                 "server": headers.get("server", ""),
                 "powered_by": headers.get("x-powered-by", ""),
-                "content_type": headers.get("content-type", ""),
+                "aspnet_version": headers.get("x-aspnet-version", ""),
+                "aspnetmvc_version": headers.get("x-aspnetmvc-version", ""),
+                "generator": generator,
+                "content_type": ct,
                 "port": port,
                 "tls": tls,
             }

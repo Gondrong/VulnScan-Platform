@@ -13,7 +13,7 @@ from app.scanner.plugins.base import Plugin, PluginMeta, PluginResult, Finding
 from app.db.session import SessionLocal
 from app.db import models
 from app.cve.dataset_loader import load_json
-from app.cve.version_cmp import parse, match_expr
+from app.cve.version_cmp import parse, match_expr, is_likely_patched
 from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
@@ -121,9 +121,147 @@ PKG_TO_CPE = {
     "tar":              ("gnu", "tar"),
     "gzip":             ("gnu", "gzip"),
     "unzip":            ("info-zip", "unzip"),
+    # Proxy / Load balancers
+    "haproxy":          ("haproxy", "haproxy"),
+    "squid":            ("squid-cache", "squid"),
+    "squid3":           ("squid-cache", "squid"),
+    "varnish":          ("varnish-cache", "varnish_cache"),
+    "traefik":          ("traefik", "traefik"),
+    # Message queues
+    "rabbitmq-server":  ("pivotal_software", "rabbitmq"),
+    "mosquitto":        ("eclipse", "mosquitto"),
+    "activemq":         ("apache", "activemq"),
+    # Monitoring
+    "prometheus":       ("prometheus", "prometheus"),
+    "grafana":          ("grafana", "grafana"),
+    "zabbix-server-mysql": ("zabbix", "zabbix"),
+    "zabbix-server-pgsql": ("zabbix", "zabbix"),
+    "zabbix-agent":     ("zabbix", "zabbix"),
+    "nagios4":          ("nagios", "nagios"),
+    "nagios-nrpe-server": ("nagios", "nrpe"),
+    # CI/CD
+    "jenkins":          ("jenkins", "jenkins"),
+    "gitlab-ce":        ("gitlab", "gitlab"),
+    "gitlab-ee":        ("gitlab", "gitlab"),
+    "gitlab-runner":    ("gitlab", "gitlab_runner"),
+    # Caching
+    "memcached":        ("memcached", "memcached"),
+    "libmemcached11":   ("memcached", "memcached"),
+    # Logging / ELK
+    "logstash":         ("elastic", "logstash"),
+    "filebeat":         ("elastic", "beats"),
+    "elasticsearch":    ("elastic", "elasticsearch"),
+    "kibana":           ("elastic", "kibana"),
+    "fluentd":          ("fluentd", "fluentd"),
+    "fluent-bit":       ("treasuredata", "fluent_bit"),
+    # Virtualization
+    "qemu-system-x86":  ("qemu", "qemu"),
+    "qemu-kvm":         ("qemu", "qemu"),
+    "libvirt-daemon":   ("redhat", "libvirt"),
+    "libvirt0":         ("redhat", "libvirt"),
+    # Security
+    "fail2ban":         ("fail2ban", "fail2ban"),
+    "snort":            ("snort", "snort"),
+    "suricata":         ("oisf", "suricata"),
+    "clamav":           ("clamav", "clamav"),
+    "clamav-daemon":    ("clamav", "clamav"),
+    # DNS / DHCP
+    "isc-dhcp-server":  ("isc", "dhcp"),
+    "unbound":          ("nlnetlabs", "unbound"),
+    "knot-resolver":    ("nic", "knot_resolver"),
+    # VPN
+    "openvpn":          ("openvpn", "openvpn"),
+    "strongswan":       ("strongswan", "strongswan"),
+    "wireguard-tools":  ("wireguard", "wireguard"),
+    # CMS (if installed as packages)
+    "wordpress":        ("wordpress", "wordpress"),
+    "drupal":           ("drupal", "drupal"),
+    # Other common
+    "tomcat9":          ("apache", "tomcat"),
+    "tomcat10":         ("apache", "tomcat"),
+    "lighttpd":         ("lighttpd", "lighttpd"),
+    "proftpd-basic":    ("proftpd", "proftpd"),
+    "vsftpd":           ("beasts", "vsftpd"),
+    "openssh-sftp-server": ("openbsd", "openssh"),
+    "socat":            ("dest-unreach", "socat"),
+    "netcat-openbsd":   ("nmap", "ncat"),
+    "tcpdump":          ("tcpdump", "tcpdump"),
+    "nmap":             ("nmap", "nmap"),
+    "inetutils-telnetd": ("gnu", "inetutils"),
+    "cups":             ("openprinting", "cups"),
+    "cups-daemon":      ("openprinting", "cups"),
+    "libtiff5":         ("libtiff", "libtiff"),
+    "libpng16-16":      ("libpng", "libpng"),
+    "libjpeg-turbo8":   ("libjpeg-turbo", "libjpeg-turbo"),
+    "krb5-user":        ("mit", "kerberos_5"),
+    "libkrb5-3":        ("mit", "kerberos_5"),
+    "ldap-utils":       ("openldap", "openldap"),
+    "slapd":            ("openldap", "openldap"),
 }
 
 # Patterns for dynamic matching (linux kernel packages, etc.)
+# Packages known to be network-facing services — findings for these get
+# higher base confidence because they have actual attack surface.
+_NETWORK_FACING_PKGS = {
+    # SSH
+    "openssh-server", "openssh-sftp-server",
+    # Web servers
+    "nginx", "nginx-common", "nginx-core", "apache2", "apache2-bin", "httpd",
+    "lighttpd", "tomcat9", "tomcat10",
+    # Databases (listen on network ports by default)
+    "postgresql", "postgresql-16", "postgresql-15", "postgresql-14",
+    "mysql-server", "mariadb-server", "redis-server", "redis",
+    "mongodb-server", "elasticsearch",
+    # SSL/TLS (used by network services)
+    "openssl", "libssl3", "libssl1.1",
+    # Proxy / LB
+    "haproxy", "squid", "squid3", "varnish", "traefik",
+    # Mail
+    "postfix", "exim4", "dovecot-core",
+    # DNS / DHCP
+    "bind9", "dnsmasq", "isc-dhcp-server", "unbound",
+    # VPN
+    "openvpn", "strongswan", "wireguard-tools",
+    # Containers
+    "docker.io", "docker-ce", "containerd",
+    # Message queues
+    "rabbitmq-server", "mosquitto",
+    # Monitoring (web UIs)
+    "grafana", "zabbix-server-mysql", "zabbix-server-pgsql", "prometheus",
+    "kibana", "nagios4",
+    # CI/CD
+    "jenkins", "gitlab-ce", "gitlab-ee",
+    # CMS
+    "wordpress", "drupal",
+    # FTP
+    "proftpd-basic", "vsftpd",
+    # Runtime with web exposure
+    "php", "php8.1-cli", "php8.2-cli", "php8.3-cli", "nodejs",
+    # Misc network
+    "cups", "cups-daemon", "samba", "nfs-common", "memcached",
+    "slapd",
+}
+
+# Pattern-based network-facing detection
+_NETWORK_FACING_PATTERNS = [
+    r"^openssh", r"^nginx", r"^apache2", r"^httpd",
+    r"^postgresql-\d+", r"^mysql-server", r"^mariadb-server",
+    r"^redis-server", r"^mongodb-server",
+    r"^php\d+\.\d+-(fpm|cgi)", r"^tomcat\d+",
+    r"^haproxy", r"^squid", r"^postfix", r"^exim\d+",
+    r"^dovecot", r"^bind9", r"^gitlab-",
+    r"^zabbix-server", r"^jenkins", r"^grafana",
+]
+
+
+def _is_network_facing(pkg_name: str) -> bool:
+    """Check if a package is a known network-facing service."""
+    name_lower = pkg_name.lower().strip()
+    if name_lower in _NETWORK_FACING_PKGS:
+        return True
+    return any(re.match(pat, name_lower) for pat in _NETWORK_FACING_PATTERNS)
+
+
 PKG_PATTERNS = [
     (r"^linux-image-(\d+\.\d+)", "linux", "linux_kernel"),
     (r"^linux-headers-(\d+\.\d+)", "linux", "linux_kernel"),
@@ -135,6 +273,16 @@ PKG_PATTERNS = [
     (r"^apache2", "apache", "http_server"),
     (r"^libssl", "openssl", "openssl"),
     (r"^libcurl", "haxx", "curl"),
+    (r"^tomcat(\d+)", "apache", "tomcat"),
+    (r"^mariadb-server", "mariadb", "mariadb"),
+    (r"^mysql-server", "oracle", "mysql"),
+    (r"^redis-server", "redis", "redis"),
+    (r"^mongodb-server", "mongodb", "mongodb"),
+    (r"^gitlab-", "gitlab", "gitlab"),
+    (r"^zabbix-", "zabbix", "zabbix"),
+    (r"^clamav", "clamav", "clamav"),
+    (r"^libvirt", "redhat", "libvirt"),
+    (r"^qemu", "qemu", "qemu"),
 ]
 
 
@@ -154,6 +302,7 @@ def pkg_to_cpe(name: str, version: str) -> list[dict]:
             "vendor": vendor,
             "product": product,
             "version": clean_ver,
+            "raw_version": version,
             "package": name,
         })
 
@@ -169,6 +318,7 @@ def pkg_to_cpe(name: str, version: str) -> list[dict]:
                     "vendor": vendor,
                     "product": product,
                     "version": clean_ver,
+                    "raw_version": version,
                     "package": name,
                 })
 
@@ -298,6 +448,7 @@ def match_nvd(pkgs, nvd_data):
                             "installed": c["version"],
                             "severity": item.get("severity", "medium"),
                             "cvss": item.get("cvss"),
+                            "cwe": item.get("cwe", ""),
                             "refs": item.get("refs", []),
                             "summary": item.get("summary", ""),
                             "matched_cpe": cpe_db,
@@ -353,29 +504,91 @@ class Check(Plugin):
         finally:
             db.close()
 
+        # Determine OS identifier for distro-patch checks
+        os_id = (os_info.get("os_id") or os_info.get("id") or os_info.get("distro") or "").lower()
+
+        # Build a lookup of raw versions from packages
+        raw_ver_by_pkg = {}
+        for p in pkgs:
+            raw_ver_by_pkg[p["name"]] = p.get("version", "")
+
         findings = []
         for h in all_hits[:3000]:
             cve = h.get("cve") or h.get("id") or "UNKNOWN"
             fp = stable_fingerprint(
                 target, META.plugin_id, cve, h.get("package", ""), h.get("installed", "")
             )
+
+            # Check if the distro has likely backported the fix
+            pkg_name = h.get("package", "")
+            raw_ver = raw_ver_by_pkg.get(pkg_name, "")
+            patched = os_id and raw_ver and is_likely_patched(raw_ver, os_id)
+
+            network_facing = _is_network_facing(pkg_name)
+
+            if patched:
+                v_state = "likely_patched"
+                v_method = "distro_backport_detected"
+                v_confidence = 0.10
+                v_note = (
+                    "This package version contains a distro-specific patch suffix "
+                    f"({raw_ver}) indicating a backported security fix. "
+                    "The upstream version may be vulnerable, but the distro vendor "
+                    "has likely applied the relevant security patches."
+                )
+            elif network_facing:
+                v_state = "provisional"
+                v_method = "package_version_match_network_service"
+                v_confidence = 0.35
+                v_note = (
+                    "This is a network-facing service with a version-matched CVE. "
+                    "This finding should be confirmed against vendor release "
+                    "advisories and runtime exposure before treating it as a real vulnerability."
+                )
+            else:
+                v_state = "provisional"
+                v_method = "package_version_match_local_only"
+                v_confidence = 0.15
+                v_note = (
+                    "This is a local/library package that is not directly network-reachable. "
+                    "While the version matches a known CVE, exploitation typically requires "
+                    "local access or a chained attack through a network-facing service. "
+                    "Prioritize network-exposed services first."
+                )
+
+            # Build a more informative title based on validation state
+            if patched:
+                title_prefix = "[LIKELY PATCHED]"
+            elif network_facing:
+                title_prefix = "Potential"
+            else:
+                title_prefix = "[LOCAL]"
+
             findings.append(
                 Finding(
                     severity=h.get("severity", "medium"),
                     plugin_id=META.plugin_id,
-                    title=f"{cve}: {h.get('package', '?')} {h.get('installed', '')}",
-                    description=h.get("summary", ""),
+                    title=f"{title_prefix} {cve}: {h.get('package', '?')} {h.get('installed', '')}",
+                    description=(
+                        (h.get("summary", "") or "")
+                        + f"\n\nValidation state: {v_state}"
+                        + f"\nValidation method: {v_method}"
+                        + f"\n{v_note}"
+                    ),
                     references=h.get("refs", []),
                     evidence=(
-                        f"package={h.get('package')} installed={h.get('installed')} "
+                        f"package={pkg_name} installed={h.get('installed')} "
+                        f"raw_version={raw_ver} "
                         f"ecosystem={h.get('ecosystem', '')} matched_cpe={h.get('matched_cpe', '')} "
+                        f"network_facing={'yes' if network_facing else 'no'} "
+                        f"validation_state={v_state} validation_method={v_method} "
                         f"scan_ts={scan_ts} inventory_ts={inventory_ts} host_id={host_identifier}"
                     ),
                     affected=target,
                     fingerprint=fp,
                     cve=cve if cve.startswith("CVE-") else None,
                     cvss=h.get("cvss"),
-                    confidence=0.9,
+                    confidence=v_confidence,
                 )
             )
 

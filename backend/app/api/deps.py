@@ -17,7 +17,9 @@ def require_role(*roles: str):
             ...
     """
     def _check(claims: dict = Depends(require_auth)) -> dict:
-        if claims.get("role") not in roles:
+        claim_role = str(claims.get("role", "")).lower()
+        allowed = {str(r).lower() for r in roles}
+        if claim_role not in allowed:
             raise HTTPException(
                 status_code=403,
                 detail=f"Requires one of roles: {list(roles)}",

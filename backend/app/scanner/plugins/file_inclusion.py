@@ -29,7 +29,7 @@ META = PluginMeta(
     consumes=["fingerprint.http", "recon.directories"],
     provides=["vuln.lfi_rfi"],
     enabled_by_default=True,
-    timeout_seconds=180.0,
+    timeout_seconds=90.0,  # Reduced from 180s; global budget prevents runaway scans
 )
 
 # ── LFI Payloads ─────────────────────────────────────────────────────────────
@@ -202,7 +202,8 @@ class Check(Plugin):
                 artifacts={"vuln.lfi_rfi": 0},
             )
 
-        request_timeout = min(max(float(ctx.policy.timeout_seconds), 8.0), 25.0)
+        effective = ctx.get("_effective_timeout", ctx.policy.timeout_seconds)
+        request_timeout = min(max(float(effective), 5.0), 15.0)
 
         async with httpx.AsyncClient(
             timeout=request_timeout,

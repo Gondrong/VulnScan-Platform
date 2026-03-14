@@ -1,7 +1,9 @@
 import asyncio
 import ipaddress
 import json
+import logging
 import re
+import time
 import urllib.parse
 from datetime import datetime, timezone
 
@@ -9,6 +11,8 @@ from app.core.config import settings
 from app.scanner.context import ScanContext, ScanPolicy, stable_fingerprint
 from app.scanner.plugins.base import Finding
 from app.scanner.plugins.loader import load_plugins, topo_sort
+
+logger = logging.getLogger(__name__)
 
 PLUGINS = load_plugins()  # returns dict[str, Plugin]
 ORDER = topo_sort(PLUGINS)  # returns list[str] of plugin_ids
@@ -391,6 +395,34 @@ def _enrich_finding_description(finding: Finding, target: str, scan_type: str) -
     return finding
 
 
+def _set_default_artifacts(chk, ctx):
+    """
+    When a plugin times out or errors, set empty defaults for its `provides`
+    artifacts so downstream plugins that read those keys won't break.
+    """
+    _EMPTY_DEFAULTS = {
+        "net.open_ports": [],
+        "fingerprint.http": {"http": []},
+        "fingerprint.banners": {"banners": []},
+        "fingerprint.webtech": [],
+        "fingerprint.favicon": [],
+        "fingerprint.deep": [],
+        "cpe.candidates": [],
+        "cve.nvd_hits": [],
+        "cve.package_hits": [],
+        "cve.endpoint_probes": [],
+        "cve.verified": [],
+        "priority.kev_hits": [],
+        "owasp.finding_types": [],
+        "owasp.tested_categories": [],
+        "recon.directories": [],
+    }
+    for key in (chk.meta.provides or []):
+        if not ctx.has(key):
+            default = _EMPTY_DEFAULTS.get(key, [])
+            ctx.set(key, default)
+
+
 async def scan_target(
     target: str, profile: dict, workspace_id: int, scan_type: str = "internal",
     progress_callback=None,
@@ -446,8 +478,60 @@ async def scan_target(
     findings_out: list[Finding] = []
     enabled = _enabled(profile.get("plugin_selection_json", "{}"))
 
+    # ── Global scan budget ──────────────────────────────────────────────
+    # Prevents the scan from exceeding RQ's job_timeout by tracking
+    # wall-clock time and progressively shrinking per-plugin timeouts.
+    scan_budget = float(settings.SCAN_BUDGET_SECONDS)
+    scan_start = time.monotonic()
+    # Reserve 30s for post-scan processing (enrichment, DB writes)
+    budget_reserve = 30.0
+    skipped_for_budget = []
+
     for step_idx, pid in enumerate(enabled):
         chk = PLUGINS[pid]
+
+        # Check remaining budget BEFORE starting each plugin
+        elapsed = time.monotonic() - scan_start
+        remaining = scan_budget - elapsed - budget_reserve
+        if remaining <= 5.0:
+            # Not enough time left — skip all remaining plugins
+            for skip_pid in [p for p in enabled[step_idx:]]:
+                skip_chk = PLUGINS[skip_pid]
+                skipped_for_budget.append(skip_pid)
+                findings_out.append(
+                    Finding(
+                        severity="info",
+                        plugin_id=skip_pid,
+                        title=f"Plugin skipped (scan budget exhausted): {skip_chk.meta.name}",
+                        evidence=(
+                            f"elapsed={elapsed:.1f}s budget={scan_budget}s "
+                            f"remaining={remaining:.1f}s skipped_plugins={len(enabled) - step_idx}"
+                        ),
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, skip_pid, "budget_skip"),
+                        remediation=(
+                            "The global scan budget was exhausted before this plugin could run. "
+                            "Increase SCAN_BUDGET_SECONDS in .env, reduce the number of enabled "
+                            "plugins, or use a lighter scan profile."
+                        ),
+                    )
+                )
+            if skipped_for_budget and progress_callback:
+                try:
+                    _r = progress_callback(
+                        len(enabled) - 1, len(enabled), "budget",
+                        f"Budget exhausted ({len(skipped_for_budget)} skipped)", "done",
+                    )
+                    if asyncio.iscoroutine(_r):
+                        await _r
+                except Exception:
+                    pass
+            logger.warning(
+                "Scan budget exhausted after %.1fs — skipped %d plugins: %s",
+                elapsed, len(skipped_for_budget), skipped_for_budget,
+            )
+            break
+
         # Report progress
         if progress_callback:
             try:
@@ -457,14 +541,24 @@ async def scan_target(
             except Exception:
                 pass
 
-        # External scans get extra timeout for network latency
+        # Per-plugin timeout: min of (plugin's own timeout, remaining budget)
         effective_timeout = chk.meta.timeout_seconds
         if scan_type == "external":
-            effective_timeout = max(effective_timeout * 2.5, 25.0)
+            effective_timeout = max(effective_timeout * 1.5, 20.0)
+        # Hard cap: no single plugin may consume more than 20% of total budget.
+        # This prevents slow plugins from starving critical downstream ones
+        # (e.g., OWASP timing out and preventing CPE Builder from running).
+        per_plugin_cap = scan_budget * 0.20
+        effective_timeout = min(effective_timeout, per_plugin_cap, remaining)
+
+        # Expose the effective timeout to the plugin so it can cap its
+        # internal HTTP request timeouts accordingly (must be < kill timeout).
+        ctx.set("_effective_timeout", effective_timeout)
+
         try:
             res = await asyncio.wait_for(
                 chk.run(host, ctx),
-                timeout=effective_timeout + 2,
+                timeout=effective_timeout + 5,
             )
         except asyncio.TimeoutError:
             findings_out.append(
@@ -474,7 +568,8 @@ async def scan_target(
                     title=f"Plugin timed out: {chk.meta.name}",
                     evidence=(
                         f"plugin_timeout={chk.meta.timeout_seconds}s "
-                        f"effective_timeout={effective_timeout}s "
+                        f"effective_timeout={effective_timeout:.1f}s "
+                        f"budget_remaining={remaining:.1f}s "
                         f"scan_timeout_seconds={ctx.policy.timeout_seconds}"
                     ),
                     affected=target,
@@ -486,6 +581,8 @@ async def scan_target(
                     ),
                 )
             )
+            # Set empty default artifacts so downstream plugins don't break
+            _set_default_artifacts(chk, ctx)
             if progress_callback:
                 try:
                     _r = progress_callback(step_idx, len(enabled), pid, chk.meta.name, "timeout")
@@ -506,6 +603,8 @@ async def scan_target(
                     remediation=f"The {chk.meta.name} plugin encountered an error. Check target connectivity and plugin configuration.",
                 )
             )
+            # Set empty default artifacts so downstream plugins don't break
+            _set_default_artifacts(chk, ctx)
             if progress_callback:
                 try:
                     _r = progress_callback(step_idx, len(enabled), pid, chk.meta.name, "error")

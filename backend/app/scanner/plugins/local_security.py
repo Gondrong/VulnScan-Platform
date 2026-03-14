@@ -34,6 +34,7 @@ UBUNTU_ADVISORIES = [
         "id": "USN-6885-3",
         "cve": "CVE-2024-6387",
         "package": "openssh-server",
+        "requires_any_port": [22],
         "fixed_by_release": {
             "noble": "1:9.6p1-3ubuntu13.5",
             "24.04": "1:9.6p1-3ubuntu13.5",
@@ -64,6 +65,7 @@ UBUNTU_ADVISORIES = [
         "id": "USN-7060-1",
         "cve": "CVE-2024-47076",
         "package": "cups-browsed",
+        "requires_any_port": [631],
         "fixed_by_release": {
             "noble": "2.0.0-0ubuntu10.1",
             "24.04": "2.0.0-0ubuntu10.1",
@@ -92,6 +94,7 @@ UBUNTU_ADVISORIES = [
         "id": "USN-6564-1",
         "cve": "CVE-2023-44487",
         "package": "nginx",
+        "requires_any_port": [80, 443],
         "fixed_version": "1.24.0-2ubuntu1",
         "severity": "high",
         "title": "HTTP/2 rapid reset DoS",
@@ -117,6 +120,7 @@ AMAZON_LINUX_ADVISORIES = [
         "id": "ALAS-2024-2502",
         "cve": "CVE-2024-6387",
         "package": "openssh",
+        "requires_any_port": [22],
         "fixed_version": "8.7p1-8.amzn2023.0.11",
         "severity": "critical",
         "title": "OpenSSH regreSSHion remote code execution",
@@ -137,6 +141,7 @@ AMAZON_LINUX_ADVISORIES = [
         "id": "ALAS-2024-2437",
         "cve": "CVE-2023-44487",
         "package": "nginx",
+        "requires_any_port": [80, 443],
         "fixed_version": "1.24.0-1.amzn2023.0.2",
         "severity": "high",
         "title": "HTTP/2 rapid reset DoS",
@@ -150,6 +155,7 @@ RHEL_ADVISORIES = [
         "id": "RHSA-2024:4312",
         "cve": "CVE-2024-6387",
         "package": "openssh",
+        "requires_any_port": [22],
         "fixed_version": "8.7p1-38.el9_4.1",
         "severity": "critical",
         "title": "OpenSSH regreSSHion",
@@ -294,12 +300,25 @@ def _get_advisories(distro: str) -> list:
     return []
 
 
+def _exposure_matches(adv: dict, open_ports: list[int]) -> tuple[bool, str]:
+    required = adv.get("requires_any_port") or []
+    if not required:
+        return True, "package_state"
+
+    open_set = {int(p) for p in open_ports if isinstance(p, int) or str(p).isdigit()}
+    matched = [str(p) for p in required if int(p) in open_set]
+    if matched:
+        return True, f"port_open:{','.join(matched)}"
+    return False, f"missing_required_port:{','.join(str(p) for p in required)}"
+
+
 class Check(Plugin):
     async def run(self, target, ctx):
         os_info = ctx.get("inventory.os", {}) or {}
         pkgs = ctx.get("inventory.packages", []) or []
         if not pkgs:
             return PluginResult()
+        open_ports = ctx.get("net.open_ports", []) or []
 
         os_release = os_info.get("os_release", {}) or {}
         distro = _detect_distro(os_release)
@@ -345,6 +364,10 @@ class Check(Plugin):
             if not installed_version:
                 continue
 
+            exposure_ok, exposure_reason = _exposure_matches(adv, open_ports)
+            if not exposure_ok:
+                continue
+
             if _version_lt(installed_version, fixed):
                 matched_advisories += 1
                 cve = adv.get("cve", "")
@@ -371,12 +394,15 @@ class Check(Plugin):
                             f"{adv.get('description', '')}\n\n"
                             f"Distro: {os_name} (release: {release_label})\n"
                             f"Package: {pkg_name} (installed: {installed_version}, fixed: {fixed}, status: {installed_status or 'installed'})\n"
-                            f"Advisory: {adv_id}"
+                            f"Advisory: {adv_id}\n"
+                            f"Validation: vendor distro advisory matched the installed package and release"
                         ),
                         evidence=(
                             f"advisory={adv_id} cve={cve} package={pkg_name} "
                             f"installed={installed_version} status={installed_status or 'installed'} fixed={fixed} "
                             f"distro={distro} release={release_label} "
+                            f"validation_state=validated validation_method=distro_advisory "
+                            f"exposure_check={exposure_reason} "
                             f"scan_ts={scan_ts} inventory_ts={inventory_ts} host_id={host_identifier}"
                         ),
                         affected=target,
@@ -394,6 +420,7 @@ class Check(Plugin):
                             f"[{distro.upper()} SECURITY UPDATE]\n"
                             f"Advisory: {adv_id}\n"
                             f"Release: {release_label}\n"
+                            f"Validation: matched release-specific vendor advisory ({exposure_reason}).\n"
                             f"Update {pkg_name} to {fixed} or later.\n"
                             "Ubuntu/Debian: sudo apt update && sudo apt upgrade <package>\n"
                             "Amazon/RHEL:   sudo yum update <package>\n"

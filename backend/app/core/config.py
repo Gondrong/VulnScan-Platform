@@ -16,6 +16,10 @@ class Settings(BaseModel):
     )
 
     SCAN_TIMEOUT_SECONDS: int = int(os.getenv("SCAN_TIMEOUT_SECONDS", "10"))
+    # Global scan budget: maximum wall-clock time for the entire scan (all plugins).
+    # Must be LESS than RQ job_timeout to allow graceful completion.
+    # Default 900s (15 min) with RQ job_timeout=1200s (20 min) gives 5 min headroom.
+    SCAN_BUDGET_SECONDS: int = int(os.getenv("SCAN_BUDGET_SECONDS", "900"))
     REPORTS_DIR: str = os.getenv("REPORTS_DIR", "/data/reports")
 
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")

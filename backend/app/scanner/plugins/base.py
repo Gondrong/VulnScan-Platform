@@ -18,6 +18,10 @@ class PluginMeta:
     consumes: list[str] = field(default_factory=list)
     enabled_by_default: bool = True
     timeout_seconds: float = 30.0
+    # Soft dependencies: affects execution ORDER (runs after these plugins)
+    # but does NOT auto-enable them. Use for cross-chain data consumption
+    # where the data is optional (e.g., endpoint_prober consuming package_hits).
+    soft_depends_on: list[str] = field(default_factory=list)
 
 
 @dataclass

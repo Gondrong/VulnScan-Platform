@@ -6,9 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_auth
+from app.api.deps import get_db, require_role
 from app.core.crypto import encrypt_str
-from app.db.session import get_db
 from app.db import models
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
@@ -19,13 +18,13 @@ class CredCreate(BaseModel):
     kind: str = "ssh"
     username: str
     secret: str
-    secret_type: str = "password"  # "password" or "SSH_KEY"
+    secret_type: str = "password"  # password | ssh_key
     passphrase: str | None = None
 
 
 @router.get("")
-def list_creds(claims=Depends(require_auth), db: Session = Depends(get_db)):
-    ws = claims["ws"]
+def list_creds(user=Depends(require_role("admin", "analyst", "viewer")), db: Session = Depends(get_db)):
+    ws = user["ws"]
     creds = (
         db.query(models.Credential)
         .filter(models.Credential.workspace_id == ws)
@@ -45,9 +44,11 @@ def list_creds(claims=Depends(require_auth), db: Session = Depends(get_db)):
 
 @router.post("")
 def create_cred(
-    body: CredCreate, claims=Depends(require_auth), db: Session = Depends(get_db)
+    body: CredCreate,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
 ):
-    ws = claims["ws"]
+    ws = user["ws"]
 
     if not body.secret or not body.secret.strip():
         raise HTTPException(400, "Secret (key or password) is required")
@@ -69,9 +70,11 @@ def create_cred(
 
 @router.delete("/{cred_id}")
 def delete_cred(
-    cred_id: int, claims=Depends(require_auth), db: Session = Depends(get_db)
+    cred_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
 ):
-    ws = claims["ws"]
+    ws = user["ws"]
     c = (
         db.query(models.Credential)
         .filter(

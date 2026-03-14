@@ -19,7 +19,7 @@ META = PluginMeta(
     category="network",
     provides=["net.open_ports", "net.service_banners"],
     enabled_by_default=True,   # Enabled — uses top100 mode by default (fast)
-    timeout_seconds=120.0,
+    timeout_seconds=60.0,  # Reduced from 120s; top100 mode shouldn't need more
 )
 
 # Nmap top 1000 TCP ports (subset — top 200 most common shown here for speed)

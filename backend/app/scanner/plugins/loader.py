@@ -17,9 +17,11 @@ _BUILTIN_PLUGINS = [
     "http_fingerprint",
     "banner_grabber",
     "web_tech",
+    "deep_fingerprint",
     "favicon_hash",
     "cpe_builder",
     "nvd_match",
+    "endpoint_prober",
     "cms_match",
     "cisa_kev",
     "tls_basic",
@@ -27,6 +29,7 @@ _BUILTIN_PLUGINS = [
     "cve_packages",
     "local_security",
     "owasp_scanner",
+    "cve_verifier",
     "dir_crawl",
     "file_inclusion",
 ]
@@ -96,7 +99,9 @@ def topo_sort(plugins: dict[str, "Plugin"] | list["Plugin"]) -> list[str]:
         meta = getattr(plugin, "meta", None) or getattr(plugin, "META", None)
         if not meta:
             continue
-        for dep in (meta.depends_on or []):
+        # Both hard and soft dependencies affect ordering
+        all_deps = list(meta.depends_on or []) + list(getattr(meta, "soft_depends_on", None) or [])
+        for dep in all_deps:
             if dep in in_degree:
                 in_degree[pid] += 1
 
@@ -108,7 +113,10 @@ def topo_sort(plugins: dict[str, "Plugin"] | list["Plugin"]) -> list[str]:
         sorted_ids.append(pid)
         for other_pid, plugin in by_id.items():
             meta = getattr(plugin, "meta", None) or getattr(plugin, "META", None)
-            if meta and pid in (meta.depends_on or []):
+            if not meta:
+                continue
+            all_deps = list(meta.depends_on or []) + list(getattr(meta, "soft_depends_on", None) or [])
+            if pid in all_deps:
                 in_degree[other_pid] -= 1
                 if in_degree[other_pid] == 0:
                     queue.append(other_pid)

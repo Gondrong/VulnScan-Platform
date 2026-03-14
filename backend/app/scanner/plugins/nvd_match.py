@@ -2,7 +2,7 @@ from app.scanner.plugins.base import Plugin, PluginMeta, PluginResult, Finding
 from app.db.session import SessionLocal
 from app.db import models
 from app.cve.dataset_loader import load_json
-from app.cve.version_cmp import parse
+from app.cve.version_cmp import parse, is_likely_patched, extract_distro_patch
 from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
@@ -112,6 +112,10 @@ class Check(Plugin):
         if not cands:
             return PluginResult()
 
+        # Distro-patch awareness: if we have OS info, we can detect backported fixes
+        os_info = ctx.get("inventory.os", {}) or {}
+        os_id = (os_info.get("os_id") or os_info.get("id") or os_info.get("distro") or "").lower()
+
         db = SessionLocal()
         hits=[]
         try:
@@ -157,9 +161,40 @@ class Check(Plugin):
             product_name = cpe_info["product"].replace("_", " ").title() if cpe_info else "unknown"
             vendor_name = cpe_info["vendor"].replace("_", " ").title() if cpe_info else "unknown"
 
+            # Check for distro-backported patches on banner/SSH-sourced CPEs
+            cpe_source = h.get("source", "")
+            raw_ver = h.get("raw_version", "")
+            patched = (
+                os_id
+                and cpe_source in ("ssh", "banner")
+                and raw_ver
+                and is_likely_patched(raw_ver, os_id)
+            )
+
+            if patched:
+                v_state = "likely_patched"
+                v_method = "distro_backport_detected"
+                v_confidence = 0.10
+                v_note = (
+                    f"The version string ({raw_ver}) contains a distro-specific patch suffix "
+                    "indicating a backported security fix. The upstream version may appear "
+                    "vulnerable, but the distro vendor has likely applied the relevant patches."
+                )
+            else:
+                v_state = "provisional"
+                v_method = "cpe_version_match_only"
+                v_confidence = min(h.get("confidence", 0.6), 0.35)
+                v_note = (
+                    "This is not proof that the target is actually exploitable "
+                    "or affected by a vendor-shipped vulnerable build."
+                )
+
             description = h.get("summary", "")
             if not description:
                 description = f"{cve} affects {vendor_name} {product_name}"
+            description += f"\n\nValidation state: {v_state}"
+            description += f"\nValidation method: {v_method}"
+            description += f"\n{v_note}"
             description += f"\n\nAffected component: {vendor_name} {product_name}"
             description += f"\nInstalled version: {installed}"
             description += f"\nVulnerable range: {version_range}"
@@ -167,15 +202,18 @@ class Check(Plugin):
             findings.append(Finding(
                 severity=h.get("severity","medium"),
                 plugin_id=META.plugin_id,
-                title=f"{cve}: {vendor_name} {product_name} {installed} (NVD match)",
+                title=f"Potential {cve}: {vendor_name} {product_name} {installed} (NVD match)",
                 description=description,
                 references=h.get("refs",[]),
-                evidence=f"cpe={h.get('matched_cpe')} installed={installed} vulnerable_range={version_range}",
+                evidence=(
+                    f"cpe={h.get('matched_cpe')} installed={installed} vulnerable_range={version_range} "
+                    f"validation_state={v_state} validation_method={v_method}"
+                ),
                 affected=target,
                 fingerprint=fp,
                 cvss=h.get("cvss"),
                 cve=cve,
-                confidence=h.get("confidence", 0.6),
+                confidence=v_confidence,
                 remediation=_build_remediation(cve, h),
             ))
         return PluginResult(findings=findings, artifacts={"cve.nvd_hits": hits})

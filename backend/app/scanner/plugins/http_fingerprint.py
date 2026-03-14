@@ -13,7 +13,7 @@ META = PluginMeta(
     consumes=["net.open_ports"],
     provides=["fingerprint.http"],
     enabled_by_default=True,
-    timeout_seconds=15.0,
+    timeout_seconds=30.0,
 )
 
 
@@ -69,9 +69,12 @@ class Check(Plugin):
         out = []
         findings = []
 
-        base_timeout = ctx.policy.timeout_seconds
+        # Use the engine's effective timeout to cap HTTP requests, so we
+        # don't make an httpx request that outlives the engine's kill timer.
+        effective = ctx.get("_effective_timeout", ctx.policy.timeout_seconds)
+        base_timeout = min(ctx.policy.timeout_seconds, effective)
         if scan_type == "external":
-            base_timeout = max(base_timeout, 15.0)
+            base_timeout = max(base_timeout, 10.0)
 
         if re.match(r"^https?://", target_raw, re.I):
             tls = target_raw.lower().startswith("https://")

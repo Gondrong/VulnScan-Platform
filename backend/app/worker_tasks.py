@@ -1,7 +1,8 @@
-import os
+﻿import os
 import asyncio
 import json
 import logging
+import re
 import traceback
 from datetime import datetime, timezone
 
@@ -19,6 +20,13 @@ from app.scanner.engine import scan_target
 from app.cve.enricher import CveSeverityEnricher
 
 logger = logging.getLogger("vulnscan.worker")
+
+
+def _evidence_meta(evidence: str | None) -> dict[str, str]:
+    meta: dict[str, str] = {}
+    for key, value in re.findall(r"\b([a-z_]+)=((?:\"[^\"]*\")|\S+)", evidence or "", re.I):
+        meta[key.lower()] = str(value).strip('"')
+    return meta
 
 
 def _load_compliance(ws_id: int, db: Session) -> list[dict]:
@@ -183,6 +191,22 @@ def run_scan_job(job_id: int) -> None:
             opt = {}
         criticality = int((opt.get("asset") or {}).get("criticality", 2))
 
+        # ── Confidence threshold: drop findings below this confidence ──────
+        # Default 0.20 filters out:
+        #   - likely_patched   (0.10) — distro backport detected
+        #   - local-only pkgs  (0.15) — not network-reachable
+        # But keeps:
+        #   - probe_negative   (0.20) — probe ran, negative result
+        #   - provisional      (0.35) — network-facing version match
+        #   - validated        (1.00) — actively confirmed
+        # Configurable per-profile via options_json: {"filtering": {"min_confidence": 0.20}}
+        filtering_opts = opt.get("filtering") or {}
+        min_confidence = float(filtering_opts.get("min_confidence", 0.20))
+        # Which validation states should always be dropped regardless of confidence
+        drop_states = set(filtering_opts.get("drop_states", ["likely_patched"]))
+        # Whether to drop local-only (non-network) package findings
+        drop_local_only = bool(filtering_opts.get("drop_local_only", True))
+
         try:
             neo = Neo4jClient()
         except Exception as e:
@@ -196,10 +220,42 @@ def run_scan_job(job_id: int) -> None:
             logger.warning("CVE enricher init failed: %s (using NVD only)", e)
             enricher = None
 
+        # Collect validated findings so we can skip lower-confidence duplicates
+        validated_keys = set()
+        for f in findings:
+            meta = _evidence_meta(getattr(f, "evidence", ""))
+            validation_state = meta.get("validation_state", "").lower()
+            cve_id = getattr(f, "cve", None)
+            affected = getattr(f, "affected", "") or job.target
+            if validation_state == "validated" and cve_id:
+                validated_keys.add((affected, cve_id))
+
         saved_count = 0
+        dropped_count = 0
         sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
         for f in findings:
             if f.fingerprint in suppressed:
+                continue
+
+            meta = _evidence_meta(getattr(f, "evidence", ""))
+            validation_state = meta.get("validation_state", "").lower()
+            validation_method = meta.get("validation_method", "").lower()
+            affected = getattr(f, "affected", "") or job.target
+
+            # Skip lower-confidence findings when a validated finding exists for the same CVE+target
+            _lower_confidence_states = {"provisional", "likely_patched", "likely_not_exploitable", "probe_negative"}
+            if (
+                validation_state in _lower_confidence_states
+                and getattr(f, "cve", None)
+                and (affected, getattr(f, "cve", None)) in validated_keys
+            ):
+                logger.info(
+                    "Skipping %s duplicate for %s %s from %s",
+                    validation_state,
+                    affected,
+                    getattr(f, "cve", None),
+                    f.plugin_id,
+                )
                 continue
 
             kev = bool(getattr(f, "is_kev", False))
@@ -207,14 +263,73 @@ def run_scan_job(job_id: int) -> None:
             confidence = float(getattr(f, "confidence", 1.0) or 1.0)
             exploit_known = kev
 
+            # Confidence caps by validation state:
+            #   validated             → uncapped (default)
+            #   provisional           → ≤ 0.35 (version-only match)
+            #   likely_patched        → ≤ 0.10 (distro backport detected)
+            #   likely_not_exploitable → ≤ 0.15 (OWASP tested, found nothing)
+            #   probe_negative        → ≤ 0.20 (endpoint probe ran, negative result)
+            if validation_state == "likely_patched":
+                confidence = min(confidence, 0.10)
+            elif validation_state == "likely_not_exploitable":
+                confidence = min(confidence, 0.15)
+            elif validation_state == "probe_negative":
+                confidence = min(confidence, 0.20)
+            elif validation_state == "provisional":
+                confidence = min(confidence, 0.35)
+
             # Enrich CVSS with multi-source data (NVD + CVEDetails)
             cve_id = getattr(f, "cve", None)
             if enricher and cve_id and str(cve_id).startswith("CVE-"):
                 enriched_cvss, enriched_conf = enricher.enrich_finding_cvss(cve_id, cvss)
                 if enriched_cvss is not None:
                     cvss = enriched_cvss
-                    # Use enriched confidence (1.0 if multi-source agrees, 0.95 single)
-                    confidence = max(confidence, enriched_conf)
+                    # Use enriched confidence, but respect validation state caps
+                    _cap_map = {
+                        "likely_patched": 0.10,
+                        "likely_not_exploitable": 0.15,
+                        "probe_negative": 0.20,
+                        "provisional": 0.35,
+                    }
+                    cap = _cap_map.get(validation_state)
+                    if cap is not None:
+                        confidence = min(max(confidence, enriched_conf), cap)
+                    else:
+                        confidence = max(confidence, enriched_conf)
+
+            # ── Drop low-confidence / invalid findings ────────────────────
+            # 1. Always drop findings whose validation_state is in drop_states
+            if validation_state in drop_states:
+                logger.info(
+                    "Dropping %s finding: %s (state=%s, confidence=%.2f)",
+                    validation_state, f.title, validation_state, confidence,
+                )
+                dropped_count += 1
+                continue
+
+            # 2. Drop local-only (non-network) package findings
+            is_local_only = (
+                "network_facing=no" in (f.evidence or "")
+                and validation_method == "package_version_match_local_only"
+            )
+            if drop_local_only and is_local_only:
+                logger.info(
+                    "Dropping local-only finding: %s (confidence=%.2f)",
+                    f.title, confidence,
+                )
+                dropped_count += 1
+                continue
+
+            # 3. Drop any remaining findings below the minimum confidence threshold
+            #    (but never drop info-severity findings — they're informational, not vulns)
+            plugin_sev_raw = (getattr(f, "severity", "") or "").lower()
+            if confidence < min_confidence and plugin_sev_raw != "info":
+                logger.info(
+                    "Dropping low-confidence finding: %s (confidence=%.2f < threshold=%.2f)",
+                    f.title, confidence, min_confidence,
+                )
+                dropped_count += 1
+                continue
 
             # Pass plugin original severity so info findings stay info
             plugin_sev = getattr(f, "severity", "") or ""
@@ -230,6 +345,37 @@ def run_scan_job(job_id: int) -> None:
 
             # Build remediation text with correct SLA using FINAL severity
             remediation_text = getattr(f, "remediation", "") or ""
+            if validation_state == "likely_patched":
+                validation_note = (
+                    "[LIKELY PATCHED] This package version contains a distro-specific patch suffix "
+                    "indicating a backported security fix. The upstream version appears vulnerable, "
+                    "but the distro vendor has likely applied the relevant patches. "
+                    "Verify with: apt-cache policy <package> or rpm -q --changelog <package>."
+                )
+                remediation_text = f"{validation_note}\n\n{remediation_text}" if remediation_text else validation_note
+            elif validation_state == "likely_not_exploitable":
+                validation_note = (
+                    "[LOW CONFIDENCE] Active OWASP scanning tested the relevant vulnerability category "
+                    "and found no evidence of exploitation on this target. The version correlation suggests "
+                    "a potential vulnerability, but runtime testing did not confirm it. "
+                    f"Method: {validation_method or 'owasp_cross_reference'}."
+                )
+                remediation_text = f"{validation_note}\n\n{remediation_text}" if remediation_text else validation_note
+            elif validation_state == "probe_negative":
+                validation_note = (
+                    "[PROBE NEGATIVE] An endpoint probe tested for the specific attack surface "
+                    "associated with this CVE but did not find it accessible. The vulnerability "
+                    "may not be exploitable in the current configuration. "
+                    f"Method: {validation_method or 'endpoint_probe'}."
+                )
+                remediation_text = f"{validation_note}\n\n{remediation_text}" if remediation_text else validation_note
+            elif validation_state == "provisional":
+                validation_note = (
+                    "[VALIDATION] This is a provisional version correlation, not a confirmed vulnerable condition. "
+                    "Validate against vendor release advisories, package build provenance, runtime exposure, and feature/config state "
+                    f"before treating it as exploitable. Method: {validation_method or 'version correlation'}."
+                )
+                remediation_text = f"{validation_note}\n\n{remediation_text}" if remediation_text else validation_note
             if sev != "info":
                 sla_policy = (
                     f"[SLA POLICY] This is a {sev.upper()} severity vulnerability "
@@ -297,12 +443,20 @@ def run_scan_job(job_id: int) -> None:
                         logger.debug("Neo4j upsert failed: %s", e)
 
         db.commit()
-        logger.info("Job #%d done: %d findings saved (total=%d)", job_id, saved_count, len(findings))
+        logger.info(
+            "Job #%d done: %d findings saved, %d dropped (total=%d, threshold=%.2f)",
+            job_id, saved_count, dropped_count, len(findings), min_confidence,
+        )
 
         job.status = "done"
         job.finished_at = datetime.now(timezone.utc)
         job.meta_json = json.dumps(
-            {"findings_total": len(findings), "findings_saved": saved_count}
+            {
+                "findings_total": len(findings),
+                "findings_saved": saved_count,
+                "findings_dropped": dropped_count,
+                "min_confidence_threshold": min_confidence,
+            }
         )
         db.commit()
 

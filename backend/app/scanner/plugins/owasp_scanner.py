@@ -35,7 +35,7 @@ META = PluginMeta(
     consumes=["fingerprint.http"],
     provides=["owasp.findings"],
     enabled_by_default=True,
-    timeout_seconds=300.0,
+    timeout_seconds=120.0,  # Reduced from 300s; global budget prevents runaway scans
 )
 
 # ─── SQL Injection payloads (safe — cause errors, never modify data) ──────────
@@ -234,10 +234,13 @@ class Check(Plugin):
                         fingerprint=stable_fingerprint(target, META.plugin_id, "skipped_no_http"),
                     )
                 ],
-                artifacts={"owasp.findings": 0},
+                artifacts={"owasp.findings": 0, "owasp.finding_types": [], "owasp.tested_categories": []},
             )
 
-        request_timeout = min(max(float(ctx.policy.timeout_seconds), 10.0), 30.0)
+        effective = ctx.get("_effective_timeout", ctx.policy.timeout_seconds)
+        # Per-request timeout: at most 15s per individual HTTP request,
+        # and never exceed the engine's effective plugin budget.
+        request_timeout = min(max(float(effective), 5.0), 15.0)
 
         async with httpx.AsyncClient(
             timeout=request_timeout,
@@ -246,42 +249,72 @@ class Check(Plugin):
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         ) as client:
 
+            # Track which categories are tested and which produce findings.
+            # This allows downstream plugins (cve_verifier) to cross-reference.
+            tested_categories = []
+            pre_count = {}
+
+            def _track(cat):
+                tested_categories.append(cat)
+                pre_count[cat] = len(findings)
+
+            def _detected(cat):
+                return len(findings) > pre_count.get(cat, len(findings))
+
             # ─── A05: Security Misconfiguration — Sensitive file exposure ─────
+            _track("misconfig")
             await self._check_sensitive_paths(client, base_url, target, findings)
 
             # ─── A03: Injection — SQL Injection ──────────────────────────────
+            _track("sqli")
             await self._check_sqli(client, base_url, target, findings)
 
             # ─── A03: Injection — XSS (Reflected) ────────────────────────────
+            _track("xss")
             await self._check_xss(client, base_url, target, findings)
 
             # ─── A01: Broken Access Control — Path Traversal ─────────────────
+            _track("lfi")
             await self._check_path_traversal(client, base_url, target, findings)
 
             # ─── A03: Injection — Command Injection ──────────────────────────
+            _track("cmdi")
             await self._check_cmdi(client, base_url, target, findings)
 
             # ─── A10: SSRF ───────────────────────────────────────────────────
+            _track("ssrf")
             await self._check_ssrf(client, base_url, target, findings)
 
             # ─── A09: Logging & Monitoring — Info Disclosure ─────────────────
+            _track("info_disclosure")
             await self._check_info_disclosure(client, base_url, target, findings)
 
             # ─── A02: Cryptographic Failures ─────────────────────────────────
+            _track("crypto")
             await self._check_crypto(client, base_url, target, findings)
 
             # ─── A05: HTTP Methods ───────────────────────────────────────────
+            _track("http_methods")
             await self._check_http_methods(client, base_url, target, findings)
 
             # ─── A05: CORS Misconfiguration ──────────────────────────────────
+            _track("cors")
             await self._check_cors(client, base_url, target, findings)
 
             # ─── A05: Cookie Security ────────────────────────────────────────
+            _track("cookie")
             await self._check_cookies(client, base_url, target, findings)
+
+            # Build list of categories that actually produced findings
+            detected_types = [cat for cat in tested_categories if _detected(cat)]
 
         return PluginResult(
             findings=findings,
-            artifacts={"owasp.findings": len(findings)},
+            artifacts={
+                "owasp.findings": len(findings),
+                "owasp.finding_types": detected_types,
+                "owasp.tested_categories": tested_categories,
+            },
         )
 
     # ═══════════════════════════════════════════════════════════════════════════
