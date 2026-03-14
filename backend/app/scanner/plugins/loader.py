@@ -32,6 +32,11 @@ _BUILTIN_PLUGINS = [
     "cve_verifier",
     "dir_crawl",
     "file_inclusion",
+    # Infrastructure scanning plugins
+    "dns_enum",
+    "db_auth_check",
+    "ssh_audit",
+    "smb_check",
 ]
 
 

@@ -151,6 +151,7 @@ AMAZON_LINUX_ADVISORIES = [
 ]
 
 RHEL_ADVISORIES = [
+    # ── RHEL 9 / CentOS Stream 9 / Rocky 9 / Alma 9 ──────────────────
     {
         "id": "RHSA-2024:4312",
         "cve": "CVE-2024-6387",
@@ -158,7 +159,8 @@ RHEL_ADVISORIES = [
         "requires_any_port": [22],
         "fixed_version": "8.7p1-38.el9_4.1",
         "severity": "critical",
-        "title": "OpenSSH regreSSHion",
+        "title": "OpenSSH regreSSHion remote code execution",
+        "description": "Signal handler race condition in sshd may allow unauthenticated remote code execution.",
         "advisory_url": "https://access.redhat.com/errata/RHSA-2024:4312",
         "releases": ["9", "9.4", "el9"],
     },
@@ -169,10 +171,176 @@ RHEL_ADVISORIES = [
         "fixed_version": "2.34-83.el9_4.1",
         "severity": "high",
         "title": "glibc iconv buffer overflow",
+        "description": "Out-of-bounds write in glibc iconv for ISO-2022-CN-EXT encoding.",
         "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3588",
         "releases": ["9", "9.4", "el9"],
     },
+    {
+        "id": "RHSA-2024:4726",
+        "cve": "CVE-2024-6409",
+        "package": "openssh",
+        "requires_any_port": [22],
+        "fixed_version": "8.7p1-38.el9_4.4",
+        "severity": "high",
+        "title": "OpenSSH signal handler race condition (privsep)",
+        "description": "Secondary signal handler race condition in OpenSSH privsep child process.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:4726",
+        "releases": ["9", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:0897",
+        "cve": "CVE-2023-44487",
+        "package": "nginx",
+        "requires_any_port": [80, 443],
+        "fixed_version": "1.22.1-4.module+el9.3.0+21136+41bc9de1.1",
+        "severity": "high",
+        "title": "HTTP/2 rapid reset DoS",
+        "description": "HTTP/2 rapid reset attack can lead to denial-of-service in nginx.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:0897",
+        "releases": ["9", "9.3", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:2988",
+        "cve": "CVE-2024-0567",
+        "package": "gnutls",
+        "fixed_version": "3.7.6-23.el9_4",
+        "severity": "high",
+        "title": "GnuTLS certificate verification bypass",
+        "description": "Cockpit certificate verification bypass via crafted certtool certificates.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:2988",
+        "releases": ["9", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:3233",
+        "cve": "CVE-2023-6531",
+        "package": "kernel",
+        "fixed_version": "5.14.0-427.18.1.el9_4",
+        "severity": "high",
+        "title": "Kernel use-after-free in Unix GC",
+        "description": "Use-after-free in Linux kernel Unix socket garbage collection.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3233",
+        "releases": ["9", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:3043",
+        "cve": "CVE-2024-1086",
+        "package": "kernel",
+        "fixed_version": "5.14.0-427.16.1.el9_4",
+        "severity": "high",
+        "title": "Kernel nf_tables use-after-free privilege escalation",
+        "description": "Use-after-free in nf_tables allows local privilege escalation.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3043",
+        "releases": ["9", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:1607",
+        "cve": "CVE-2023-46218",
+        "package": "curl",
+        "fixed_version": "8.0.1-4.el9_3.2",
+        "severity": "medium",
+        "title": "curl cookie injection via HTTP redirect",
+        "description": "HTTP redirect could inject cookies for other origins via mixed case domain names.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:1607",
+        "releases": ["9", "9.3", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:0256",
+        "cve": "CVE-2023-7104",
+        "package": "sqlite",
+        "fixed_version": "3.34.1-7.el9_3.1",
+        "severity": "medium",
+        "title": "SQLite heap buffer overflow",
+        "description": "Heap buffer overflow in SQLite via crafted JSON input.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:0256",
+        "releases": ["9", "9.3", "9.4", "el9"],
+    },
+    {
+        "id": "RHSA-2024:5312",
+        "cve": "CVE-2024-5564",
+        "package": "libndp",
+        "fixed_version": "1.8-6.el9_4",
+        "severity": "high",
+        "title": "libndp buffer overflow",
+        "description": "Buffer overflow in libndp Neighbor Discovery Protocol library.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:5312",
+        "releases": ["9", "9.4", "el9"],
+    },
+    # ── RHEL 8 / CentOS 8 / Rocky 8 / Alma 8 ─────────────────────────
+    {
+        "id": "RHSA-2024:4352",
+        "cve": "CVE-2024-6387",
+        "package": "openssh",
+        "requires_any_port": [22],
+        "fixed_version": "8.0p1-24.el8_10",
+        "severity": "critical",
+        "title": "OpenSSH regreSSHion remote code execution",
+        "description": "Signal handler race condition in sshd may allow unauthenticated remote code execution.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:4352",
+        "releases": ["8", "8.10", "el8"],
+    },
+    {
+        "id": "RHSA-2024:3588",
+        "cve": "CVE-2024-2961",
+        "package": "glibc",
+        "fixed_version": "2.28-236.el8_10",
+        "severity": "high",
+        "title": "glibc iconv buffer overflow",
+        "description": "Out-of-bounds write in glibc iconv for ISO-2022-CN-EXT encoding.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3588",
+        "releases": ["8", "8.9", "8.10", "el8"],
+    },
+    {
+        "id": "RHSA-2024:3138",
+        "cve": "CVE-2024-1086",
+        "package": "kernel",
+        "fixed_version": "4.18.0-553.5.1.el8_10",
+        "severity": "high",
+        "title": "Kernel nf_tables use-after-free privilege escalation",
+        "description": "Use-after-free in nf_tables allows local privilege escalation.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3138",
+        "releases": ["8", "8.10", "el8"],
+    },
+    {
+        "id": "RHSA-2024:0790",
+        "cve": "CVE-2023-44487",
+        "package": "nginx",
+        "requires_any_port": [80, 443],
+        "fixed_version": "1.22.1-1.module+el8.8.0+21211+e82e6b5e.2",
+        "severity": "high",
+        "title": "HTTP/2 rapid reset DoS",
+        "description": "HTTP/2 rapid reset attack can lead to denial-of-service in nginx.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:0790",
+        "releases": ["8", "8.8", "8.9", "8.10", "el8"],
+    },
+    # ── CentOS 7 / RHEL 7 (extended lifecycle) ────────────────────────
+    {
+        "id": "RHSA-2024:4389",
+        "cve": "CVE-2024-6387",
+        "package": "openssh",
+        "requires_any_port": [22],
+        "fixed_version": "7.4p1-23.el7_9.3",
+        "severity": "critical",
+        "title": "OpenSSH regreSSHion remote code execution",
+        "description": "Signal handler race condition in sshd may allow unauthenticated remote code execution.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:4389",
+        "releases": ["7", "7.9", "el7"],
+    },
+    {
+        "id": "RHSA-2024:3269",
+        "cve": "CVE-2024-2961",
+        "package": "glibc",
+        "fixed_version": "2.17-326.el7_9.3",
+        "severity": "high",
+        "title": "glibc iconv buffer overflow",
+        "description": "Out-of-bounds write in glibc iconv for ISO-2022-CN-EXT encoding.",
+        "advisory_url": "https://access.redhat.com/errata/RHSA-2024:3269",
+        "releases": ["7", "7.9", "el7"],
+    },
 ]
+
+# CentOS-specific aliases — CentOS advisories use CESA IDs but map to
+# the same RHEL errata. The _detect_distro function already maps
+# centos/rocky/alma → "rhel", so they share the same advisory list.
 
 
 def _parse_version(v: str) -> list:
@@ -205,7 +373,10 @@ def _detect_distro(os_release: dict) -> str:
         return "debian"
     if "amzn" in os_id or "amazon" in os_id:
         return "amazon"
-    if "rhel" in os_id or "centos" in os_id or "rocky" in os_id or "fedora" in id_like:
+    # RHEL family: RHEL, CentOS (Stream), Rocky Linux, AlmaLinux, Oracle Linux
+    if any(d in os_id for d in ("rhel", "centos", "rocky", "almalinux", "ol")):
+        return "rhel"
+    if any(d in id_like for d in ("rhel", "centos", "fedora")):
         return "rhel"
     if "alpine" in os_id:
         return "alpine"

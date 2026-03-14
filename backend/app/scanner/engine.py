@@ -413,9 +413,16 @@ def _set_default_artifacts(chk, ctx):
         "cve.endpoint_probes": [],
         "cve.verified": [],
         "priority.kev_hits": [],
+        "owasp.findings": 0,
         "owasp.finding_types": [],
         "owasp.tested_categories": [],
         "recon.directories": [],
+        # Infrastructure plugin defaults
+        "recon.dns.records": [],
+        "recon.dns.subdomains": [],
+        "infra.db.findings": 0,
+        "infra.ssh.audit": {},
+        "infra.smb.findings": 0,
     }
     for key in (chk.meta.provides or []):
         if not ctx.has(key):

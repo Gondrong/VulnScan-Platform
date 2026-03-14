@@ -127,6 +127,61 @@ def delete_profile(
     return {"ok": True, "deleted_profile_id": profile_id, "unlinked_jobs": job_count}
 
 
+@router.put("/profiles/{profile_id}", response_model=dict)
+def update_profile(
+    profile_id: int,
+    body: dict,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    prof = (
+        db.query(models.Profile)
+        .filter(
+            models.Profile.workspace_id == user["ws"],
+            models.Profile.id == profile_id,
+        )
+        .first()
+    )
+    if not prof:
+        raise HTTPException(404, "profile not found")
+
+    if "name" in body:
+        prof.name = body["name"]
+
+    if "plugin_selection_json" in body:
+        pj = body["plugin_selection_json"]
+        try:
+            json.loads(pj if isinstance(pj, str) else json.dumps(pj))
+        except Exception:
+            raise HTTPException(400, "plugin_selection_json is not valid JSON")
+        prof.plugin_selection_json = pj if isinstance(pj, str) else json.dumps(pj)
+
+    if "options_json" in body:
+        oj = body["options_json"]
+        try:
+            json.loads(oj if isinstance(oj, str) else json.dumps(oj))
+        except Exception:
+            raise HTTPException(400, "options_json is not valid JSON")
+        prof.options_json = oj if isinstance(oj, str) else json.dumps(oj)
+
+    try:
+        db.commit()
+        db.refresh(prof)
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to update profile #%d: %s", profile_id, e)
+        raise HTTPException(500, f"Failed to update profile: {e}")
+
+    logger.info("Updated profile #%d (%s)", profile_id, prof.name)
+    return {
+        "id": prof.id,
+        "name": prof.name,
+        "plugin_selection_json": prof.plugin_selection_json,
+        "options_json": prof.options_json,
+        "created_at": prof.created_at.isoformat() if prof.created_at else None,
+    }
+
+
 # ─── Jobs ──────────────────────────────────────────────────────────────────────
 
 @router.post("/jobs")

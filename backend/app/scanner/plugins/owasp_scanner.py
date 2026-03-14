@@ -1,17 +1,24 @@
 """
 OWASP Top 10 Active Web Vulnerability Scanner.
 
-Tests for common web application vulnerabilities based on OWASP Top 10 (2021):
-  A01 — Broken Access Control
-  A02 — Cryptographic Failures
-  A03 — Injection (SQL, Command, LDAP, XPath)
-  A04 — Insecure Design (info disclosure)
-  A05 — Security Misconfiguration
-  A06 — Vulnerable Components (detected by other plugins)
-  A07 — Auth Failures (default creds, weak sessions)
-  A08 — Data Integrity Failures (deserialization hints)
-  A09 — Logging Failures (stack traces, debug info)
-  A10 — SSRF (server-side request forgery probes)
+Tests for common web application vulnerabilities based on OWASP Top 10 (2025):
+  A01 — Broken Access Control (path traversal, CSRF, SSRF)
+  A02 — Security Misconfiguration (exposed files, CORS, HTTP methods, cookies)
+  A03 — Software Supply Chain Failures (detected by other plugins)
+  A04 — Cryptographic Failures (missing HTTPS/HSTS)
+  A05 — Injection (SQL, Command, XSS, XXE)
+  A06 — Insecure Design (info disclosure)
+  A07 — Authentication Failures (default creds, weak sessions)
+  A08 — Software/Data Integrity Failures (deserialization hints)
+  A09 — Logging & Alerting Failures (stack traces, debug info)
+  A10 — Mishandling of Exceptional Conditions (error handling)
+
+Changes from OWASP 2021 → 2025:
+  - SSRF absorbed into A01 (was standalone A10 in 2021)
+  - Security Misconfiguration promoted to A02 (was A05 in 2021)
+  - Software Supply Chain Failures is NEW at A03 (expanded from old A06)
+  - Injection moved to A05 (was A03 in 2021)
+  - Mishandling of Exceptional Conditions is NEW at A10
 
 Safety: This scanner uses benign payloads only — no destructive writes,
 no data exfiltration, no exploitation. All tests are safe for production
@@ -19,8 +26,11 @@ use and only check for vulnerability indicators in responses.
 """
 import asyncio
 import re
+import time
 import urllib.parse
+from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import urljoin, urlparse, parse_qs
 
 import httpx
 
@@ -29,16 +39,44 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="owasp.web.scanner",
-    name="OWASP Top 10 Web Scanner",
+    name="OWASP Top 10 (2025) Web Scanner",
     category="vuln_scan",
     depends_on=["fingerprint.http"],
     consumes=["fingerprint.http"],
-    provides=["owasp.findings"],
+    provides=["owasp.findings", "owasp.finding_types", "owasp.tested_categories"],
     enabled_by_default=True,
-    timeout_seconds=120.0,  # Reduced from 300s; global budget prevents runaway scans
+    timeout_seconds=120.0,
 )
 
-# ─── SQL Injection payloads (safe — cause errors, never modify data) ──────────
+# ─── Discovery data structures ──────────────────────────────────────────────
+
+@dataclass
+class _Target:
+    """A discovered URL + parameter that should be tested for injection."""
+    url: str       # Full URL path without query string (e.g., http://site.com/artists.php)
+    param: str     # Parameter name (e.g., "artist")
+    value: str     # Original value seen (e.g., "1"), used as baseline
+    source: str    # "link" | "form" | "hardcoded"
+
+
+@dataclass
+class _FormInfo:
+    """A discovered HTML form for CSRF analysis."""
+    action_url: str
+    method: str          # GET or POST
+    input_names: list = field(default_factory=list)
+    has_csrf_token: bool = False
+    page_url: str = ""
+
+
+# ─── CSRF token name patterns ───────────────────────────────────────────────
+
+_CSRF_TOKEN_RE = re.compile(
+    r"(?:csrf|xsrf|_token|authenticity_token|__RequestVerificationToken|nonce|csrfmiddlewaretoken)",
+    re.I,
+)
+
+# ─── SQL Injection payloads (safe — cause errors, never modify data) ────────
 
 SQLI_PAYLOADS = [
     ("'", "single quote"),
@@ -72,7 +110,7 @@ SQLI_ERROR_PATTERNS = [
     r"Sybase.*Server message",
 ]
 
-# ─── XSS payloads ────────────────────────────────────────────────────────────
+# ─── XSS payloads ───────────────────────────────────────────────────────────
 
 XSS_PAYLOADS = [
     ('<script>alert("XSS")</script>', "basic script"),
@@ -89,7 +127,7 @@ XSS_REFLECTION_PATTERNS = [
     r"<marquee onstart=alert\(1\)>",
 ]
 
-# ─── Path Traversal payloads ─────────────────────────────────────────────────
+# ─── Path Traversal payloads ────────────────────────────────────────────────
 
 TRAVERSAL_PAYLOADS = [
     ("../../../etc/passwd", "Linux passwd"),
@@ -100,13 +138,13 @@ TRAVERSAL_PAYLOADS = [
 ]
 
 TRAVERSAL_SUCCESS_PATTERNS = [
-    r"root:.*:0:0:",           # /etc/passwd
-    r"\[fonts\]",              # Windows win.ini
-    r"# localhost",            # /etc/hosts or Windows hosts
-    r"\[extensions\]",         # Windows system.ini
+    r"root:.*:0:0:",
+    r"\[fonts\]",
+    r"# localhost",
+    r"\[extensions\]",
 ]
 
-# ─── Command Injection payloads ──────────────────────────────────────────────
+# ─── Command Injection payloads ─────────────────────────────────────────────
 
 CMDI_PAYLOADS = [
     ("; echo vulnscan_cmd_test", "semicolon"),
@@ -118,7 +156,7 @@ CMDI_PAYLOADS = [
 
 CMDI_SUCCESS_PATTERN = r"vulnscan_cmd_test"
 
-# ─── SSRF payloads ───────────────────────────────────────────────────────────
+# ─── SSRF payloads ──────────────────────────────────────────────────────────
 
 SSRF_PAYLOADS = [
     ("http://127.0.0.1/", "localhost"),
@@ -128,7 +166,7 @@ SSRF_PAYLOADS = [
     ("http://metadata.google.internal/", "GCP metadata"),
 ]
 
-# ─── Security Misconfiguration checks ────────────────────────────────────────
+# ─── Security Misconfiguration checks ───────────────────────────────────────
 
 SENSITIVE_PATHS = [
     ("/.env", "Environment file", "critical", "Environment file (.env) is publicly accessible. This may contain database credentials, API keys, and secrets. Restrict access immediately."),
@@ -165,16 +203,7 @@ SENSITIVE_PATHS = [
     ("/WEB-INF/web.xml", "Java web.xml", "high", "Java deployment descriptor accessible."),
 ]
 
-# ─── Default Credentials (OWASP A07) ─────────────────────────────────────────
-
-DEFAULT_CRED_PATHS = [
-    ("/wp-login.php", "WordPress login"),
-    ("/administrator/", "Joomla admin"),
-    ("/user/login", "Drupal login"),
-    ("/admin/login", "Generic admin"),
-]
-
-# ─── Information Disclosure patterns ─────────────────────────────────────────
+# ─── Information Disclosure patterns ────────────────────────────────────────
 
 INFO_DISCLOSURE_PATTERNS = [
     (r"(?:stack ?trace|traceback|at \w+\.\w+\()", "Stack trace in response"),
@@ -194,12 +223,151 @@ async def _safe_get(client: httpx.AsyncClient, url: str) -> Optional[httpx.Respo
         return None
 
 
-async def _safe_post(client: httpx.AsyncClient, url: str, data: dict) -> Optional[httpx.Response]:
+async def _safe_post(client: httpx.AsyncClient, url: str, data=None, content=None, headers=None) -> Optional[httpx.Response]:
     """Safe HTTP POST — returns None on failure."""
     try:
-        return await client.post(url, data=data)
+        return await client.post(url, data=data, content=content, headers=headers)
     except Exception:
         return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Target Discovery — mini-spider + form parser
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def _discover_targets(client, base_url, max_pages=10, budget_seconds=30.0):
+    """
+    Lightweight BFS spider that discovers URLs with parameters and HTML forms.
+
+    Returns:
+        (targets: list[_Target], forms: list[_FormInfo])
+    """
+    start = time.monotonic()
+    base_parsed = urlparse(base_url)
+    base_domain = base_parsed.netloc
+    targets = []
+    forms = []
+    seen_urls = set()
+    seen_params = set()  # (url_path, param) dedup
+    queue = [base_url]
+    visited = set()
+
+    while queue and len(visited) < max_pages:
+        if time.monotonic() - start > budget_seconds:
+            break
+
+        url = queue.pop(0)
+        if url in visited:
+            continue
+        visited.add(url)
+
+        r = await _safe_get(client, url)
+        if r is None or r.status_code >= 400:
+            continue
+
+        ct = r.headers.get("content-type", "")
+        if "html" not in ct.lower() and len(visited) > 1:
+            continue
+
+        body = r.text
+
+        # ── Extract links with query parameters ─────────────────────────
+        link_matches = re.findall(r'(?:href|src|action)=["\']([^"\'#]+)', body, re.I)
+        for raw_link in link_matches:
+            resolved = urljoin(url, raw_link)
+            parsed = urlparse(resolved)
+
+            # Stay on same domain
+            if parsed.netloc and parsed.netloc != base_domain:
+                continue
+
+            full_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+            # Extract query params as targets
+            if parsed.query:
+                params = parse_qs(parsed.query, keep_blank_values=True)
+                for pname, pvals in params.items():
+                    key = (full_url, pname)
+                    if key not in seen_params and len(pname) < 30:
+                        seen_params.add(key)
+                        targets.append(_Target(
+                            url=full_url,
+                            param=pname,
+                            value=pvals[0] if pvals else "",
+                            source="link",
+                        ))
+
+            # Add to spider queue (strip query for cleaner crawling)
+            clean = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            if clean not in seen_urls:
+                # Stay on same domain — only follow same-netloc links
+                link_parsed = urlparse(clean)
+                if link_parsed.netloc == base_domain:
+                    seen_urls.add(clean)
+                    queue.append(clean)
+
+        # ── Parse HTML forms ─────────────────────────────────────────────
+        form_blocks = re.findall(
+            r'<form[^>]*>(.*?)</form>',
+            body, re.I | re.S,
+        )
+        form_tags = re.findall(r'<form([^>]*)>', body, re.I)
+
+        for i, form_attrs in enumerate(form_tags):
+            form_body = form_blocks[i] if i < len(form_blocks) else ""
+
+            # Extract action
+            action_match = re.search(r'action=["\']([^"\']*)["\']', form_attrs, re.I)
+            action = action_match.group(1) if action_match else url
+            action_url = urljoin(url, action)
+
+            # Extract method
+            method_match = re.search(r'method=["\']([^"\']*)["\']', form_attrs, re.I)
+            method = (method_match.group(1) if method_match else "GET").upper()
+
+            # Extract input names
+            input_names = re.findall(
+                r'<(?:input|select|textarea)[^>]+name=["\']([^"\']+)["\']',
+                form_body, re.I,
+            )
+
+            # Check for CSRF token
+            hidden_inputs = re.findall(
+                r'<input[^>]+type=["\']hidden["\'][^>]+name=["\']([^"\']+)["\']',
+                form_body, re.I,
+            )
+            # Also check reverse attribute order
+            hidden_inputs += re.findall(
+                r'<input[^>]+name=["\']([^"\']+)["\'][^>]+type=["\']hidden["\']',
+                form_body, re.I,
+            )
+            has_csrf = any(_CSRF_TOKEN_RE.search(n) for n in hidden_inputs)
+
+            forms.append(_FormInfo(
+                action_url=action_url,
+                method=method,
+                input_names=input_names,
+                has_csrf_token=has_csrf,
+                page_url=url,
+            ))
+
+            # Add form inputs as targets for injection testing
+            action_parsed = urlparse(action_url)
+            clean_action = f"{action_parsed.scheme}://{action_parsed.netloc}{action_parsed.path}"
+            for iname in input_names:
+                if _CSRF_TOKEN_RE.search(iname):
+                    continue  # Skip CSRF tokens as injection targets
+                key = (clean_action, iname)
+                if key not in seen_params and len(iname) < 30:
+                    seen_params.add(key)
+                    targets.append(_Target(
+                        url=clean_action,
+                        param=iname,
+                        value="",
+                        source="form",
+                    ))
+
+    return targets, forms
 
 
 class Check(Plugin):
@@ -238,9 +406,12 @@ class Check(Plugin):
             )
 
         effective = ctx.get("_effective_timeout", ctx.policy.timeout_seconds)
-        # Per-request timeout: at most 15s per individual HTTP request,
-        # and never exceed the engine's effective plugin budget.
-        request_timeout = min(max(float(effective), 5.0), 15.0)
+        # Per-request timeout: at most 10s per individual HTTP request
+        request_timeout = min(max(float(effective) * 0.08, 5.0), 10.0)
+        scan_start = time.monotonic()
+
+        def _budget_left():
+            return effective - (time.monotonic() - scan_start)
 
         async with httpx.AsyncClient(
             timeout=request_timeout,
@@ -249,8 +420,13 @@ class Check(Plugin):
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         ) as client:
 
+            # ─── Phase 0: Target Discovery (spider + form parsing) ────────
+            discovery_budget = effective * 0.20  # 20% of budget for discovery
+            discovered_targets, discovered_forms = await _discover_targets(
+                client, base_url, max_pages=10, budget_seconds=discovery_budget,
+            )
+
             # Track which categories are tested and which produce findings.
-            # This allows downstream plugins (cve_verifier) to cross-reference.
             tested_categories = []
             pre_count = {}
 
@@ -261,49 +437,70 @@ class Check(Plugin):
             def _detected(cat):
                 return len(findings) > pre_count.get(cat, len(findings))
 
-            # ─── A05: Security Misconfiguration — Sensitive file exposure ─────
-            _track("misconfig")
-            await self._check_sensitive_paths(client, base_url, target, findings)
+            # ─── A02:2025 Security Misconfiguration — Sensitive file exposure
+            if _budget_left() > 10:
+                _track("misconfig")
+                await self._check_sensitive_paths(client, base_url, target, findings)
 
-            # ─── A03: Injection — SQL Injection ──────────────────────────────
-            _track("sqli")
-            await self._check_sqli(client, base_url, target, findings)
+            # ─── A05:2025 Injection — SQL Injection ───────────────────────
+            if _budget_left() > 10:
+                _track("sqli")
+                await self._check_sqli(client, base_url, target, findings, discovered_targets)
 
-            # ─── A03: Injection — XSS (Reflected) ────────────────────────────
-            _track("xss")
-            await self._check_xss(client, base_url, target, findings)
+            # ─── A05:2025 Injection — XSS (Reflected) ─────────────────────
+            if _budget_left() > 10:
+                _track("xss")
+                await self._check_xss(client, base_url, target, findings, discovered_targets)
 
-            # ─── A01: Broken Access Control — Path Traversal ─────────────────
-            _track("lfi")
-            await self._check_path_traversal(client, base_url, target, findings)
+            # ─── A01:2025 Broken Access Control — Path Traversal ──────────
+            if _budget_left() > 10:
+                _track("lfi")
+                await self._check_path_traversal(client, base_url, target, findings, discovered_targets)
 
-            # ─── A03: Injection — Command Injection ──────────────────────────
-            _track("cmdi")
-            await self._check_cmdi(client, base_url, target, findings)
+            # ─── A05:2025 Injection — Command Injection ───────────────────
+            if _budget_left() > 10:
+                _track("cmdi")
+                await self._check_cmdi(client, base_url, target, findings, discovered_targets)
 
-            # ─── A10: SSRF ───────────────────────────────────────────────────
-            _track("ssrf")
-            await self._check_ssrf(client, base_url, target, findings)
+            # ─── A01:2025 Broken Access Control — SSRF ────────────────────
+            if _budget_left() > 10:
+                _track("ssrf")
+                await self._check_ssrf(client, base_url, target, findings, discovered_targets)
 
-            # ─── A09: Logging & Monitoring — Info Disclosure ─────────────────
-            _track("info_disclosure")
-            await self._check_info_disclosure(client, base_url, target, findings)
+            # ─── A01:2025 Broken Access Control — CSRF ────────────────────
+            if _budget_left() > 5:
+                _track("csrf")
+                await self._check_csrf(client, base_url, target, findings, discovered_forms)
 
-            # ─── A02: Cryptographic Failures ─────────────────────────────────
-            _track("crypto")
-            await self._check_crypto(client, base_url, target, findings)
+            # ─── A05:2025 Injection — XXE ─────────────────────────────────
+            if _budget_left() > 10:
+                _track("xxe")
+                await self._check_xxe(client, base_url, target, findings)
 
-            # ─── A05: HTTP Methods ───────────────────────────────────────────
-            _track("http_methods")
-            await self._check_http_methods(client, base_url, target, findings)
+            # ─── A09:2025 Logging & Alerting — Info Disclosure ────────────
+            if _budget_left() > 5:
+                _track("info_disclosure")
+                await self._check_info_disclosure(client, base_url, target, findings)
 
-            # ─── A05: CORS Misconfiguration ──────────────────────────────────
-            _track("cors")
-            await self._check_cors(client, base_url, target, findings)
+            # ─── A04:2025 Cryptographic Failures ──────────────────────────
+            if _budget_left() > 3:
+                _track("crypto")
+                await self._check_crypto(client, base_url, target, findings)
 
-            # ─── A05: Cookie Security ────────────────────────────────────────
-            _track("cookie")
-            await self._check_cookies(client, base_url, target, findings)
+            # ─── A02:2025 Security Misconfiguration — HTTP Methods ────────
+            if _budget_left() > 3:
+                _track("http_methods")
+                await self._check_http_methods(client, base_url, target, findings)
+
+            # ─── A02:2025 Security Misconfiguration — CORS ────────────────
+            if _budget_left() > 3:
+                _track("cors")
+                await self._check_cors(client, base_url, target, findings)
+
+            # ─── A02:2025 Security Misconfiguration — Cookie Security ─────
+            if _budget_left() > 3:
+                _track("cookie")
+                await self._check_cookies(client, base_url, target, findings)
 
             # Build list of categories that actually produced findings
             detected_types = [cat for cat in tested_categories if _detected(cat)]
@@ -314,15 +511,17 @@ class Check(Plugin):
                 "owasp.findings": len(findings),
                 "owasp.finding_types": detected_types,
                 "owasp.tested_categories": tested_categories,
+                "owasp.discovered_targets": len(discovered_targets),
+                "owasp.discovered_forms": len(discovered_forms),
             },
         )
 
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Individual OWASP test methods
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
 
     async def _check_sensitive_paths(self, client, base_url, target, findings):
-        """A05: Check for exposed sensitive files and directories."""
+        """A02:2025 Security Misconfiguration — exposed sensitive files and directories."""
         sem = asyncio.Semaphore(5)
 
         async def check_path(path, name, sev, remed):
@@ -331,12 +530,9 @@ class Check(Plugin):
                 r = await _safe_get(client, url)
                 if r is None:
                     return
-                # Check for real content (not just 404/redirect)
                 if r.status_code == 200 and len(r.text) > 10:
-                    # Verify it's not a custom 404 page
                     if "not found" in r.text.lower()[:500] or "404" in r.text[:200]:
                         return
-                    # Special checks for specific files
                     if path == "/.env" and not re.search(r"[A-Z_]+=", r.text):
                         return
                     if path == "/.git/config" and "[core]" not in r.text:
@@ -360,7 +556,7 @@ class Check(Plugin):
                         remediation=remed,
                         confidence=0.9,
                         references=[
-                            "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+                            "https://owasp.org/Top10/A02_2025-Security_Misconfiguration/"
                         ],
                     ))
 
@@ -369,233 +565,523 @@ class Check(Plugin):
             return_exceptions=True,
         )
 
-    async def _check_sqli(self, client, base_url, target, findings):
-        """A03: Test for SQL injection in common parameters."""
-        test_params = ["id", "page", "cat", "item", "product", "user", "search", "q"]
-        found_sqli = False
+    async def _check_sqli(self, client, base_url, target, findings, discovered_targets=None):
+        """A05:2025 Injection — SQL injection via discovered targets, then hardcoded fallback."""
+        found = False
 
-        for param in test_params[:4]:  # Limit to 4 params for speed
-            for payload, desc in SQLI_PAYLOADS[:3]:  # Top 3 payloads
-                url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
-                r = await _safe_get(client, url)
-                if r is None:
-                    continue
-
-                body = r.text
-                for pattern in SQLI_ERROR_PATTERNS:
-                    if re.search(pattern, body, re.I):
-                        findings.append(Finding(
-                            severity="critical",
-                            plugin_id=META.plugin_id,
-                            title=f"SQL Injection detected (parameter: {param})",
-                            description=(
-                                f"The parameter '{param}' appears vulnerable to SQL injection. "
-                                f"Database error messages are returned in the response, confirming "
-                                f"that user input is passed directly to SQL queries without sanitization."
-                            ),
-                            evidence=f"url={url} payload={payload} ({desc}) error_pattern={pattern}",
-                            affected=target,
-                            fingerprint=stable_fingerprint(target, META.plugin_id, "sqli", param),
-                            remediation=(
-                                "[CRITICAL — OWASP A03: Injection]\n"
-                                "1. Use parameterized queries / prepared statements for ALL database queries\n"
-                                "2. Use an ORM (SQLAlchemy, Hibernate, Eloquent) instead of raw SQL\n"
-                                "3. Apply input validation — whitelist expected characters\n"
-                                "4. Implement a Web Application Firewall (WAF) as defense-in-depth\n"
-                                "5. Apply principle of least privilege to database accounts\n"
-                                "6. Disable detailed database error messages in production"
-                            ),
-                            cvss=9.8,
-                            confidence=0.85,
-                            references=[
-                                "https://owasp.org/Top10/A03_2021-Injection/",
-                                "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
-                            ],
-                        ))
-                        found_sqli = True
+        # Phase 1: Test discovered targets (real URLs with real params)
+        if discovered_targets:
+            for t in discovered_targets[:12]:
+                if found:
+                    break
+                for payload, desc in SQLI_PAYLOADS[:3]:
+                    test_url = f"{t.url}?{t.param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, test_url)
+                    if r is None:
+                        continue
+                    for pattern in SQLI_ERROR_PATTERNS:
+                        if re.search(pattern, r.text, re.I):
+                            findings.append(Finding(
+                                severity="critical",
+                                plugin_id=META.plugin_id,
+                                title=f"SQL Injection detected ({t.param} at {urlparse(t.url).path})",
+                                description=(
+                                    f"The parameter '{t.param}' at {t.url} is vulnerable to SQL injection. "
+                                    f"Database error messages confirm user input is passed to SQL queries."
+                                ),
+                                evidence=f"url={test_url} payload={payload} ({desc}) error_pattern={pattern} source={t.source}",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "sqli", t.url, t.param),
+                                remediation=(
+                                    "[CRITICAL — OWASP A05:2025 Injection]\n"
+                                    "1. Use parameterized queries / prepared statements for ALL database queries\n"
+                                    "2. Use an ORM (SQLAlchemy, Hibernate, Eloquent) instead of raw SQL\n"
+                                    "3. Apply input validation — whitelist expected characters\n"
+                                    "4. Implement a Web Application Firewall (WAF) as defense-in-depth\n"
+                                    "5. Apply principle of least privilege to database accounts\n"
+                                    "6. Disable detailed database error messages in production"
+                                ),
+                                cvss=9.8,
+                                confidence=0.85,
+                                references=[
+                                    "https://owasp.org/Top10/A05_2025-Injection/",
+                                    "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+                                ],
+                            ))
+                            found = True
+                            break
+                    if found:
                         break
-                if found_sqli:
+
+        # Phase 2: Fallback — hardcoded params on base_url
+        if not found:
+            fallback_params = ["id", "page", "cat", "item", "product", "user", "search", "q"]
+            for param in fallback_params[:4]:
+                if found:
                     break
-            if found_sqli:
-                break
+                for payload, desc in SQLI_PAYLOADS[:3]:
+                    url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, url)
+                    if r is None:
+                        continue
+                    for pattern in SQLI_ERROR_PATTERNS:
+                        if re.search(pattern, r.text, re.I):
+                            findings.append(Finding(
+                                severity="critical",
+                                plugin_id=META.plugin_id,
+                                title=f"SQL Injection detected (parameter: {param})",
+                                description=(
+                                    f"The parameter '{param}' appears vulnerable to SQL injection. "
+                                    f"Database error messages are returned in the response."
+                                ),
+                                evidence=f"url={url} payload={payload} ({desc}) error_pattern={pattern}",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "sqli", param),
+                                remediation=(
+                                    "[CRITICAL — OWASP A05:2025 Injection]\n"
+                                    "1. Use parameterized queries / prepared statements\n"
+                                    "2. Use an ORM instead of raw SQL\n"
+                                    "3. Apply input validation\n"
+                                    "4. Disable detailed database error messages in production"
+                                ),
+                                cvss=9.8,
+                                confidence=0.85,
+                                references=["https://owasp.org/Top10/A05_2025-Injection/"],
+                            ))
+                            found = True
+                            break
+                    if found:
+                        break
 
-    async def _check_xss(self, client, base_url, target, findings):
-        """A03: Test for reflected XSS in common parameters."""
-        test_params = ["search", "q", "query", "s", "keyword", "name", "id"]
-        found_xss = False
+    async def _check_xss(self, client, base_url, target, findings, discovered_targets=None):
+        """A05:2025 Injection — reflected XSS via discovered targets, then hardcoded fallback."""
+        found = False
 
-        for param in test_params[:3]:
-            for payload, desc in XSS_PAYLOADS[:3]:
-                url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
-                r = await _safe_get(client, url)
-                if r is None:
-                    continue
-
-                # Check if payload is reflected without encoding
-                if payload in r.text:
-                    findings.append(Finding(
-                        severity="high",
-                        plugin_id=META.plugin_id,
-                        title=f"Reflected XSS detected (parameter: {param})",
-                        description=(
-                            f"The parameter '{param}' reflects user input without proper encoding, "
-                            f"allowing injection of HTML/JavaScript. An attacker can steal session "
-                            f"cookies, redirect users, or deface the page."
-                        ),
-                        evidence=f"url={url} payload={desc} reflected_in_response=true",
-                        affected=target,
-                        fingerprint=stable_fingerprint(target, META.plugin_id, "xss", param),
-                        remediation=(
-                            "[HIGH — OWASP A03: Cross-Site Scripting]\n"
-                            "1. Encode all user output using context-appropriate encoding:\n"
-                            "   - HTML: &lt; &gt; &amp; &quot; &#39;\n"
-                            "   - JavaScript: \\xHH escaping\n"
-                            "   - URL: percent-encoding\n"
-                            "2. Implement Content-Security-Policy (CSP) header\n"
-                            "3. Use templating engines with auto-escaping (Jinja2, React, Vue)\n"
-                            "4. Set HttpOnly flag on sensitive cookies\n"
-                            "5. Deploy a WAF with XSS rules"
-                        ),
-                        cvss=7.1,
-                        confidence=0.8,
-                        references=[
-                            "https://owasp.org/Top10/A03_2021-Injection/",
-                            "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
-                        ],
-                    ))
-                    found_xss = True
+        # Phase 1: Test discovered targets
+        if discovered_targets:
+            for t in discovered_targets[:10]:
+                if found:
                     break
-            if found_xss:
-                break
-
-    async def _check_path_traversal(self, client, base_url, target, findings):
-        """A01: Test for path traversal / local file inclusion."""
-        test_params = ["file", "path", "page", "doc", "template", "include", "url"]
-
-        for param in test_params[:3]:
-            for payload, desc in TRAVERSAL_PAYLOADS[:3]:
-                url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
-                r = await _safe_get(client, url)
-                if r is None:
-                    continue
-
-                for pattern in TRAVERSAL_SUCCESS_PATTERNS:
-                    if re.search(pattern, r.text):
+                for payload, desc in XSS_PAYLOADS[:3]:
+                    test_url = f"{t.url}?{t.param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, test_url)
+                    if r is None:
+                        continue
+                    if payload in r.text:
                         findings.append(Finding(
-                            severity="critical",
+                            severity="high",
                             plugin_id=META.plugin_id,
-                            title=f"Path Traversal / LFI detected (parameter: {param})",
+                            title=f"Reflected XSS detected ({t.param} at {urlparse(t.url).path})",
                             description=(
-                                f"The parameter '{param}' is vulnerable to path traversal. "
-                                f"Server filesystem content (e.g., /etc/passwd) can be read."
+                                f"The parameter '{t.param}' at {t.url} reflects user input without encoding, "
+                                f"allowing HTML/JavaScript injection."
                             ),
-                            evidence=f"url={url} payload={desc} file_content_detected=true",
+                            evidence=f"url={test_url} payload={desc} reflected=true source={t.source}",
                             affected=target,
-                            fingerprint=stable_fingerprint(target, META.plugin_id, "lfi", param),
+                            fingerprint=stable_fingerprint(target, META.plugin_id, "xss", t.url, t.param),
                             remediation=(
-                                "[CRITICAL — OWASP A01: Broken Access Control]\n"
-                                "1. Never use user input directly in file paths\n"
-                                "2. Use a whitelist of allowed files/paths\n"
-                                "3. Canonicalize paths and validate they stay within allowed directories\n"
-                                "4. Use chroot/jail or containerization to limit filesystem access\n"
-                                "5. Disable dynamic file inclusion where possible"
+                                "[HIGH — OWASP A05:2025 Cross-Site Scripting]\n"
+                                "1. Encode all user output with context-appropriate encoding\n"
+                                "2. Implement Content-Security-Policy (CSP) header\n"
+                                "3. Use templating engines with auto-escaping\n"
+                                "4. Set HttpOnly flag on sensitive cookies\n"
+                                "5. Deploy a WAF with XSS rules"
                             ),
-                            cvss=9.1,
-                            confidence=0.9,
-                            references=[
-                                "https://owasp.org/Top10/A01_2021-Broken_Access_Control/",
-                                "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/01-Testing_Directory_Traversal_File_Include",
-                            ],
-                        ))
-                        return  # One finding is enough
-
-    async def _check_cmdi(self, client, base_url, target, findings):
-        """A03: Test for OS command injection."""
-        test_params = ["cmd", "exec", "command", "ping", "host", "ip"]
-
-        for param in test_params[:2]:
-            for payload, desc in CMDI_PAYLOADS[:2]:
-                url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
-                r = await _safe_get(client, url)
-                if r is None:
-                    continue
-
-                if re.search(CMDI_SUCCESS_PATTERN, r.text):
-                    findings.append(Finding(
-                        severity="critical",
-                        plugin_id=META.plugin_id,
-                        title=f"Command Injection detected (parameter: {param})",
-                        description=(
-                            f"The parameter '{param}' allows execution of arbitrary OS commands."
-                        ),
-                        evidence=f"url={url} payload={desc} output_detected=true",
-                        affected=target,
-                        fingerprint=stable_fingerprint(target, META.plugin_id, "cmdi", param),
-                        remediation=(
-                            "[CRITICAL — OWASP A03: Injection]\n"
-                            "1. Never pass user input to OS commands (system(), exec(), popen())\n"
-                            "2. Use language-native APIs instead of shell commands\n"
-                            "3. If shell use is unavoidable, use strict input validation\n"
-                            "4. Apply principle of least privilege to the web server process\n"
-                            "5. Use a WAF to block command injection patterns"
-                        ),
-                        cvss=9.8,
-                        confidence=0.9,
-                        references=[
-                            "https://owasp.org/Top10/A03_2021-Injection/",
-                        ],
-                    ))
-                    return
-
-    async def _check_ssrf(self, client, base_url, target, findings):
-        """A10: Test for Server-Side Request Forgery."""
-        test_params = ["url", "link", "redirect", "next", "target", "rurl", "dest", "fetch"]
-
-        for param in test_params[:3]:
-            for payload, desc in SSRF_PAYLOADS[:2]:
-                url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
-                r = await _safe_get(client, url)
-                if r is None:
-                    continue
-
-                # Check for signs the server fetched the internal URL
-                ssrf_indicators = [
-                    "ami-id", "instance-id", "hostname", "local-ipv4",  # AWS metadata
-                    "computeMetadata", "project-id",  # GCP metadata
-                    "Directory listing", "Index of",
-                ]
-                for indicator in ssrf_indicators:
-                    if indicator.lower() in r.text.lower():
-                        findings.append(Finding(
-                            severity="critical",
-                            plugin_id=META.plugin_id,
-                            title=f"SSRF detected (parameter: {param})",
-                            description=(
-                                f"The parameter '{param}' can be used to make the server "
-                                f"fetch internal resources. Cloud metadata may be accessible."
-                            ),
-                            evidence=f"url={url} payload={desc} indicator={indicator}",
-                            affected=target,
-                            fingerprint=stable_fingerprint(target, META.plugin_id, "ssrf", param),
-                            remediation=(
-                                "[CRITICAL — OWASP A10: SSRF]\n"
-                                "1. Validate and sanitize all user-supplied URLs\n"
-                                "2. Use an allowlist of permitted domains/IPs\n"
-                                "3. Block requests to private IP ranges (10.x, 172.16-31.x, 192.168.x, 169.254.x)\n"
-                                "4. Block cloud metadata endpoints (169.254.169.254)\n"
-                                "5. Use network segmentation to limit server egress"
-                            ),
-                            cvss=9.1,
+                            cvss=7.1,
                             confidence=0.8,
                             references=[
-                                "https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/",
+                                "https://owasp.org/Top10/A05_2025-Injection/",
+                                "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
                             ],
                         ))
-                        return
+                        found = True
+                        break
+
+        # Phase 2: Fallback — hardcoded params
+        if not found:
+            fallback_params = ["search", "q", "query", "s", "keyword", "name", "id"]
+            for param in fallback_params[:3]:
+                if found:
+                    break
+                for payload, desc in XSS_PAYLOADS[:3]:
+                    url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, url)
+                    if r is None:
+                        continue
+                    if payload in r.text:
+                        findings.append(Finding(
+                            severity="high",
+                            plugin_id=META.plugin_id,
+                            title=f"Reflected XSS detected (parameter: {param})",
+                            description=(
+                                f"The parameter '{param}' reflects user input without proper encoding."
+                            ),
+                            evidence=f"url={url} payload={desc} reflected=true",
+                            affected=target,
+                            fingerprint=stable_fingerprint(target, META.plugin_id, "xss", param),
+                            remediation=(
+                                "[HIGH — OWASP A05:2025 Cross-Site Scripting]\n"
+                                "1. Encode all user output\n"
+                                "2. Implement CSP header\n"
+                                "3. Use auto-escaping templates"
+                            ),
+                            cvss=7.1,
+                            confidence=0.8,
+                            references=["https://owasp.org/Top10/A05_2025-Injection/"],
+                        ))
+                        found = True
+                        break
+
+    async def _check_path_traversal(self, client, base_url, target, findings, discovered_targets=None):
+        """A01:2025 Broken Access Control — path traversal / local file inclusion."""
+        found = False
+
+        # Phase 1: Test discovered targets with file-like param names
+        file_params = {"file", "path", "page", "doc", "template", "include", "url",
+                       "load", "read", "download", "content", "view", "open"}
+        if discovered_targets:
+            file_targets = [t for t in discovered_targets if t.param.lower() in file_params]
+            for t in file_targets[:6]:
+                if found:
+                    break
+                for payload, desc in TRAVERSAL_PAYLOADS[:3]:
+                    test_url = f"{t.url}?{t.param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, test_url)
+                    if r is None:
+                        continue
+                    for pattern in TRAVERSAL_SUCCESS_PATTERNS:
+                        if re.search(pattern, r.text):
+                            findings.append(Finding(
+                                severity="critical",
+                                plugin_id=META.plugin_id,
+                                title=f"Path Traversal / LFI detected ({t.param} at {urlparse(t.url).path})",
+                                description=(
+                                    f"The parameter '{t.param}' at {t.url} is vulnerable to path traversal."
+                                ),
+                                evidence=f"url={test_url} payload={desc} file_content_detected=true",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "lfi", t.url, t.param),
+                                remediation=(
+                                    "[CRITICAL — OWASP A01:2025 Broken Access Control]\n"
+                                    "1. Never use user input directly in file paths\n"
+                                    "2. Use a whitelist of allowed files\n"
+                                    "3. Canonicalize and validate paths"
+                                ),
+                                cvss=9.1,
+                                confidence=0.9,
+                                references=["https://owasp.org/Top10/A01_2025-Broken_Access_Control/"],
+                            ))
+                            found = True
+                            break
+                    if found:
+                        break
+
+        # Phase 2: Fallback — hardcoded params
+        if not found:
+            for param in list(file_params)[:3]:
+                if found:
+                    break
+                for payload, desc in TRAVERSAL_PAYLOADS[:3]:
+                    url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, url)
+                    if r is None:
+                        continue
+                    for pattern in TRAVERSAL_SUCCESS_PATTERNS:
+                        if re.search(pattern, r.text):
+                            findings.append(Finding(
+                                severity="critical",
+                                plugin_id=META.plugin_id,
+                                title=f"Path Traversal / LFI detected (parameter: {param})",
+                                description=f"The parameter '{param}' is vulnerable to path traversal.",
+                                evidence=f"url={url} payload={desc} file_content_detected=true",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "lfi", param),
+                                remediation="Use a whitelist of allowed files. Never use user input in file paths.",
+                                cvss=9.1,
+                                confidence=0.9,
+                                references=["https://owasp.org/Top10/A01_2025-Broken_Access_Control/"],
+                            ))
+                            found = True
+                            break
+                    if found:
+                        break
+
+    async def _check_cmdi(self, client, base_url, target, findings, discovered_targets=None):
+        """A05:2025 Injection — OS command injection."""
+        found = False
+
+        # Phase 1: Discovered targets with cmd-like param names
+        cmd_params = {"cmd", "exec", "command", "ping", "host", "ip", "run", "system"}
+        if discovered_targets:
+            cmd_targets = [t for t in discovered_targets if t.param.lower() in cmd_params]
+            for t in cmd_targets[:4]:
+                if found:
+                    break
+                for payload, desc in CMDI_PAYLOADS[:2]:
+                    test_url = f"{t.url}?{t.param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, test_url)
+                    if r and re.search(CMDI_SUCCESS_PATTERN, r.text):
+                        findings.append(Finding(
+                            severity="critical",
+                            plugin_id=META.plugin_id,
+                            title=f"Command Injection detected ({t.param} at {urlparse(t.url).path})",
+                            description=f"The parameter '{t.param}' at {t.url} allows OS command execution.",
+                            evidence=f"url={test_url} payload={desc} output_detected=true",
+                            affected=target,
+                            fingerprint=stable_fingerprint(target, META.plugin_id, "cmdi", t.url, t.param),
+                            remediation=(
+                                "[CRITICAL — OWASP A05:2025 Injection]\n"
+                                "1. Never pass user input to OS commands\n"
+                                "2. Use language-native APIs instead of shell commands"
+                            ),
+                            cvss=9.8,
+                            confidence=0.9,
+                            references=["https://owasp.org/Top10/A05_2025-Injection/"],
+                        ))
+                        found = True
+                        break
+
+        # Phase 2: Fallback
+        if not found:
+            for param in ["cmd", "exec", "command", "ping", "host", "ip"][:2]:
+                if found:
+                    break
+                for payload, desc in CMDI_PAYLOADS[:2]:
+                    url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, url)
+                    if r and re.search(CMDI_SUCCESS_PATTERN, r.text):
+                        findings.append(Finding(
+                            severity="critical",
+                            plugin_id=META.plugin_id,
+                            title=f"Command Injection detected (parameter: {param})",
+                            description=f"The parameter '{param}' allows execution of arbitrary OS commands.",
+                            evidence=f"url={url} payload={desc} output_detected=true",
+                            affected=target,
+                            fingerprint=stable_fingerprint(target, META.plugin_id, "cmdi", param),
+                            remediation="Never pass user input to OS commands. Use language-native APIs.",
+                            cvss=9.8,
+                            confidence=0.9,
+                            references=["https://owasp.org/Top10/A05_2025-Injection/"],
+                        ))
+                        found = True
+                        break
+
+    async def _check_ssrf(self, client, base_url, target, findings, discovered_targets=None):
+        """A01:2025 Broken Access Control — Server-Side Request Forgery (SSRF)."""
+        found = False
+        ssrf_params = {"url", "link", "redirect", "next", "target", "rurl", "dest",
+                       "fetch", "uri", "site", "src", "href", "callback"}
+
+        # Phase 1: Discovered targets with URL-like param names
+        if discovered_targets:
+            url_targets = [t for t in discovered_targets if t.param.lower() in ssrf_params]
+            for t in url_targets[:4]:
+                if found:
+                    break
+                for payload, desc in SSRF_PAYLOADS[:2]:
+                    test_url = f"{t.url}?{t.param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, test_url)
+                    if r is None:
+                        continue
+                    ssrf_indicators = ["ami-id", "instance-id", "hostname", "local-ipv4",
+                                       "computeMetadata", "project-id", "Directory listing", "Index of"]
+                    for indicator in ssrf_indicators:
+                        if indicator.lower() in r.text.lower():
+                            findings.append(Finding(
+                                severity="critical",
+                                plugin_id=META.plugin_id,
+                                title=f"SSRF detected ({t.param} at {urlparse(t.url).path})",
+                                description=f"The parameter '{t.param}' at {t.url} can fetch internal resources.",
+                                evidence=f"url={test_url} payload={desc} indicator={indicator}",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "ssrf", t.url, t.param),
+                                remediation=(
+                                    "[CRITICAL — OWASP A01:2025 Broken Access Control / SSRF]\n"
+                                    "1. Validate and sanitize all user-supplied URLs\n"
+                                    "2. Use an allowlist of permitted domains\n"
+                                    "3. Block private IP ranges and cloud metadata endpoints"
+                                ),
+                                cvss=9.1,
+                                confidence=0.8,
+                                references=["https://owasp.org/Top10/A01_2025-Broken_Access_Control/"],
+                            ))
+                            found = True
+                            break
+                    if found:
+                        break
+
+        # Phase 2: Fallback
+        if not found:
+            for param in list(ssrf_params)[:3]:
+                if found:
+                    break
+                for payload, desc in SSRF_PAYLOADS[:2]:
+                    url = f"{base_url}/?{param}={urllib.parse.quote(payload)}"
+                    r = await _safe_get(client, url)
+                    if r is None:
+                        continue
+                    for indicator in ["ami-id", "instance-id", "hostname", "local-ipv4",
+                                      "computeMetadata", "project-id", "Directory listing", "Index of"]:
+                        if indicator.lower() in r.text.lower():
+                            findings.append(Finding(
+                                severity="critical",
+                                plugin_id=META.plugin_id,
+                                title=f"SSRF detected (parameter: {param})",
+                                description=f"The parameter '{param}' can fetch internal resources.",
+                                evidence=f"url={url} payload={desc} indicator={indicator}",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "ssrf", param),
+                                remediation="Validate URLs. Block private IPs and cloud metadata endpoints.",
+                                cvss=9.1,
+                                confidence=0.8,
+                                references=["https://owasp.org/Top10/A01_2025-Broken_Access_Control/"],
+                            ))
+                            found = True
+                            break
+                    if found:
+                        break
+
+    async def _check_csrf(self, client, base_url, target, findings, discovered_forms=None):
+        """A01:2025 Broken Access Control — missing CSRF protection in forms."""
+        if not discovered_forms:
+            return
+
+        checked = set()
+        for form in discovered_forms:
+            # Only check POST forms (CSRF is mainly a POST concern)
+            if form.method != "POST":
+                continue
+
+            # Skip trivial search forms
+            if len(form.input_names) <= 1:
+                search_names = {"q", "search", "query", "s", "keyword"}
+                if form.input_names and form.input_names[0].lower() in search_names:
+                    continue
+
+            # Dedup by action URL
+            if form.action_url in checked:
+                continue
+            checked.add(form.action_url)
+
+            if not form.has_csrf_token:
+                path = urlparse(form.action_url).path or "/"
+                findings.append(Finding(
+                    severity="medium",
+                    plugin_id=META.plugin_id,
+                    title=f"Missing CSRF protection (POST form at {path})",
+                    description=(
+                        f"A POST form at {form.action_url} (found on {form.page_url}) "
+                        f"lacks a CSRF token. An attacker could craft a malicious page that "
+                        f"submits this form on behalf of authenticated users."
+                    ),
+                    evidence=(
+                        f"action={form.action_url} method={form.method} "
+                        f"inputs={','.join(form.input_names[:10])} csrf_token=missing"
+                    ),
+                    affected=target,
+                    fingerprint=stable_fingerprint(target, META.plugin_id, "csrf", form.action_url),
+                    remediation=(
+                        "[MEDIUM — OWASP A01:2025 Broken Access Control / CSRF]\n"
+                        "1. Include a unique CSRF token in every state-changing form\n"
+                        "2. Validate the token server-side on form submission\n"
+                        "3. Use SameSite=Lax or Strict on session cookies\n"
+                        "4. Consider using the Synchronizer Token Pattern or Double Submit Cookie"
+                    ),
+                    cvss=6.5,
+                    confidence=0.75,
+                    references=[
+                        "https://owasp.org/Top10/A01_2025-Broken_Access_Control/",
+                        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+                    ],
+                ))
+
+    async def _check_xxe(self, client, base_url, target, findings):
+        """A05:2025 Injection — XML External Entity (XXE) injection."""
+        # Detect XML endpoints by testing common paths
+        xml_paths = [
+            "/api/xml", "/xmlrpc.php", "/xmlrpc", "/soap", "/ws",
+            "/api/upload", "/api/import", "/api/parse",
+        ]
+
+        # Safe XXE probe — internal entity expansion only (no file access)
+        xxe_payload = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<!DOCTYPE foo [<!ENTITY xxe "vulnscan_xxe_test">]>'
+            '<root><data>&xxe;</data></root>'
+        )
+        xxe_headers = {"Content-Type": "application/xml"}
+
+        for path in xml_paths:
+            url = base_url + path
+
+            # First check if the endpoint accepts XML (GET to see if it exists)
+            r = await _safe_get(client, url)
+            if r is None or r.status_code >= 404:
+                continue
+
+            # Send XXE probe via POST
+            r2 = await _safe_post(client, url, content=xxe_payload, headers=xxe_headers)
+            if r2 is None:
+                continue
+
+            body = r2.text
+            if "vulnscan_xxe_test" in body:
+                findings.append(Finding(
+                    severity="high",
+                    plugin_id=META.plugin_id,
+                    title=f"XXE: XML entity expansion confirmed ({path})",
+                    description=(
+                        f"The endpoint at {url} processes XML with DTD/entity expansion enabled. "
+                        f"An attacker can read local files, perform SSRF, or cause denial of service."
+                    ),
+                    evidence=f"url={url} xxe_entity_expanded=true",
+                    affected=target,
+                    fingerprint=stable_fingerprint(target, META.plugin_id, "xxe", path),
+                    remediation=(
+                        "[HIGH — OWASP A05:2025 XXE Injection]\n"
+                        "1. Disable DTD processing in your XML parser\n"
+                        "2. Disable external entity resolution\n"
+                        "3. Use simpler data formats (JSON) when possible\n"
+                        "4. Patch/upgrade XML processing libraries\n"
+                        "   - Java: factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)\n"
+                        "   - PHP: libxml_disable_entity_loader(true)\n"
+                        "   - Python: defusedxml library"
+                    ),
+                    cvss=8.6,
+                    confidence=0.85,
+                    references=[
+                        "https://owasp.org/Top10/A05_2025-Injection/",
+                        "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+                    ],
+                ))
+                return  # One finding is enough
+
+            # Check if XML processing errors hint at DTD awareness
+            dtd_hints = ["DOCTYPE", "entity", "SYSTEM", "DTD", "xml parsing"]
+            if any(h.lower() in body.lower() for h in dtd_hints):
+                findings.append(Finding(
+                    severity="medium",
+                    plugin_id=META.plugin_id,
+                    title=f"XXE: DTD processing detected ({path})",
+                    description=(
+                        f"The endpoint at {url} shows signs of DTD processing in XML input. "
+                        f"While entity expansion was blocked, the parser may be partially vulnerable."
+                    ),
+                    evidence=f"url={url} dtd_processing_hints=true",
+                    affected=target,
+                    fingerprint=stable_fingerprint(target, META.plugin_id, "xxe_hint", path),
+                    remediation=(
+                        "[MEDIUM — OWASP A05:2025 Potential XXE]\n"
+                        "Disable DTD processing entirely in your XML parser configuration."
+                    ),
+                    cvss=5.3,
+                    confidence=0.6,
+                    references=["https://owasp.org/Top10/A05_2025-Injection/"],
+                ))
+                return
 
     async def _check_info_disclosure(self, client, base_url, target, findings):
-        """A09: Check for information disclosure in error responses."""
-        # Trigger error pages with invalid inputs
+        """A09:2025 Logging & Alerting Failures — information disclosure in error responses."""
         error_urls = [
             f"{base_url}/'",
             f"{base_url}/{{{{}}}}",
@@ -622,26 +1108,23 @@ class Check(Plugin):
                         affected=target,
                         fingerprint=stable_fingerprint(target, META.plugin_id, "infodisclosure", desc),
                         remediation=(
-                            "[MEDIUM — OWASP A09: Security Logging & Monitoring Failures]\n"
+                            "[MEDIUM — OWASP A09:2025 Logging & Alerting Failures]\n"
                             "1. Configure custom error pages — never show stack traces in production\n"
                             "2. Set DEBUG=False (Django), APP_DEBUG=false (Laravel)\n"
-                            "3. Configure error logging to files, not responses\n"
-                            "4. Use centralized logging (ELK, Splunk) for error monitoring"
+                            "3. Configure error logging to files, not responses"
                         ),
                         confidence=0.75,
                         references=[
-                            "https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/",
+                            "https://owasp.org/Top10/A09_2025-Logging_and_Alerting_Failures/",
                         ],
                     ))
-                    break  # One finding per error URL is enough
+                    break
 
     async def _check_crypto(self, client, base_url, target, findings):
-        """A02: Check for cryptographic failures."""
-        # Check if site serves over HTTP (not HTTPS)
+        """A04:2025 Cryptographic Failures — missing HTTPS/HSTS."""
         if base_url.startswith("http://"):
             r = await _safe_get(client, base_url)
             if r and r.status_code == 200:
-                # Check if it doesn't redirect to HTTPS
                 final_url = str(r.url)
                 if not final_url.startswith("https://"):
                     findings.append(Finding(
@@ -650,27 +1133,24 @@ class Check(Plugin):
                         title="No HTTPS — data transmitted in plaintext",
                         description=(
                             "The application serves content over HTTP without redirecting to HTTPS. "
-                            "All data (including credentials, session tokens) is transmitted in plaintext."
+                            "All data (including credentials) is transmitted in plaintext."
                         ),
                         evidence=f"url={base_url} final_url={final_url} no_https_redirect=true",
                         affected=target,
                         fingerprint=stable_fingerprint(target, META.plugin_id, "no_https"),
                         remediation=(
-                            "[HIGH — OWASP A02: Cryptographic Failures]\n"
-                            "1. Enable HTTPS with a valid TLS certificate (Let's Encrypt is free)\n"
-                            "2. Redirect all HTTP traffic to HTTPS (301 redirect)\n"
-                            "3. Add HSTS header: Strict-Transport-Security: max-age=31536000\n"
-                            "4. Ensure TLS 1.2+ is used (disable TLS 1.0/1.1)"
+                            "[HIGH — OWASP A04:2025 Cryptographic Failures]\n"
+                            "1. Enable HTTPS with a valid TLS certificate\n"
+                            "2. Redirect all HTTP traffic to HTTPS (301)\n"
+                            "3. Add HSTS header"
                         ),
                         cvss=7.5,
                         confidence=0.95,
-                        references=[
-                            "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/",
-                        ],
+                        references=["https://owasp.org/Top10/A04_2025-Cryptographic_Failures/"],
                     ))
 
     async def _check_http_methods(self, client, base_url, target, findings):
-        """A05: Check for dangerous HTTP methods."""
+        """A02:2025 Security Misconfiguration — dangerous HTTP methods."""
         try:
             r = await client.request("OPTIONS", base_url)
             allow = r.headers.get("allow", "")
@@ -684,29 +1164,24 @@ class Check(Plugin):
                     plugin_id=META.plugin_id,
                     title=f"Dangerous HTTP methods enabled: {', '.join(sorted(risky))}",
                     description=(
-                        f"The server allows HTTP methods that should be disabled: {', '.join(sorted(risky))}. "
-                        "TRACE can enable XST attacks, PUT/DELETE may allow file manipulation."
+                        f"The server allows HTTP methods that should be disabled: {', '.join(sorted(risky))}."
                     ),
                     evidence=f"url={base_url} allow_header={allow}",
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, "http_methods"),
                     remediation=(
-                        "[MEDIUM — OWASP A05: Security Misconfiguration]\n"
                         "Disable unnecessary HTTP methods in your web server:\n"
-                        "- nginx: add 'if ($request_method !~ ^(GET|HEAD|POST)$) { return 405; }'\n"
-                        "- Apache: use <LimitExcept GET POST HEAD> in .htaccess\n"
-                        "- IIS: Remove verbs in Request Filtering"
+                        "- nginx: if ($request_method !~ ^(GET|HEAD|POST)$) { return 405; }\n"
+                        "- Apache: use <LimitExcept GET POST HEAD>"
                     ),
                     confidence=0.9,
-                    references=[
-                        "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
-                    ],
+                    references=["https://owasp.org/Top10/A02_2025-Security_Misconfiguration/"],
                 ))
         except Exception:
             pass
 
     async def _check_cors(self, client, base_url, target, findings):
-        """A05: Check for CORS misconfiguration."""
+        """A02:2025 Security Misconfiguration — CORS misconfiguration."""
         try:
             r = await client.get(
                 base_url,
@@ -720,17 +1195,11 @@ class Check(Plugin):
                     severity="medium",
                     plugin_id=META.plugin_id,
                     title="CORS: Wildcard origin allowed (Access-Control-Allow-Origin: *)",
-                    description=(
-                        "The server allows any origin to make cross-site requests. "
-                        "If combined with credentials, this can lead to data theft."
-                    ),
+                    description="The server allows any origin to make cross-site requests.",
                     evidence=f"url={base_url} acao={acao} acac={acac}",
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, "cors_wildcard"),
-                    remediation=(
-                        "Restrict CORS to specific trusted origins. "
-                        "Never use 'Access-Control-Allow-Origin: *' with credentials."
-                    ),
+                    remediation="Restrict CORS to specific trusted origins.",
                     confidence=0.9,
                 ))
             elif "evil-attacker.com" in acao:
@@ -739,19 +1208,11 @@ class Check(Plugin):
                     severity=sev,
                     plugin_id=META.plugin_id,
                     title="CORS: Origin reflection vulnerability",
-                    description=(
-                        "The server reflects any Origin header back in Access-Control-Allow-Origin. "
-                        "This allows any website to make authenticated cross-origin requests."
-                    ),
+                    description="The server reflects any Origin header back, allowing cross-origin requests.",
                     evidence=f"url={base_url} reflected_origin={acao} credentials={acac}",
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, "cors_reflect"),
-                    remediation=(
-                        "[OWASP A05: Security Misconfiguration]\n"
-                        "1. Maintain a whitelist of allowed origins\n"
-                        "2. Validate the Origin header against the whitelist\n"
-                        "3. Never reflect arbitrary Origin headers"
-                    ),
+                    remediation="Validate Origin against a whitelist. Never reflect arbitrary origins.",
                     cvss=6.5 if sev == "high" else 4.3,
                     confidence=0.95,
                 ))
@@ -759,7 +1220,7 @@ class Check(Plugin):
             pass
 
     async def _check_cookies(self, client, base_url, target, findings):
-        """A05: Check for insecure cookie settings."""
+        """A02:2025 Security Misconfiguration — insecure cookie settings."""
         try:
             r = await client.get(base_url)
             for cookie_header in r.headers.get_list("set-cookie"):
@@ -767,7 +1228,6 @@ class Check(Plugin):
                 name_match = re.match(r"([^=]+)=", cookie_header)
                 name = name_match.group(1) if name_match else "unknown"
 
-                # Skip tracking/analytics cookies
                 if any(t in name.lower() for t in ["_ga", "_gid", "fbp", "fbclid"]):
                     continue
 
@@ -779,7 +1239,6 @@ class Check(Plugin):
                 if "samesite" not in cookie_lower:
                     issues.append("missing SameSite")
 
-                # Only report session-like cookies with issues
                 session_indicators = ["sess", "token", "auth", "jwt", "sid", "login", "csrf"]
                 is_session = any(ind in name.lower() for ind in session_indicators)
 
@@ -789,18 +1248,12 @@ class Check(Plugin):
                         plugin_id=META.plugin_id,
                         title=f"Insecure cookie: {name} ({', '.join(issues)})",
                         description=(
-                            f"The session cookie '{name}' is missing security attributes: {', '.join(issues)}. "
-                            "This could allow cookie theft via XSS or CSRF attacks."
+                            f"The session cookie '{name}' is missing security attributes: {', '.join(issues)}."
                         ),
                         evidence=f"cookie={cookie_header[:200]}",
                         affected=target,
                         fingerprint=stable_fingerprint(target, META.plugin_id, "cookie", name),
-                        remediation=(
-                            "Set all session cookies with:\n"
-                            "- HttpOnly — prevents JavaScript access\n"
-                            "- Secure — only sent over HTTPS\n"
-                            "- SameSite=Lax or Strict — prevents CSRF"
-                        ),
+                        remediation="Set HttpOnly, Secure, and SameSite=Lax on all session cookies.",
                         confidence=0.9,
                     ))
         except Exception:
