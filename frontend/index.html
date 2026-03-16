@@ -1686,6 +1686,39 @@
             accent-color: var(--accent)
           }
 
+          /* Bulk action bar */
+          .bulk-bar {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(0,212,255,0.04) 100%);
+            border: 1px solid rgba(0,212,255,0.3);
+            border-radius: 6px;
+            margin-bottom: 12px;
+            backdrop-filter: blur(8px);
+            animation: bulkSlide .2s ease-out
+          }
+          .bulk-bar.show { display: flex }
+          @keyframes bulkSlide { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
+          .bulk-count {
+            font-family: var(--fh);
+            font-size: .82rem;
+            font-weight: 700;
+            color: var(--accent);
+            white-space: nowrap
+          }
+          .bulk-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-left: auto
+          }
+
           .hf-chip {
             display: inline-flex;
             align-items: center;
@@ -1867,11 +1900,23 @@
                 </div>
               </div>
             </div>
+            <!-- Bulk action bar (appears when hosts are checked) -->
+            <div class="bulk-bar" id="bulk-bar">
+              <input type="checkbox" class="host-check" id="bulk-select-all" onchange="toggleSelectAllHosts(this.checked)" title="Select / deselect all"/>
+              <span class="bulk-count" id="bulk-count">0 hosts selected</span>
+              <div class="bulk-actions">
+                <button class="btn btn-ghost btn-sm" onclick="exportSelectedHosts('csv')">📄 CSV</button>
+                <button class="btn btn-ghost btn-sm" onclick="exportSelectedHosts('html')">📊 HTML</button>
+                <button class="btn btn-ghost btn-sm" onclick="exportSelectedHosts('pdf')">📋 PDF</button>
+                <button class="btn btn-sm" style="background:var(--accent);color:#0a0e14;font-weight:700" onclick="exportSelectedHosts('html')">⬡ Generate Report</button>
+                <button class="btn btn-ghost btn-sm" onclick="clearHostSelection()" title="Clear selection" style="color:var(--text3)">✕</button>
+              </div>
+            </div>
             <div class="pb np">
               <table class="tbl" id="vulns-host-table">
                 <thead>
                   <tr>
-                    <th style="width:30px"></th>
+                    <th style="width:30px"><input type="checkbox" class="host-check" id="host-select-all" onchange="toggleSelectAllHosts(this.checked)" title="Select all hosts"/></th>
                     <th>Host / URL</th>
                     <th>Vulnerabilities</th>
                     <th style="width:60px;text-align:right">Total</th>
@@ -2983,7 +3028,7 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
         const jobLabel = d.jobId ? `<span style="font-family:var(--fm);font-size:.6rem;color:var(--accent);margin-left:6px">#${d.jobId}</span>` : '';
         const dateLabel = d.createdAt ? `<span style="font-family:var(--fm);font-size:.58rem;color:var(--text3);margin-left:6px">${fmtDate(d.createdAt)}</span>` : '';
         html += `<tr class="host-row" onclick="toggleHostExpand(${idx})">
-      <td style="text-align:center"><input type="checkbox" class="host-check" onclick="event.stopPropagation()"/></td>
+      <td style="text-align:center"><input type="checkbox" class="host-check" onclick="event.stopPropagation()" onchange="onHostCheckChange()"/></td>
       <td><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span>${icon}</span><span class="bright" style="font-size:.82rem">${esc(d.host)}</span>${jobLabel}${dateLabel}</div></td>
       <td><div class="host-bar">${barHtml}</div></td>
       <td style="text-align:right"><span class="mc" style="font-size:.85rem;font-weight:700;color:var(--${maxSev === 'info' ? 'accent' : maxSev})">${d.total}</span></td>
@@ -3048,6 +3093,60 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     }
     function toggleHostExpand(idx) { const el = gi('hexp-' + idx); if (el) el.classList.toggle('open') }
     function hostSevFilter(idx, sev, btn) { const row = btn.parentElement; row.querySelectorAll('.hf-chip').forEach(c => c.classList.remove('active')); btn.classList.add('active'); const host = S._hostKeys[idx]; const d = S._hostData[host]; if (!d) return; gi('host-findings-' + idx).innerHTML = renderHostFindings(d.findings, sev) }
+
+    // ─── Host Checkbox / Bulk Actions ───
+    function onHostCheckChange() {
+      const checks = document.querySelectorAll('#vulns-host-tbody .host-check');
+      const checked = [...checks].filter(c => c.checked);
+      const count = checked.length;
+      const bar = gi('bulk-bar');
+      const countEl = gi('bulk-count');
+      const selectAll = gi('host-select-all');
+      const bulkSelectAll = gi('bulk-select-all');
+      if (count > 0) {
+        bar.classList.add('show');
+        countEl.textContent = count + ' host' + (count !== 1 ? 's' : '') + ' selected';
+      } else {
+        bar.classList.remove('show');
+      }
+      // Sync "select all" checkboxes
+      const allChecked = checks.length > 0 && checked.length === checks.length;
+      if (selectAll) selectAll.checked = allChecked;
+      if (bulkSelectAll) bulkSelectAll.checked = allChecked;
+    }
+    function toggleSelectAllHosts(checked) {
+      document.querySelectorAll('#vulns-host-tbody .host-check').forEach(c => c.checked = checked);
+      const selectAll = gi('host-select-all');
+      const bulkSelectAll = gi('bulk-select-all');
+      if (selectAll) selectAll.checked = checked;
+      if (bulkSelectAll) bulkSelectAll.checked = checked;
+      onHostCheckChange();
+    }
+    function clearHostSelection() { toggleSelectAllHosts(false) }
+    function getSelectedHostIndices() {
+      const indices = [];
+      document.querySelectorAll('#vulns-host-tbody .host-check').forEach((c, i) => { if (c.checked) indices.push(i) });
+      return indices;
+    }
+    function exportSelectedHosts(fmt) {
+      const indices = getSelectedHostIndices();
+      if (!indices.length) return alert('No hosts selected');
+      // Gather findings from all selected hosts
+      let allData = [];
+      const hostLabels = [];
+      indices.forEach(idx => {
+        const key = S._hostKeys[idx]; if (!key) return;
+        const parts = key.split('::');
+        const host = parts[0];
+        const jobId = parts[1] != null ? Number(parts[1]) : null;
+        const data = getExportData(host, jobId);
+        allData = allData.concat(data);
+        if (!hostLabels.includes(host)) hostLabels.push(host);
+      });
+      if (!allData.length) return alert('No findings for selected hosts');
+      const label = hostLabels.length === 1 ? hostLabels[0] : hostLabels.length + '_hosts';
+      doExport(allData, fmt, label);
+    }
 
     // ─── Vulnerabilities Page ───
     function renderVulnsPage() { renderHostSummary(S.allFindings || []) }
