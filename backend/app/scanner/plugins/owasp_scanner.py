@@ -168,39 +168,106 @@ SSRF_PAYLOADS = [
 
 # ─── Security Misconfiguration checks ───────────────────────────────────────
 
+# Each entry: (path, name, severity, remediation, content_validator)
+# content_validator is None (any 200 response counts) or a callable(text) -> bool
+# that must return True for the finding to be reported.
 SENSITIVE_PATHS = [
-    ("/.env", "Environment file", "critical", "Environment file (.env) is publicly accessible. This may contain database credentials, API keys, and secrets. Restrict access immediately."),
-    ("/.git/config", "Git repository", "critical", "Git repository is exposed. Attackers can download source code. Block /.git/ in web server config."),
-    ("/.git/HEAD", "Git HEAD", "critical", "Git repository metadata is exposed."),
-    ("/wp-config.php.bak", "WordPress backup config", "critical", "WordPress config backup found. Contains database credentials."),
-    ("/server-status", "Apache server-status", "medium", "Apache mod_status is accessible. Restrict to internal IPs."),
-    ("/server-info", "Apache server-info", "medium", "Apache mod_info is accessible. Restrict to internal IPs."),
-    ("/phpinfo.php", "PHP info page", "medium", "phpinfo() is accessible. Remove from production — exposes server details."),
-    ("/info.php", "PHP info page", "medium", "PHP info page accessible. Remove from production."),
-    ("/elmah.axd", "ELMAH error log", "high", "ELMAH error log is exposed. May contain sensitive exception details."),
-    ("/trace.axd", "ASP.NET trace", "high", "ASP.NET trace is enabled. Disable in production."),
-    ("/actuator", "Spring Boot Actuator", "high", "Spring Boot Actuator exposed. Restrict to internal access only."),
-    ("/actuator/health", "Spring Actuator health", "medium", "Spring Actuator health endpoint exposed."),
-    ("/actuator/env", "Spring Actuator env", "critical", "Spring Actuator env endpoint may expose secrets."),
-    ("/api/swagger.json", "Swagger API docs", "low", "Swagger API documentation is accessible. Consider restricting in production."),
-    ("/swagger-ui.html", "Swagger UI", "low", "Swagger UI exposed in production."),
-    ("/.DS_Store", "macOS metadata", "low", "macOS .DS_Store file exposed. May reveal directory structure."),
-    ("/robots.txt", "Robots.txt", "info", "robots.txt found. May reveal hidden paths."),
-    ("/sitemap.xml", "Sitemap", "info", "Sitemap found."),
-    ("/crossdomain.xml", "Flash crossdomain", "low", "crossdomain.xml found. Review for overly permissive policy."),
-    ("/admin", "Admin panel", "medium", "Admin panel accessible. Restrict to VPN/internal IPs."),
-    ("/admin/", "Admin panel", "medium", "Admin panel accessible."),
-    ("/wp-admin/", "WordPress admin", "medium", "WordPress admin accessible. Consider IP restriction."),
-    ("/phpmyadmin/", "phpMyAdmin", "high", "phpMyAdmin is publicly accessible. Restrict or remove."),
-    ("/adminer.php", "Adminer DB tool", "critical", "Adminer database tool is publicly accessible."),
-    ("/console", "Debug console", "critical", "Debug console exposed (Werkzeug/Flask). Disable in production."),
-    ("/debug", "Debug endpoint", "high", "Debug endpoint accessible."),
-    ("/config", "Config endpoint", "high", "Configuration endpoint accessible."),
-    ("/backup", "Backup directory", "high", "Backup directory accessible."),
-    ("/.htpasswd", "htpasswd file", "critical", "htpasswd file accessible. Contains hashed credentials."),
-    ("/.htaccess", "htaccess file", "medium", "htaccess file readable. May reveal security configuration."),
-    ("/web.config", "IIS web.config", "high", "IIS web.config accessible. May contain connection strings."),
-    ("/WEB-INF/web.xml", "Java web.xml", "high", "Java deployment descriptor accessible."),
+    ("/.env", "Environment file", "critical",
+     "Environment file (.env) is publicly accessible. This may contain database credentials, API keys, and secrets. Restrict access immediately.",
+     lambda t: bool(re.search(r"[A-Z_]+=", t))),
+    ("/.git/config", "Git repository", "critical",
+     "Git repository is exposed. Attackers can download source code. Block /.git/ in web server config.",
+     lambda t: "[core]" in t),
+    ("/.git/HEAD", "Git HEAD", "critical",
+     "Git repository metadata is exposed.",
+     lambda t: "ref:" in t or t.strip().startswith("ref:")),
+    ("/wp-config.php.bak", "WordPress backup config", "critical",
+     "WordPress config backup found. Contains database credentials.",
+     lambda t: "DB_NAME" in t or "DB_PASSWORD" in t or "wp-settings" in t),
+    ("/server-status", "Apache server-status", "medium",
+     "Apache mod_status is accessible. Restrict to internal IPs.",
+     lambda t: "Apache Server Status" in t or "Server Version" in t),
+    ("/server-info", "Apache server-info", "medium",
+     "Apache mod_info is accessible. Restrict to internal IPs.",
+     lambda t: "Apache Server Information" in t or "Server Version" in t),
+    ("/phpinfo.php", "PHP info page", "medium",
+     "phpinfo() is accessible. Remove from production — exposes server details.",
+     lambda t: "phpinfo()" in t or "PHP Version" in t),
+    ("/info.php", "PHP info page", "medium",
+     "PHP info page accessible. Remove from production.",
+     lambda t: "phpinfo()" in t or "PHP Version" in t),
+    ("/elmah.axd", "ELMAH error log", "high",
+     "ELMAH error log is exposed. May contain sensitive exception details.",
+     lambda t: "ELMAH" in t or "Error Log" in t),
+    ("/trace.axd", "ASP.NET trace", "high",
+     "ASP.NET trace is enabled. Disable in production.",
+     lambda t: "Application Trace" in t or "Request Details" in t),
+    ("/actuator", "Spring Boot Actuator", "high",
+     "Spring Boot Actuator exposed. Restrict to internal access only.",
+     lambda t: '"_links"' in t or '"self"' in t or '"health"' in t),
+    ("/actuator/health", "Spring Actuator health", "medium",
+     "Spring Actuator health endpoint exposed.",
+     lambda t: '"status"' in t and ("UP" in t or "DOWN" in t)),
+    ("/actuator/env", "Spring Actuator env", "critical",
+     "Spring Actuator env endpoint may expose secrets.",
+     lambda t: '"propertySources"' in t or '"activeProfiles"' in t),
+    ("/api/swagger.json", "Swagger API docs", "low",
+     "Swagger API documentation is accessible. Consider restricting in production.",
+     lambda t: '"swagger"' in t.lower() or '"openapi"' in t.lower() or '"paths"' in t),
+    ("/swagger-ui.html", "Swagger UI", "low",
+     "Swagger UI exposed in production.",
+     lambda t: "swagger" in t.lower() and ("ui" in t.lower() or "api" in t.lower())),
+    ("/.DS_Store", "macOS metadata", "low",
+     "macOS .DS_Store file exposed. May reveal directory structure.",
+     lambda t: "\x00Bud1" in t or "Bud1" in t),
+    ("/robots.txt", "Robots.txt", "info",
+     "robots.txt found. May reveal hidden paths.",
+     lambda t: "disallow" in t.lower() or "allow" in t.lower() or "sitemap" in t.lower()),
+    ("/sitemap.xml", "Sitemap", "info",
+     "Sitemap found.",
+     lambda t: "<urlset" in t.lower() or "<sitemapindex" in t.lower()),
+    ("/crossdomain.xml", "Flash crossdomain", "low",
+     "crossdomain.xml found. Review for overly permissive policy.",
+     lambda t: "cross-domain-policy" in t.lower()),
+    ("/admin", "Admin panel", "medium",
+     "Admin panel accessible. Restrict to VPN/internal IPs.",
+     None),  # Generic — validated by soft-404 detection
+    ("/admin/", "Admin panel", "medium",
+     "Admin panel accessible.",
+     None),
+    ("/wp-admin/", "WordPress admin", "medium",
+     "WordPress admin accessible. Consider IP restriction.",
+     lambda t: "wordpress" in t.lower() or "wp-login" in t.lower() or "wp-includes" in t.lower()),
+    ("/phpmyadmin/", "phpMyAdmin", "high",
+     "phpMyAdmin is publicly accessible. Restrict or remove.",
+     lambda t: "phpmyadmin" in t.lower() or "pma_" in t.lower()),
+    ("/adminer.php", "Adminer DB tool", "critical",
+     "Adminer database tool is publicly accessible.",
+     lambda t: "adminer" in t.lower() and ("login" in t.lower() or "database" in t.lower())),
+    ("/console", "Debug console", "critical",
+     "Debug console exposed (Werkzeug/Flask). Disable in production.",
+     lambda t: "werkzeug" in t.lower() or "debugger" in t.lower() or "console" in t.lower() and "interactive" in t.lower()),
+    ("/debug", "Debug endpoint", "high",
+     "Debug endpoint accessible.",
+     lambda t: "debug" in t.lower() and ("trace" in t.lower() or "stack" in t.lower() or "exception" in t.lower() or "settings" in t.lower())),
+    ("/config", "Config endpoint", "high",
+     "Configuration endpoint accessible.",
+     lambda t: bool(re.search(r'["\'](password|secret|key|token|database|dsn)["\']', t.lower()))),
+    ("/backup", "Backup directory", "high",
+     "Backup directory accessible.",
+     lambda t: "index of" in t.lower() or "parent directory" in t.lower() or "<pre>" in t.lower()),
+    ("/.htpasswd", "htpasswd file", "critical",
+     "htpasswd file accessible. Contains hashed credentials.",
+     lambda t: bool(re.search(r"^\w+:\$?\w+\$", t, re.M)) or ":{SHA}" in t or ":$apr1$" in t),
+    ("/.htaccess", "htaccess file", "medium",
+     "htaccess file readable. May reveal security configuration.",
+     lambda t: "RewriteRule" in t or "RewriteEngine" in t or "AuthType" in t or "Deny from" in t),
+    ("/web.config", "IIS web.config", "high",
+     "IIS web.config accessible. May contain connection strings.",
+     lambda t: "<configuration" in t.lower() or "connectionstring" in t.lower() or "<system.web" in t.lower()),
+    ("/WEB-INF/web.xml", "Java web.xml", "high",
+     "Java deployment descriptor accessible.",
+     lambda t: "<web-app" in t.lower() or "<servlet" in t.lower()),
 ]
 
 # ─── Information Disclosure patterns ────────────────────────────────────────
@@ -524,44 +591,76 @@ class Check(Plugin):
         """A02:2025 Security Misconfiguration — exposed sensitive files and directories."""
         sem = asyncio.Semaphore(5)
 
-        async def check_path(path, name, sev, remed):
+        # ── Soft-404 baseline: fetch a random non-existent path to fingerprint
+        # custom error pages that return 200 for every URL. ──
+        baseline_body = ""
+        baseline_len = 0
+        try:
+            canary = base_url + "/vulnscan_404_check_" + str(int(time.monotonic() * 1000))
+            br = await _safe_get(client, canary)
+            if br and br.status_code == 200:
+                baseline_body = br.text[:1000].lower()
+                baseline_len = len(br.text)
+        except Exception:
+            pass
+
+        def _is_soft_404(text):
+            """Detect soft-404: page returned 200 but content matches baseline error page."""
+            lower = text.lower()[:1000]
+            # Explicit 404 markers
+            if "not found" in lower[:500] or "404" in lower[:300]:
+                return True
+            if "page not found" in lower or "does not exist" in lower:
+                return True
+            if "the page you" in lower and ("looking for" in lower or "requested" in lower):
+                return True
+            # Compare against canary baseline — if body is very similar, it's a catch-all page
+            if baseline_body and baseline_len > 50:
+                # Same length within 10% and first 200 chars match → soft 404
+                if abs(len(text) - baseline_len) < baseline_len * 0.1:
+                    if text.lower()[:200] == baseline_body[:200]:
+                        return True
+            return False
+
+        async def check_path(path, name, sev, remed, validator):
             async with sem:
                 url = base_url + path
                 r = await _safe_get(client, url)
                 if r is None:
                     return
-                if r.status_code == 200 and len(r.text) > 10:
-                    if "not found" in r.text.lower()[:500] or "404" in r.text[:200]:
-                        return
-                    if path == "/.env" and not re.search(r"[A-Z_]+=", r.text):
-                        return
-                    if path == "/.git/config" and "[core]" not in r.text:
-                        return
-                    if path == "/.git/HEAD" and "ref:" not in r.text:
-                        return
-                    if path == "/phpinfo.php" and "phpinfo()" not in r.text and "PHP Version" not in r.text:
-                        return
-                    if path == "/robots.txt" and ("disallow" not in r.text.lower() and "allow" not in r.text.lower() and "sitemap" not in r.text.lower()):
+                if r.status_code != 200 or len(r.text) <= 10:
+                    return
+                # Soft-404 detection
+                if _is_soft_404(r.text):
+                    return
+                # Content validation: if a validator is defined, the response
+                # must match technology-specific signatures to avoid false positives
+                if validator is not None:
+                    try:
+                        if not validator(r.text[:4000]):
+                            return
+                    except Exception:
                         return
 
-                    content_preview = r.text[:150].replace("\n", " ").strip()
-                    findings.append(Finding(
-                        severity=sev,
-                        plugin_id=META.plugin_id,
-                        title=f"Exposed: {name} ({path})",
-                        description=f"{name} is publicly accessible at {url}.",
-                        evidence=f"url={url} status={r.status_code} size={len(r.text)} preview={content_preview}",
-                        affected=target,
-                        fingerprint=stable_fingerprint(target, META.plugin_id, "sensitive", path),
-                        remediation=remed,
-                        confidence=0.9,
-                        references=[
-                            "https://owasp.org/Top10/A02_2025-Security_Misconfiguration/"
-                        ],
-                    ))
+                content_preview = r.text[:150].replace("\n", " ").strip()
+                confidence = 0.92 if validator is not None else 0.70
+                findings.append(Finding(
+                    severity=sev,
+                    plugin_id=META.plugin_id,
+                    title=f"Exposed: {name} ({path})",
+                    description=f"{name} is publicly accessible at {url}.",
+                    evidence=f"url={url} status={r.status_code} size={len(r.text)} preview={content_preview}",
+                    affected=target,
+                    fingerprint=stable_fingerprint(target, META.plugin_id, "sensitive", path),
+                    remediation=remed,
+                    confidence=confidence,
+                    references=[
+                        "https://owasp.org/Top10/A02_2025-Security_Misconfiguration/"
+                    ],
+                ))
 
         await asyncio.gather(
-            *[check_path(p, n, s, r) for p, n, s, r in SENSITIVE_PATHS],
+            *[check_path(p, n, s, r, v) for p, n, s, r, v in SENSITIVE_PATHS],
             return_exceptions=True,
         )
 
