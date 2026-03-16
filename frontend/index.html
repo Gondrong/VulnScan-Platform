@@ -559,6 +559,61 @@
       background: rgba(56, 189, 248, .025)
     }
 
+    /* ── Responsive table wrapper ── */
+    .tbl-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tbl-wrap .tbl { min-width: 600px }
+
+    /* ── Pagination ── */
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .pager-btn {
+      padding: 5px 12px;
+      font-family: var(--fm);
+      font-size: .72rem;
+      color: var(--text2);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .pager-btn:hover:not(:disabled) { background: var(--surface3); color: var(--bright) }
+    .pager-btn:disabled { opacity: .35; cursor: default }
+    .pager-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600 }
+    .pager-info {
+      font-family: var(--fm);
+      font-size: .65rem;
+      color: var(--text3);
+      padding: 0 8px;
+    }
+
+    /* ── Responsive adjustments ── */
+    @media (max-width: 1200px) {
+      .tbl th, .tbl td { padding: 10px 10px; font-size: .82rem }
+      .tbl th { font-size: .58rem }
+    }
+    @media (max-width: 900px) {
+      .g2 { grid-template-columns: 1fr !important }
+      .tbl th, .tbl td { padding: 8px 8px; font-size: .76rem }
+      .mc { font-size: .7rem }
+    }
+    @media (max-width: 640px) {
+      .tbl th, .tbl td { padding: 6px 6px; font-size: .7rem }
+      .pager { gap: 4px; padding: 8px 8px }
+      .pager-btn { padding: 4px 8px; font-size: .65rem }
+    }
+
     .mc {
       font-family: var(--fm);
       font-size: .8rem
@@ -1909,28 +1964,31 @@
                 jobs</span><button class="btn btn-ghost btn-sm" onclick="loadJobs()">↻</button></div>
           </div>
           <div class="pb np">
-            <table class="tbl">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Target</th>
-                  <th>Type</th>
-                  <th>Profile</th>
-                  <th>Status</th>
-                  <th>Started</th>
-                  <th style="text-align:right">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="jobs-tbody">
-                <tr>
-                  <td colspan="7">
-                    <div class="empty-state">
-                      <div class="empty-icon">⚡</div>No scan jobs yet
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Target</th>
+                    <th>Type</th>
+                    <th>Profile</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th style="text-align:right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="jobs-tbody">
+                  <tr>
+                    <td colspan="7">
+                      <div class="empty-state">
+                        <div class="empty-icon">⚡</div>No scan jobs yet
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="jobs-pager" class="pager" style="display:none"></div>
           </div>
         </div>
 
@@ -2008,27 +2066,30 @@
               </div><button class="btn btn-ghost btn-sm" onclick="loadSchedules()">↻</button>
             </div>
             <div class="pb np">
-              <table class="tbl">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Target</th>
-                    <th>Profile</th>
-                    <th>Schedule</th>
-                    <th>Status</th>
-                    <th>Next Run</th>
-                    <th style="text-align:right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="schedules-tbody">
-                  <tr>
-                    <td colspan="8">
-                      <div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="tbl-wrap">
+                <table class="tbl">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Target</th>
+                      <th>Profile</th>
+                      <th>Schedule</th>
+                      <th>Status</th>
+                      <th>Next Run</th>
+                      <th style="text-align:right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="schedules-tbody">
+                    <tr>
+                      <td colspan="8">
+                        <div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="scheds-pager" class="pager" style="display:none"></div>
             </div>
           </div>
         </div>
@@ -2054,7 +2115,7 @@
               <div class="fg"><label class="fl">Profile Name</label><input id="p-name" class="fc" value="default" />
               </div>
               <div class="fg"><label class="fl">Plugin Selection (JSON)</label><textarea id="p-plugins" class="fc"
-                  rows="11">{"net.port.discovery.v2":true,"net.port.discovery.nmap":true,"fingerprint.http":true,"fingerprint.banner.multi":true,"fingerprint.web.tech":true,"fingerprint.favicon.hash":true,"cpe.builder":true,"cve.match.nvd_cpe":true,"cve.match.cms":true,"priority.cisa_kev":true,"tls.basic.version":true,"owasp.web.scanner":true,"recon.directory.crawl":true,"vuln.file.inclusion":true,"local.security.checks":true,"auth.ssh.inventory":false,"cve.match.packages":true}</textarea>
+                  rows="11">{"net.port.discovery.v2":true,"net.port.discovery.nmap":true,"recon.dns.enum":true,"recon.directory.crawl":true,"fingerprint.http":true,"fingerprint.banner.multi":true,"fingerprint.web.tech":true,"fingerprint.favicon.hash":true,"fingerprint.deep":true,"cpe.builder":true,"cve.match.nvd_cpe":true,"cve.match.cms":true,"cve.endpoint_prober":true,"cve.verifier":true,"priority.cisa_kev":true,"owasp.web.scanner":true,"vuln.file.inclusion":true,"tls.basic.version":true,"infra.ssh.audit":true,"infra.db.auth_check":true,"infra.smb.check":true,"local.security.checks":true,"auth.ssh.inventory":false,"cve.match.packages":false}</textarea>
               </div>
               <div
                 style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:15px">
@@ -2063,14 +2124,23 @@
                   <span style="color:var(--accent)">⚙</span> Scan Options
                 </div>
                 <div class="form-row">
+                  <div class="fg"><label class="fl">Nmap Scan Mode</label><select id="p-nmap-mode" class="fc" onchange="syncProfileOptions()">
+                      <option value="top100" selected>Top 100 ports (fast)</option>
+                      <option value="top1000">Top 1000 ports</option>
+                      <option value="full">Full 1–65535 (slow)</option>
+                    </select>
+                    <div style="font-family:var(--fm);font-size:.58rem;color:var(--text3);margin-top:4px">Controls port range for Nmap-style scanner</div>
+                  </div>
+                  <div class="fg"><label class="fl">SSH Port</label><input id="p-ssh-port" class="fc" type="number"
+                      value="22" /></div>
+                </div>
+                <div class="form-row">
                   <div class="fg"><label class="fl">SSH Credential</label><select id="p-cred" class="fc">
                       <option value="">Loading...</option>
                     </select>
                     <div style="font-family:var(--fm);font-size:.58rem;color:var(--text3);margin-top:4px">Must match a
                       credential in the Credentials page</div>
                   </div>
-                  <div class="fg"><label class="fl">SSH Port</label><input id="p-ssh-port" class="fc" type="number"
-                      value="22" /></div>
                 </div>
                 <div class="fg"><label class="fl">Asset Criticality</label><select id="p-criticality" class="fc">
                     <option value="1">1 — Low (Development/Test) — risk ×0.8</option>
@@ -2107,9 +2177,13 @@
               </div>
               <div class="fg"><label class="fl">Options (JSON) — auto-generated from above</label><textarea
                   id="p-options" class="fc" rows="3"
-                  style="font-size:.72rem;color:var(--text3)">{"auth":{"ssh_credential_id":1,"ssh_port":22},"cve":{"dataset_kinds":["nvd_cpe_cve","cisa_kev","cvedetails_cvss","epss","compliance_map"]},"asset":{"criticality":2}}</textarea>
+                  style="font-size:.72rem;color:var(--text3)">{"nmap":{"mode":"top100"},"auth":{"ssh_credential_id":1,"ssh_port":22},"cve":{"dataset_kinds":["nvd_cpe_cve","cisa_kev","cvedetails_cvss","epss","compliance_map"]},"asset":{"criticality":2}}</textarea>
               </div>
-              <button class="btn btn-primary btn-full" onclick="createProfile()">Create Profile</button>
+              <div id="profile-btn-row" style="display:flex;gap:8px">
+                <button id="profile-create-btn" class="btn btn-primary" style="flex:1" onclick="createProfile()">Create Profile</button>
+                <button id="profile-update-btn" class="btn btn-primary" style="flex:1;display:none" onclick="updateProfile()">Update Profile</button>
+                <button id="profile-cancel-btn" class="btn btn-ghost" style="display:none" onclick="cancelEditProfile()">Cancel</button>
+              </div>
             </div>
           </div>
           <div class="panel" style="margin:0">
@@ -2516,7 +2590,7 @@
 
   <script>
     const API_BASE = (() => { if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, ''); const p = window.location.protocol, h = window.location.hostname; return `${p}//${h}:8888` })();
-    const S = { token: null, userEmail: 'admin@local', userRole: 'viewer', allFindings: [], sevFilter: 'all', scanType: 'internal', profiles: [], creds: [], deletedJobIds: new Set(), dashInterval: null, jobsInterval: null, clockInterval: null };
+    const S = { token: null, userEmail: 'admin@local', userRole: 'viewer', allFindings: [], sevFilter: 'all', scanType: 'internal', profiles: [], creds: [], deletedJobIds: new Set(), dashInterval: null, jobsInterval: null, clockInterval: null, jobsPage: 1, jobsPerPage: 10, schedsPage: 1, schedsPerPage: 5, _allJobs: [], _allScheds: [] };
     const gi = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtDate = d => { if (!d) return '-'; try { return new Date(d).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) } catch { return String(d) } };
@@ -2770,21 +2844,107 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     // ─── Submit Job ───
     async function submitJob() { if (!requireScanWrite()) return; const target = gi('job-target').value.trim(); if (!target) { gi('job-target').classList.add('err'); gi('target-err').textContent = 'Target is required'; gi('target-err').style.display = 'block'; return } clearTargetErr(); const profileId = gi('job-profile').value; if (!profileId) { gi('profile-err').textContent = 'Select a scan profile'; gi('profile-err').style.display = 'block'; return } gi('profile-err').style.display = 'none'; const btn = gi('launch-btn'); btn.disabled = true; gi('launch-spin').style.display = 'inline-block'; gi('job-alert').style.display = 'none'; try { const r = await apiReq('/scan/jobs', { method: 'POST', body: JSON.stringify({ target, profile_id: Number(profileId), scan_type: S.scanType }) }); showAlert('job-alert', 'success', `✓ Job #${r.id} launched — ${target} [${S.scanType}]`); await loadJobs(); startProgressPolling(); setTimeout(() => loadDashboard(false), 3000) } catch (e) { showAlert('job-alert', 'danger', '⚠ ' + e.message) } finally { btn.disabled = false; gi('launch-spin').style.display = 'none' } }
 
+    // ─── Pagination Helper ───
+    function renderPager(containerId, currentPage, totalPages, totalItems, perPage, onPageFn) {
+      const el = gi(containerId);
+      if (!el) return;
+      if (totalPages <= 1) { el.style.display = 'none'; return; }
+      el.style.display = 'flex';
+      const start = (currentPage - 1) * perPage + 1;
+      const end = Math.min(currentPage * perPage, totalItems);
+      let html = `<button class="pager-btn" onclick="${onPageFn}(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>`;
+      html += `<button class="pager-btn" onclick="${onPageFn}(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>`;
+      // Show page numbers with ellipsis
+      const maxBtns = 5;
+      let startP = Math.max(1, currentPage - Math.floor(maxBtns / 2));
+      let endP = Math.min(totalPages, startP + maxBtns - 1);
+      if (endP - startP < maxBtns - 1) startP = Math.max(1, endP - maxBtns + 1);
+      if (startP > 1) html += `<span class="pager-info">...</span>`;
+      for (let i = startP; i <= endP; i++) {
+        html += `<button class="pager-btn${i === currentPage ? ' active' : ''}" onclick="${onPageFn}(${i})">${i}</button>`;
+      }
+      if (endP < totalPages) html += `<span class="pager-info">...</span>`;
+      html += `<button class="pager-btn" onclick="${onPageFn}(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>›</button>`;
+      html += `<button class="pager-btn" onclick="${onPageFn}(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>»</button>`;
+      html += `<span class="pager-info">${start}–${end} of ${totalItems}</span>`;
+      el.innerHTML = html;
+    }
+
     // ─── Jobs ───
-    async function loadJobs() { try { const jobs = await apiReq('/scan/jobs'); const vis = jobs.filter(j => !S.deletedJobIds.has(j.id)); const pm = {}; S.profiles.forEach(p => pm[p.id] = p.name); gi('job-count-label').textContent = vis.length + ' job' + (vis.length !== 1 ? 's' : ''); gi('jobs-tbody').innerHTML = vis.length ? vis.map(j => { const errInfo = j.error_info; const isDone = j.status === 'done'; const isFailed = j.status === 'failed'; return `<tr id="job-row-${j.id}"><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.target)}">${esc(j.target)}</td><td>${j.scan_type === 'external' ? '<span class="badge b-ok">\u{1F310} External</span>' : '<span class="badge b-info">\u{1F3E0} Internal</span>'}</td><td class="mc dim">${esc(pm[j.profile_id] || ('#' + j.profile_id))}</td><td>${renderStatusDot(j.status)}${isFailed && errInfo ? ' <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.65rem" onclick="alert(\'Error: see logs\')">Why?</button>' : ''}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td><td style="text-align:right"><div style="display:flex;gap:3px;justify-content:flex-end">${isDone ? '<button class="btn btn-ghost btn-sm" onclick="rescanJob(' + j.id + ')" title="Rescan">\u{1F504}</button><button class="btn btn-ghost btn-sm" onclick="showHistory(\'' + esc(j.target) + '\')" title="History">\u{1F4CA}</button>' : ''}<button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id})">\u25B8</button><button class="btn btn-danger btn-sm" onclick="deleteJob(${j.id},'${esc(j.target)}')" title="Delete">\u{1F5D1}</button></div></td></tr>` }).join('') : '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">\u26A1</div>No scan jobs yet</div></td></tr>'; await loadSchedules() } catch (e) { console.error('[loadJobs]', e) } }
+    async function loadJobs() { try { const jobs = await apiReq('/scan/jobs'); S._allJobs = jobs.filter(j => !S.deletedJobIds.has(j.id)); renderJobsPage(); await loadSchedules() } catch (e) { console.error('[loadJobs]', e) } }
+
+    function goJobsPage(p) { const totalPages = Math.max(1, Math.ceil(S._allJobs.length / S.jobsPerPage)); S.jobsPage = Math.max(1, Math.min(p, totalPages)); renderJobsPage(); }
+
+    function renderJobsPage() {
+      const vis = S._allJobs;
+      const pm = {}; S.profiles.forEach(p => pm[p.id] = p.name);
+      gi('job-count-label').textContent = vis.length + ' job' + (vis.length !== 1 ? 's' : '');
+      const totalPages = Math.max(1, Math.ceil(vis.length / S.jobsPerPage));
+      if (S.jobsPage > totalPages) S.jobsPage = totalPages;
+      const start = (S.jobsPage - 1) * S.jobsPerPage;
+      const page = vis.slice(start, start + S.jobsPerPage);
+      gi('jobs-tbody').innerHTML = page.length ? page.map(j => { const errInfo = j.error_info; const isDone = j.status === 'done'; const isFailed = j.status === 'failed'; return `<tr id="job-row-${j.id}"><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.target)}">${esc(j.target)}</td><td>${j.scan_type === 'external' ? '<span class="badge b-ok">\u{1F310} External</span>' : '<span class="badge b-info">\u{1F3E0} Internal</span>'}</td><td class="mc dim">${esc(pm[j.profile_id] || ('#' + j.profile_id))}</td><td>${renderStatusDot(j.status)}${isFailed && errInfo ? ' <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.65rem" onclick="alert(\'Error: see logs\')">Why?</button>' : ''}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td><td style="text-align:right"><div style="display:flex;gap:3px;justify-content:flex-end;flex-wrap:wrap">${isDone ? '<button class="btn btn-ghost btn-sm" onclick="rescanJob(' + j.id + ')" title="Rescan">\u{1F504}</button><button class="btn btn-ghost btn-sm" onclick="showHistory(\'' + esc(j.target) + '\')" title="History">\u{1F4CA}</button>' : ''}<button class="btn btn-ghost btn-sm" onclick="viewJobResults(${j.id})">\u25B8</button><button class="btn btn-danger btn-sm" onclick="deleteJob(${j.id},'${esc(j.target)}')" title="Delete">\u{1F5D1}</button></div></td></tr>` }).join('') : '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">\u26A1</div>No scan jobs yet</div></td></tr>';
+      renderPager('jobs-pager', S.jobsPage, totalPages, vis.length, S.jobsPerPage, 'goJobsPage');
+    }
     function viewJobResults(jid) { navTo('dashboard'); setTimeout(() => gi('host-summary')?.scrollIntoView({ behavior: 'smooth' }), 250) }
-    async function deleteJob(jid, tgt) { if (!requireScanWrite()) return; if (!confirm(`Delete job #${jid} (${tgt}) and all findings?`)) return; S.deletedJobIds.add(jid); const row = gi('job-row-' + jid); if (row) { row.style.opacity = '0'; row.style.transition = 'opacity .2s'; setTimeout(() => row.remove(), 220) } try { await apiReq('/scan/jobs/' + jid, { method: 'DELETE' }); showAlert('job-alert', 'success', `✓ Job #${jid} deleted`); loadDashboard(false); loadAttackGraph() } catch (e) { if (e.status === 404) { showAlert('job-alert', 'info', `Job #${jid} already removed`) } else { S.deletedJobIds.delete(jid); await loadJobs(); showAlert('job-alert', 'danger', '⚠ ' + e.message) } } }
+    async function deleteJob(jid, tgt) { if (!requireScanWrite()) return; if (!confirm(`Delete job #${jid} (${tgt}) and all findings?`)) return; S.deletedJobIds.add(jid); S._allJobs = S._allJobs.filter(j => j.id !== jid); renderJobsPage(); try { await apiReq('/scan/jobs/' + jid, { method: 'DELETE' }); showAlert('job-alert', 'success', `✓ Job #${jid} deleted`); loadDashboard(false); loadAttackGraph() } catch (e) { if (e.status === 404) { showAlert('job-alert', 'info', `Job #${jid} already removed`) } else { S.deletedJobIds.delete(jid); await loadJobs(); showAlert('job-alert', 'danger', '⚠ ' + e.message) } } }
 
     // ─── Profiles ───
-    async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; gi('profiles-tbody').innerHTML = S.profiles.length ? S.profiles.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="loadProfileAsTemplate(${p.id})">📋 Use as Template</button> <button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑 Delete</button></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>' } catch (e) { console.error('[loadProfiles]', e) } }
-    function loadProfileAsTemplate(pid) { const p = S.profiles.find(x => x.id === pid); if (!p) return; gi('p-name').value = p.name + ' (Copy)'; gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2); const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json); gi('p-options').value = optStr; try { const o = JSON.parse(optStr); if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); } if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality); if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); } } catch (e) { console.error('Error parsing profile options', e); } window.scrollTo({ top: 0, behavior: 'smooth' }); showAlert('profile-alert', 'info', `ℹ Loaded profile #${pid} as template`); }
+    async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; gi('profiles-tbody').innerHTML = S.profiles.length ? S.profiles.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="editProfile(${p.id})">✏️ Edit</button> <button class="btn btn-ghost btn-sm" onclick="loadProfileAsTemplate(${p.id})">📋 Clone</button> <button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑</button></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>' } catch (e) { console.error('[loadProfiles]', e) } }
+    function loadProfileAsTemplate(pid) { const p = S.profiles.find(x => x.id === pid); if (!p) return; gi('p-name').value = p.name + ' (Copy)'; gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2); const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json); gi('p-options').value = optStr; try { const o = JSON.parse(optStr); if (o.nmap && o.nmap.mode) gi('p-nmap-mode').value = o.nmap.mode; if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); } if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality); if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); } } catch (e) { console.error('Error parsing profile options', e); } window.scrollTo({ top: 0, behavior: 'smooth' }); showAlert('profile-alert', 'info', `ℹ Loaded profile #${pid} as template`); }
     async function createProfile() { if (!requireScanWrite()) return; const name = gi('p-name').value.trim(), plugins = gi('p-plugins').value.trim(), options = gi('p-options').value.trim(); if (!name) return showAlert('profile-alert', 'danger', 'Profile name required'); try { JSON.parse(plugins) } catch { return showAlert('profile-alert', 'danger', 'Plugin JSON invalid') } try { JSON.parse(options) } catch { return showAlert('profile-alert', 'danger', 'Options JSON invalid') } try { await apiReq('/scan/profiles', { method: 'POST', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) }); showAlert('profile-alert', 'success', '✓ Profile "' + name + '" created'); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
-    async function deleteProfile(pid, name) { if (!requireScanWrite()) return; if (!confirm(`Delete profile "${name}" (#${pid})?`)) return; try { await apiReq('/scan/profiles/' + pid, { method: 'DELETE' }); showAlert('profile-alert', 'success', `✓ Profile #${pid} deleted`); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
+    async function deleteProfile(pid, name) { if (!requireScanWrite()) return; if (!confirm(`Delete profile "${name}" (#${pid})?`)) return; try { await apiReq('/scan/profiles/' + pid, { method: 'DELETE' }); showAlert('profile-alert', 'success', `✓ Profile #${pid} deleted`); cancelEditProfile(); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
+
+    // Edit profile: load into form + switch to update mode
+    function editProfile(pid) {
+      const p = S.profiles.find(x => x.id === pid);
+      if (!p) return;
+      S._editProfileId = pid;
+      gi('p-name').value = p.name;
+      gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2);
+      const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json);
+      gi('p-options').value = optStr;
+      try {
+        const o = JSON.parse(optStr);
+        if (o.nmap && o.nmap.mode) gi('p-nmap-mode').value = o.nmap.mode;
+        if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); }
+        if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality);
+        if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); }
+      } catch (e) { console.error('Error parsing profile options', e); }
+      gi('profile-create-btn').style.display = 'none';
+      gi('profile-update-btn').style.display = '';
+      gi('profile-cancel-btn').style.display = '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showAlert('profile-alert', 'info', `Editing profile #${pid} — "${p.name}"`);
+    }
+
+    async function updateProfile() {
+      if (!requireScanWrite()) return;
+      const pid = S._editProfileId;
+      if (!pid) return;
+      const name = gi('p-name').value.trim(), plugins = gi('p-plugins').value.trim(), options = gi('p-options').value.trim();
+      if (!name) return showAlert('profile-alert', 'danger', 'Profile name required');
+      try { JSON.parse(plugins) } catch { return showAlert('profile-alert', 'danger', 'Plugin JSON invalid') }
+      try { JSON.parse(options) } catch { return showAlert('profile-alert', 'danger', 'Options JSON invalid') }
+      try {
+        await apiReq('/scan/profiles/' + pid, { method: 'PUT', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) });
+        showAlert('profile-alert', 'success', `✓ Profile #${pid} updated — "${name}"`);
+        cancelEditProfile();
+        await loadProfiles();
+      } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) }
+    }
+
+    function cancelEditProfile() {
+      S._editProfileId = null;
+      gi('profile-create-btn').style.display = '';
+      gi('profile-update-btn').style.display = 'none';
+      gi('profile-cancel-btn').style.display = 'none';
+    }
 
     // ─── Credentials ───
     async function loadCreds() { try { const creds = await apiReq('/credentials'); S.creds = creds; gi('creds-tbody').innerHTML = creds.length ? creds.map(c => `<tr><td class="mc" style="color:var(--accent)">#${c.id}</td><td class="bright">${esc(c.name)}</td><td class="mc">${esc(c.username)}</td><td><span class="badge b-info">${esc(c.secret_type)}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteCred(${c.id},'${esc(c.name)}')">🗑 Delete</button></td></tr>`).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:28px">No credentials</div></td></tr>'; populateCredDropdown(creds) } catch { } }
     function populateCredDropdown(creds, selectId) { const sel = gi('p-cred'); if (!sel) return; sel.innerHTML = (creds && creds.length) ? creds.map(c => `<option value="${c.id}"${selectId && c.id === selectId ? ' selected' : ''}>#${c.id} — ${esc(c.name)} (${esc(c.username)})</option>`).join('') : '<option value="">No credentials — add one first</option>'; if (selectId) sel.value = String(selectId); if (creds && creds.length && selectId) { const pe = gi('p-plugins'); if (pe) { try { const pj = JSON.parse(pe.value); if (!pj['auth.ssh.inventory']) { pj['auth.ssh.inventory'] = true; pe.value = JSON.stringify(pj); showAlert('profile-alert', 'info', 'ℹ SSH Inventory auto-enabled — credential #' + selectId + ' selected') } } catch { } } } syncProfileOptions() }
-    function syncProfileOptions() { const credId = parseInt(gi('p-cred')?.value) || 0; const sshPort = parseInt(gi('p-ssh-port')?.value) || 22; const crit = parseInt(gi('p-criticality')?.value) || 2; const kinds = []; gi('p-ds-kinds')?.querySelectorAll('input:checked').forEach(cb => kinds.push(cb.value)); const opts = { auth: { ssh_credential_id: credId, ssh_port: sshPort }, cve: { dataset_kinds: kinds }, asset: { criticality: crit } }; gi('p-options').value = JSON.stringify(opts) }
+    function syncProfileOptions() { const nmapMode = gi('p-nmap-mode')?.value || 'top100'; const credId = parseInt(gi('p-cred')?.value) || 0; const sshPort = parseInt(gi('p-ssh-port')?.value) || 22; const crit = parseInt(gi('p-criticality')?.value) || 2; const kinds = []; gi('p-ds-kinds')?.querySelectorAll('input:checked').forEach(cb => kinds.push(cb.value)); const opts = { nmap: { mode: nmapMode }, auth: { ssh_credential_id: credId, ssh_port: sshPort }, cve: { dataset_kinds: kinds }, asset: { criticality: crit } }; gi('p-options').value = JSON.stringify(opts) }
     async function createCred() { if (!requireScanWrite()) return; try { const r = await apiReq('/credentials', { method: 'POST', body: JSON.stringify({ name: gi('cr-name').value, kind: 'ssh', username: gi('cr-user').value, secret_type: gi('cr-type').value, secret: gi('cr-secret').value, passphrase: gi('cr-pass').value || null }) }); showAlert('cred-alert', 'success', '✓ Credential #' + r.id + ' stored — auto-selected in profile SSH dropdown'); gi('cr-secret').value = ''; gi('cr-pass').value = ''; await loadCreds(); populateCredDropdown(S.creds, r.id) } catch (e) { showAlert('cred-alert', 'danger', '⚠ ' + e.message) } }
     async function deleteCred(cid, name) { if (!requireScanWrite()) return; if (!confirm(`Delete credential "${name}" (#${cid})?`)) return; try { await apiReq('/credentials/' + cid, { method: 'DELETE' }); showAlert('cred-alert', 'success', `✓ Credential #${cid} deleted`); await loadCreds() } catch (e) { showAlert('cred-alert', 'danger', '⚠ ' + e.message) } }
 
@@ -3374,15 +3534,28 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
     async function loadSchedules() {
       const el = gi('schedules-tbody'); if (!el) return;
       try {
-        const scheds = await apiReq('/scan/schedules');
-        const pm = {}; S.profiles.forEach(p => pm[p.id] = p.name);
-        const intLabels = { 1: 'Hourly', 6: 'Every 6h', 12: 'Every 12h', 24: 'Daily', 168: 'Weekly', 720: 'Monthly' };
-        el.innerHTML = scheds.length ? scheds.map(s => {
-          const isCustom = s.schedule_type === 'custom';
-          const schedLabel = isCustom
-            ? (s.custom_datetime ? '📅 ' + fmtDate(s.custom_datetime) : '📅 Custom') + (s.repeat ? ` → ${intLabels[s.interval_hours] || s.interval_hours + 'h'}` : ' (once)')
-            : '🔄 ' + (intLabels[s.interval_hours] || s.interval_hours + 'h');
-          return `<tr>
+        S._allScheds = await apiReq('/scan/schedules');
+        renderSchedsPage();
+      } catch { }
+    }
+
+    function goSchedsPage(p) { const totalPages = Math.max(1, Math.ceil(S._allScheds.length / S.schedsPerPage)); S.schedsPage = Math.max(1, Math.min(p, totalPages)); renderSchedsPage(); }
+
+    function renderSchedsPage() {
+      const el = gi('schedules-tbody'); if (!el) return;
+      const scheds = S._allScheds;
+      const pm = {}; S.profiles.forEach(p => pm[p.id] = p.name);
+      const intLabels = { 1: 'Hourly', 6: 'Every 6h', 12: 'Every 12h', 24: 'Daily', 168: 'Weekly', 720: 'Monthly' };
+      const totalPages = Math.max(1, Math.ceil(scheds.length / S.schedsPerPage));
+      if (S.schedsPage > totalPages) S.schedsPage = totalPages;
+      const start = (S.schedsPage - 1) * S.schedsPerPage;
+      const page = scheds.slice(start, start + S.schedsPerPage);
+      el.innerHTML = page.length ? page.map(s => {
+        const isCustom = s.schedule_type === 'custom';
+        const schedLabel = isCustom
+          ? (s.custom_datetime ? '📅 ' + fmtDate(s.custom_datetime) : '📅 Custom') + (s.repeat ? ` → ${intLabels[s.interval_hours] || s.interval_hours + 'h'}` : ' (once)')
+          : '🔄 ' + (intLabels[s.interval_hours] || s.interval_hours + 'h');
+        return `<tr>
       <td class="mc" style="color:var(--accent)">#${s.id}</td>
       <td class="bright" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.name)}">${esc(s.name)}</td>
       <td class="dim" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.target)}">${esc(s.target)}</td>
@@ -3390,12 +3563,12 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
       <td class="mc" style="font-size:.7rem">${schedLabel}</td>
       <td>${s.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge b-info" style="opacity:.5">Paused</span>'}</td>
       <td class="mc dim" style="font-size:.68rem">${s.next_run_at ? fmtDate(s.next_run_at) : '—'}</td>
-      <td style="text-align:right"><div style="display:flex;gap:4px;justify-content:flex-end">
+      <td style="text-align:right"><div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="toggleSchedule(${s.id})">${s.enabled ? '⏸' : '▶'}</button>
         <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})">🗑</button>
       </div></td>
     </tr>`}).join('') : '<tr><td colspan="8"><div class="empty-state" style="padding:16px;font-size:.8rem">No scheduled scans</div></td></tr>';
-      } catch { }
+      renderPager('scheds-pager', S.schedsPage, totalPages, scheds.length, S.schedsPerPage, 'goSchedsPage');
     }
     async function createSchedule() { if (!requireScanWrite()) return;
       const target = gi('sched-target').value.trim();
