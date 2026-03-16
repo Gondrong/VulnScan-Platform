@@ -135,6 +135,20 @@ Supported dataset kinds:
 ---
 
 ## Export Report
+
+✅ Bulk Host Report Generation — Now Live
+The checkboxes in "Vulnerabilities by Host" are now fully functional:
+
+1. Select All checkbox — Added in the table header (first column) to toggle all hosts at once.
+
+2. Floating bulk action bar — Appears at the top of the panel when any host is checked, showing:
+- Selection counter — "3 hosts selected" (updates in real-time)
+- Export CSV — Combined CSV report for all selected hosts
+- Export HTML — Combined HTML vulnerability report for selected hosts
+- Export PDF — Opens print dialog with combined report
+- ⬡ Generate Report — Highlighted primary button (produces the HTML report)
+- ✕ Clear — Deselects all hosts
+
 |  Location |  Scope | Buttons |
 |:-:	|---	|:-:	|
 |  Panel header (top) | All hosts combined |  📄 CSV · 📊 HTML · 📋 PDF	| 
