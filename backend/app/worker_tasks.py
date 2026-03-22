@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 import json
 import logging
@@ -632,3 +632,370 @@ def run_scan_job(job_id: int) -> None:
             except Exception:
                 pass
         db.close()
+
+
+# ── Dataset Refresh Task ────────────────────────────────────────────────────
+
+import subprocess
+import sys
+import gzip
+import urllib.request
+import urllib.error
+import concurrent.futures
+import time
+
+_DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "cvedetails_cvss", "cms_cve_map", "compliance_map"]
+_DS_KIND_DEPENDS = {"cms_cve_map": "nvd_cpe_cve", "cvedetails_cvss": "nvd_cpe_cve"}
+_DS_KIND_NAMES = {
+    "nvd_cpe_cve": "nvd_auto", "cisa_kev": "kev_auto", "epss": "epss_auto",
+    "cms_cve_map": "cms_auto", "compliance_map": "compliance_auto", "cvedetails_cvss": "cvedetails_auto",
+}
+
+_NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+_CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+_EPSS_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
+_CVEORG_API = "https://cveawg.mitre.org/api/cve"
+
+
+def _ds_ts():
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def _ds_fetch_url(url, headers=None, timeout=30):
+    req = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _ds_run_script(name, args):
+    script = f"/scripts/{name}"
+    if not os.path.exists(script):
+        return False, f"Script not found: {script}"
+    try:
+        r = subprocess.run([sys.executable, script] + args, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0:
+            return False, (r.stderr.strip()[:500] or "non-zero exit")
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _ds_refresh_nvd(api_key, nvd_days=120):
+    from pathlib import Path
+    raw_dir = Path("/data/raw/nvd")
+    out_dir = Path("/data/cve")
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
+    start_date = (datetime.now(timezone.utc) - __import__('datetime').timedelta(days=nvd_days)).strftime("%Y-%m-%dT%H:%M:%S.000")
+    rate_delay = 0.6 if api_key else 6.0
+
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["apiKey"] = api_key
+
+    # Fetch first page
+    try:
+        url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex=0&resultsPerPage=2000"
+        first = json.loads(_ds_fetch_url(url, headers, 60))
+    except Exception as e:
+        return False, None, f"NVD first page failed: {e}"
+
+    total = first.get("totalResults", 0)
+    logger.info("NVD total: %d CVEs", total)
+    pages = [first]
+
+    if total > 2000:
+        for start_idx in range(2000, total, 2000):
+            time.sleep(rate_delay)
+            try:
+                url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex={start_idx}&resultsPerPage=2000"
+                page = json.loads(_ds_fetch_url(url, headers, 60))
+                pages.append(page)
+                logger.info("  NVD page: startIndex=%d, got %d", start_idx, len(page.get("vulnerabilities", [])))
+            except Exception as e:
+                logger.warning("  NVD page startIndex=%d failed: %s", start_idx, e)
+
+    # Write raw pages
+    for i, p in enumerate(pages, 1):
+        with open(raw_dir / f"nvd_api_page_{i}.json", "w") as f:
+            json.dump(p, f)
+
+    inputs = [str(raw_dir / f"nvd_api_page_{i}.json") for i in range(1, len(pages) + 1)]
+    out_path = str(out_dir / f"nvd_cpe_cve_{_ds_ts()}.json")
+    ok, err = _ds_run_script("nvd_flatten.py", ["--inputs"] + inputs + ["--out", out_path])
+    if not ok:
+        return False, None, f"nvd_flatten.py: {err}"
+    return True, out_path, None
+
+
+def _ds_refresh_cisa_kev():
+    from pathlib import Path
+    raw_dir = Path("/data/raw/cisa")
+    out_dir = Path("/data/cve")
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        data = _ds_fetch_url(_CISA_KEV_URL, timeout=30)
+        raw_path = str(raw_dir / "known_exploited_vulnerabilities.json")
+        with open(raw_path, "wb") as f:
+            f.write(data)
+    except Exception as e:
+        return False, None, f"CISA KEV fetch: {e}"
+
+    out_path = str(out_dir / f"cisa_kev_{_ds_ts()}.json")
+    ok, err = _ds_run_script("cisa_kev_convert.py", ["--in", raw_path, "--out", out_path])
+    if not ok:
+        return False, None, f"cisa_kev_convert.py: {err}"
+    return True, out_path, None
+
+
+def _ds_refresh_epss():
+    from pathlib import Path
+    raw_dir = Path("/data/raw/epss")
+    out_dir = Path("/data/cve")
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        data = _ds_fetch_url(_EPSS_URL, timeout=60)
+        csv_data = gzip.decompress(data)
+        raw_path = str(raw_dir / "epss_scores-current.csv")
+        with open(raw_path, "wb") as f:
+            f.write(csv_data)
+    except Exception as e:
+        return False, None, f"EPSS fetch: {e}"
+
+    out_path = str(out_dir / f"epss_{_ds_ts()}.json")
+    ok, err = _ds_run_script("epss_convert.py", ["--in", raw_path, "--out", out_path])
+    if not ok:
+        return False, None, f"epss_convert.py: {err}"
+    return True, out_path, None
+
+
+def _ds_refresh_cvedetails(nvd_path):
+    from pathlib import Path
+    out_dir = Path("/data/cve")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if not os.path.exists(nvd_path):
+        return False, None, f"NVD file not found: {nvd_path}"
+
+    with open(nvd_path) as f:
+        cve_ids = [e["cve"] for e in json.load(f) if e.get("cve", "").startswith("CVE-")]
+
+    # Load cache
+    cache_path = out_dir / "cvedetails_cvss.json"
+    existing = {}
+    if cache_path.exists():
+        try:
+            with open(cache_path) as f:
+                existing = json.load(f)
+        except Exception:
+            pass
+
+    new_ids = [c for c in cve_ids if c not in existing]
+    logger.info("CVE.org: %d total, %d new to fetch", len(cve_ids), len(new_ids))
+
+    def _fetch_one(cve_id):
+        try:
+            raw = _ds_fetch_url(f"{_CVEORG_API}/{cve_id}", {"Accept": "application/json", "User-Agent": "VulnScan/2.0"}, 15)
+            d = json.loads(raw)
+            containers = d.get("containers", {})
+            cna_score = adp_score = None
+            for m in containers.get("cna", {}).get("metrics", []):
+                for k in ("cvssV3_1", "cvssV3_0", "cvssV4_0"):
+                    v = m.get(k)
+                    if v and v.get("baseScore"):
+                        cna_score = float(v["baseScore"]); break
+                if cna_score: break
+            for adp in containers.get("adp", []):
+                for m in adp.get("metrics", []):
+                    for k in ("cvssV3_1", "cvssV3_0", "cvssV4_0"):
+                        v = m.get(k)
+                        if v and v.get("baseScore"):
+                            adp_score = float(v["baseScore"]); break
+                    if adp_score: break
+                if adp_score: break
+            if cna_score or adp_score:
+                best = max(filter(None, [cna_score, adp_score]))
+                sev = "critical" if best >= 9 else "high" if best >= 7 else "medium" if best >= 4 else "low" if best > 0 else "info"
+                return cve_id, {"cvss": best, "severity": sev, "cna_cvss": cna_score, "adp_cvss": adp_score}
+        except Exception:
+            pass
+        return cve_id, None
+
+    if new_ids:
+        done = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            for f in concurrent.futures.as_completed({pool.submit(_fetch_one, c): c for c in new_ids}):
+                cve_id, r = f.result()
+                if r:
+                    existing[cve_id] = r
+                done += 1
+                if done % 500 == 0:
+                    logger.info("  CVE.org: %d/%d", done, len(new_ids))
+
+    out_path = str(out_dir / f"cvedetails_cvss_{_ds_ts()}.json")
+    with open(out_path, "w") as f:
+        json.dump(existing, f)
+    return True, out_path, None
+
+
+def _ds_refresh_cms_cve_map(nvd_path):
+    from pathlib import Path
+    out_dir = Path("/data/cve")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(nvd_path):
+        return False, None, f"NVD file not found: {nvd_path}"
+    out_path = str(out_dir / f"cms_cve_map_{_ds_ts()}.json")
+    ok, err = _ds_run_script("generate_cms_cve_map.py", ["--nvd", nvd_path, "--out", out_path])
+    if not ok:
+        return False, None, f"generate_cms_cve_map.py: {err}"
+    return True, out_path, None
+
+
+def _ds_refresh_compliance_map():
+    from pathlib import Path
+    out_dir = Path("/data/cve")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = str(out_dir / f"compliance_map_{_ds_ts()}.json")
+    ok, err = _ds_run_script("generate_compliance_map.py", ["--out", out_path])
+    if not ok:
+        return False, None, f"generate_compliance_map.py: {err}"
+    return True, out_path, None
+
+
+def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> None:
+    """Background task: fetch/convert/swap datasets from external sources."""
+    import redis as _redis
+
+    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+    r = _redis.Redis.from_url(redis_url)
+    lock_key = f"dataset_refresh_lock:{workspace_id}"
+    status_key = f"dataset_refresh:{workspace_id}"
+
+    if not r.set(lock_key, "1", nx=True, ex=1800):
+        logger.warning("Dataset refresh already running for workspace %d", workspace_id)
+        return
+
+    requested = kinds or list(_DS_KINDS_ORDER)
+    ordered = []
+    for k in _DS_KINDS_ORDER:
+        if k in requested:
+            dep = _DS_KIND_DEPENDS.get(k)
+            if dep and dep not in ordered and dep not in requested:
+                ordered.append(dep)
+            if k not in ordered:
+                ordered.append(k)
+
+    state = {
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "kinds": {k: {"status": "pending", "message": ""} for k in ordered},
+        "current_kind": None,
+        "finished_at": None,
+    }
+    r.setex(status_key, 3600, json.dumps(state))
+
+    db = SessionLocal()
+    api_key = os.environ.get("NVD_API_KEY", "")
+    results: dict[str, str] = {}
+
+    _dispatch = {
+        "nvd_cpe_cve": lambda: _ds_refresh_nvd(api_key),
+        "cisa_kev": lambda: _ds_refresh_cisa_kev(),
+        "epss": lambda: _ds_refresh_epss(),
+        "cvedetails_cvss": lambda dep: _ds_refresh_cvedetails(dep),
+        "cms_cve_map": lambda dep: _ds_refresh_cms_cve_map(dep),
+        "compliance_map": lambda: _ds_refresh_compliance_map(),
+    }
+
+    try:
+        for kind in ordered:
+            if not r.exists(lock_key):
+                logger.info("Dataset refresh cancelled")
+                state["status"] = "cancelled"
+                break
+
+            state["current_kind"] = kind
+            state["kinds"][kind]["status"] = "running"
+            r.setex(status_key, 3600, json.dumps(state))
+            logger.info("Refreshing dataset: %s", kind)
+
+            dep = _DS_KIND_DEPENDS.get(kind)
+            dep_path = None
+            if dep:
+                dep_path = results.get(dep) or "/data/cve/nvd_cpe_cve.json"
+                if not os.path.exists(dep_path):
+                    state["kinds"][kind] = {"status": "failed", "message": f"Dependency {dep} not available"}
+                    r.setex(status_key, 3600, json.dumps(state))
+                    continue
+
+            try:
+                fn = _dispatch[kind]
+                if dep:
+                    success, out, err = fn(dep_path)
+                else:
+                    success, out, err = fn()
+            except Exception as exc:
+                success, out, err = False, None, str(exc)
+
+            if success and out:
+                _swap_dataset(workspace_id, kind, out, db)
+                results[kind] = out
+                state["kinds"][kind] = {"status": "done", "message": ""}
+                logger.info("  %s: done -> %s", kind, out)
+            else:
+                state["kinds"][kind] = {"status": "failed", "message": err or "Unknown error"}
+                logger.error("  %s: failed — %s", kind, err)
+
+            r.setex(status_key, 3600, json.dumps(state))
+
+        if state["status"] != "cancelled":
+            done_count = sum(1 for v in state["kinds"].values() if v["status"] == "done")
+            fail_count = sum(1 for v in state["kinds"].values() if v["status"] == "failed")
+            state["status"] = "done" if fail_count == 0 else "partial" if done_count > 0 else "failed"
+
+        state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        state["current_kind"] = None
+        r.setex(status_key, 3600, json.dumps(state))
+        logger.info("Dataset refresh finished: %s", state["status"])
+
+    except Exception as e:
+        state["status"] = "failed"
+        state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        state["current_kind"] = None
+        r.setex(status_key, 3600, json.dumps(state))
+        logger.exception("Dataset refresh crashed: %s", e)
+    finally:
+        r.delete(lock_key)
+        db.close()
+
+
+def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> None:
+    """Atomically swap: create new dataset, disable old ones of same kind."""
+    try:
+        db.query(models.CveDataset).filter(
+            models.CveDataset.workspace_id == ws_id,
+            models.CveDataset.kind == kind,
+            models.CveDataset.enabled == True,
+        ).update({"enabled": False})
+
+        name = _DS_KIND_NAMES.get(kind, kind)
+        new_ds = models.CveDataset(
+            workspace_id=ws_id,
+            name=name,
+            kind=kind,
+            path=new_file_path,
+            enabled=True,
+        )
+        db.add(new_ds)
+        db.commit()
+        logger.info("Swapped dataset %s: new ID=%d", kind, new_ds.id)
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to swap dataset %s: %s", kind, e)
+        raise
