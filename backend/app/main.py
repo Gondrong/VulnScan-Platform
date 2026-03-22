@@ -23,7 +23,7 @@ logger = logging.getLogger("vulnscan")
 
 app = FastAPI(
     title="VulnScan Platform",
-    version="1.0.0",
+    version="2.1.0",
     description="Enterprise Risk-Based Vulnerability Management Platform",
 )
 
