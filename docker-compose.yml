@@ -75,6 +75,7 @@ services:
     volumes:
       - ./data:/data
       - ./backend:/app
+      - ./scripts:/scripts
     command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} scans
     restart: unless-stopped
 
