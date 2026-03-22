@@ -1356,7 +1356,7 @@
       <div class="logo-name">
         <div class="logo-dot"></div>VulnScan
       </div>
-      <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v1.0</div>
+      <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v2.1.0</div>
     </div>
     <div class="nav-wrap">
       <div class="nav-sec">Monitoring</div>
@@ -2238,6 +2238,7 @@
               </div><button class="btn btn-ghost btn-sm" onclick="loadProfiles()">↻</button>
             </div>
             <div class="pb np">
+              <div class="tbl-wrap">
               <table class="tbl">
                 <thead>
                   <tr>
@@ -2255,6 +2256,8 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
+              <div id="profiles-pager" class="pager" style="display:none"></div>
             </div>
           </div>
         </div>
@@ -2297,6 +2300,7 @@
               </div><button class="btn btn-ghost btn-sm" onclick="loadCreds()">↻</button>
             </div>
             <div class="pb np">
+              <div class="tbl-wrap">
               <table class="tbl">
                 <thead>
                   <tr>
@@ -2315,6 +2319,8 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
+              <div id="creds-pager" class="pager" style="display:none"></div>
             </div>
           </div>
         </div>
@@ -2363,6 +2369,7 @@
               </div><button class="btn btn-ghost btn-sm" onclick="loadDs()">↻</button>
             </div>
             <div class="pb np">
+              <div class="tbl-wrap">
               <table class="tbl">
                 <thead>
                   <tr>
@@ -2381,6 +2388,8 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
+              <div id="ds-pager" class="pager" style="display:none"></div>
             </div>
           </div>
         </div>
@@ -2635,7 +2644,7 @@
 
   <script>
     const API_BASE = (() => { if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, ''); const p = window.location.protocol, h = window.location.hostname; return `${p}//${h}:8888` })();
-    const S = { token: null, userEmail: 'admin@local', userRole: 'viewer', allFindings: [], sevFilter: 'all', scanType: 'internal', profiles: [], creds: [], deletedJobIds: new Set(), dashInterval: null, jobsInterval: null, clockInterval: null, jobsPage: 1, jobsPerPage: 10, schedsPage: 1, schedsPerPage: 5, _allJobs: [], _allScheds: [] };
+    const S = { token: null, userEmail: 'admin@local', userRole: 'viewer', allFindings: [], sevFilter: 'all', scanType: 'internal', profiles: [], creds: [], _allDs: [], deletedJobIds: new Set(), dashInterval: null, jobsInterval: null, clockInterval: null, jobsPage: 1, jobsPerPage: 10, schedsPage: 1, schedsPerPage: 5, _allJobs: [], _allScheds: [], profilesPage: 1, profilesPerPage: 10, credsPage: 1, credsPerPage: 10, dsPage: 1, dsPerPage: 6 };
     const gi = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtDate = d => { if (!d) return '-'; try { return new Date(d).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) } catch { return String(d) } };
@@ -2935,7 +2944,9 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     async function deleteJob(jid, tgt) { if (!requireScanWrite()) return; if (!confirm(`Delete job #${jid} (${tgt}) and all findings?`)) return; S.deletedJobIds.add(jid); S._allJobs = S._allJobs.filter(j => j.id !== jid); renderJobsPage(); try { await apiReq('/scan/jobs/' + jid, { method: 'DELETE' }); showAlert('job-alert', 'success', `✓ Job #${jid} deleted`); loadDashboard(false); loadAttackGraph() } catch (e) { if (e.status === 404) { showAlert('job-alert', 'info', `Job #${jid} already removed`) } else { S.deletedJobIds.delete(jid); await loadJobs(); showAlert('job-alert', 'danger', '⚠ ' + e.message) } } }
 
     // ─── Profiles ───
-    async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; gi('profiles-tbody').innerHTML = S.profiles.length ? S.profiles.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="editProfile(${p.id})">✏️ Edit</button> <button class="btn btn-ghost btn-sm" onclick="loadProfileAsTemplate(${p.id})">📋 Clone</button> <button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑</button></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>' } catch (e) { console.error('[loadProfiles]', e) } }
+    async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; renderProfilesPage(); } catch (e) { console.error('[loadProfiles]', e) } }
+    function goProfilesPage(p) { const totalPages = Math.max(1, Math.ceil(S.profiles.length / S.profilesPerPage)); S.profilesPage = Math.max(1, Math.min(p, totalPages)); renderProfilesPage(); }
+    function renderProfilesPage() { const vis = S.profiles; const totalPages = Math.max(1, Math.ceil(vis.length / S.profilesPerPage)); if (S.profilesPage > totalPages) S.profilesPage = totalPages; const start = (S.profilesPage - 1) * S.profilesPerPage; const page = vis.slice(start, start + S.profilesPerPage); gi('profiles-tbody').innerHTML = page.length ? page.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><div style="display:flex;gap:3px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="editProfile(${p.id})">✏️ Edit</button><button class="btn btn-ghost btn-sm" onclick="loadProfileAsTemplate(${p.id})">📋 Clone</button><button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑</button></div></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>'; renderPager('profiles-pager', S.profilesPage, totalPages, vis.length, S.profilesPerPage, 'goProfilesPage'); }
     function loadProfileAsTemplate(pid) { const p = S.profiles.find(x => x.id === pid); if (!p) return; gi('p-name').value = p.name + ' (Copy)'; gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2); const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json); gi('p-options').value = optStr; try { const o = JSON.parse(optStr); if (o.nmap && o.nmap.mode) gi('p-nmap-mode').value = o.nmap.mode; if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); } if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality); if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); } } catch (e) { console.error('Error parsing profile options', e); } window.scrollTo({ top: 0, behavior: 'smooth' }); showAlert('profile-alert', 'info', `ℹ Loaded profile #${pid} as template`); }
     async function createProfile() { if (!requireScanWrite()) return; const name = gi('p-name').value.trim(), plugins = gi('p-plugins').value.trim(), options = gi('p-options').value.trim(); if (!name) return showAlert('profile-alert', 'danger', 'Profile name required'); try { JSON.parse(plugins) } catch { return showAlert('profile-alert', 'danger', 'Plugin JSON invalid') } try { JSON.parse(options) } catch { return showAlert('profile-alert', 'danger', 'Options JSON invalid') } try { await apiReq('/scan/profiles', { method: 'POST', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) }); showAlert('profile-alert', 'success', '✓ Profile "' + name + '" created'); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
     async function deleteProfile(pid, name) { if (!requireScanWrite()) return; if (!confirm(`Delete profile "${name}" (#${pid})?`)) return; try { await apiReq('/scan/profiles/' + pid, { method: 'DELETE' }); showAlert('profile-alert', 'success', `✓ Profile #${pid} deleted`); cancelEditProfile(); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
@@ -2987,14 +2998,18 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     }
 
     // ─── Credentials ───
-    async function loadCreds() { try { const creds = await apiReq('/credentials'); S.creds = creds; gi('creds-tbody').innerHTML = creds.length ? creds.map(c => `<tr><td class="mc" style="color:var(--accent)">#${c.id}</td><td class="bright">${esc(c.name)}</td><td class="mc">${esc(c.username)}</td><td><span class="badge b-info">${esc(c.secret_type)}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteCred(${c.id},'${esc(c.name)}')">🗑 Delete</button></td></tr>`).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:28px">No credentials</div></td></tr>'; populateCredDropdown(creds) } catch { } }
+    async function loadCreds() { try { const creds = await apiReq('/credentials'); S.creds = creds; renderCredsPage(); populateCredDropdown(creds) } catch { } }
+    function goCredsPage(p) { const totalPages = Math.max(1, Math.ceil(S.creds.length / S.credsPerPage)); S.credsPage = Math.max(1, Math.min(p, totalPages)); renderCredsPage(); }
+    function renderCredsPage() { const vis = S.creds; const totalPages = Math.max(1, Math.ceil(vis.length / S.credsPerPage)); if (S.credsPage > totalPages) S.credsPage = totalPages; const start = (S.credsPage - 1) * S.credsPerPage; const page = vis.slice(start, start + S.credsPerPage); gi('creds-tbody').innerHTML = page.length ? page.map(c => `<tr><td class="mc" style="color:var(--accent)">#${c.id}</td><td class="bright">${esc(c.name)}</td><td class="mc">${esc(c.username)}</td><td><span class="badge b-info">${esc(c.secret_type)}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="deleteCred(${c.id},'${esc(c.name)}')">🗑 Delete</button></td></tr>`).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:28px">No credentials</div></td></tr>'; renderPager('creds-pager', S.credsPage, totalPages, vis.length, S.credsPerPage, 'goCredsPage'); }
     function populateCredDropdown(creds, selectId) { const sel = gi('p-cred'); if (!sel) return; sel.innerHTML = (creds && creds.length) ? creds.map(c => `<option value="${c.id}"${selectId && c.id === selectId ? ' selected' : ''}>#${c.id} — ${esc(c.name)} (${esc(c.username)})</option>`).join('') : '<option value="">No credentials — add one first</option>'; if (selectId) sel.value = String(selectId); if (creds && creds.length && selectId) { const pe = gi('p-plugins'); if (pe) { try { const pj = JSON.parse(pe.value); if (!pj['auth.ssh.inventory']) { pj['auth.ssh.inventory'] = true; pe.value = JSON.stringify(pj); showAlert('profile-alert', 'info', 'ℹ SSH Inventory auto-enabled — credential #' + selectId + ' selected') } } catch { } } } syncProfileOptions() }
     function syncProfileOptions() { const nmapMode = gi('p-nmap-mode')?.value || 'top100'; const credId = parseInt(gi('p-cred')?.value) || 0; const sshPort = parseInt(gi('p-ssh-port')?.value) || 22; const crit = parseInt(gi('p-criticality')?.value) || 2; const kinds = []; gi('p-ds-kinds')?.querySelectorAll('input:checked').forEach(cb => kinds.push(cb.value)); const opts = { nmap: { mode: nmapMode }, auth: { ssh_credential_id: credId, ssh_port: sshPort }, cve: { dataset_kinds: kinds }, asset: { criticality: crit } }; gi('p-options').value = JSON.stringify(opts) }
     async function createCred() { if (!requireScanWrite()) return; try { const r = await apiReq('/credentials', { method: 'POST', body: JSON.stringify({ name: gi('cr-name').value, kind: 'ssh', username: gi('cr-user').value, secret_type: gi('cr-type').value, secret: gi('cr-secret').value, passphrase: gi('cr-pass').value || null }) }); showAlert('cred-alert', 'success', '✓ Credential #' + r.id + ' stored — auto-selected in profile SSH dropdown'); gi('cr-secret').value = ''; gi('cr-pass').value = ''; await loadCreds(); populateCredDropdown(S.creds, r.id) } catch (e) { showAlert('cred-alert', 'danger', '⚠ ' + e.message) } }
     async function deleteCred(cid, name) { if (!requireScanWrite()) return; if (!confirm(`Delete credential "${name}" (#${cid})?`)) return; try { await apiReq('/credentials/' + cid, { method: 'DELETE' }); showAlert('cred-alert', 'success', `✓ Credential #${cid} deleted`); await loadCreds() } catch (e) { showAlert('cred-alert', 'danger', '⚠ ' + e.message) } }
 
     // ─── Datasets ───
-    async function loadDs() { try { const ds = await apiReq('/datasets'); gi('ds-tbody').innerHTML = ds.length ? ds.map(d => `<tr><td class="mc" style="color:var(--accent)">#${d.id}</td><td class="bright">${esc(d.name)}</td><td><span class="badge b-info">${esc(d.kind)}</span></td><td>${d.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge b-disabled">Disabled</span>'}</td><td style="text-align:right"><div style="display:flex;gap:6px;justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="toggleDs(${d.id})">${d.enabled ? '⏸ Disable' : '▶ Enable'}</button><button class="btn btn-danger btn-sm" onclick="deleteDs(${d.id},'${esc(d.name)}')">🗑</button></div></td></tr>`).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:28px">No datasets</div></td></tr>' } catch { } }
+    async function loadDs() { try { S._allDs = await apiReq('/datasets'); renderDsPage(); } catch { } }
+    function goDsPage(p) { const totalPages = Math.max(1, Math.ceil(S._allDs.length / S.dsPerPage)); S.dsPage = Math.max(1, Math.min(p, totalPages)); renderDsPage(); }
+    function renderDsPage() { const vis = S._allDs; const totalPages = Math.max(1, Math.ceil(vis.length / S.dsPerPage)); if (S.dsPage > totalPages) S.dsPage = totalPages; const start = (S.dsPage - 1) * S.dsPerPage; const page = vis.slice(start, start + S.dsPerPage); gi('ds-tbody').innerHTML = page.length ? page.map(d => `<tr><td class="mc" style="color:var(--accent)">#${d.id}</td><td class="bright">${esc(d.name)}</td><td><span class="badge b-info">${esc(d.kind)}</span></td><td>${d.enabled ? '<span class="badge b-ok">Active</span>' : '<span class="badge b-disabled">Disabled</span>'}</td><td style="text-align:right"><div style="display:flex;gap:3px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="toggleDs(${d.id})">${d.enabled ? '⏸ Disable' : '▶ Enable'}</button><button class="btn btn-danger btn-sm" onclick="deleteDs(${d.id},'${esc(d.name)}')">🗑</button></div></td></tr>`).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:28px">No datasets</div></td></tr>'; renderPager('ds-pager', S.dsPage, totalPages, vis.length, S.dsPerPage, 'goDsPage'); }
     async function uploadDs() { if (!requireScanWrite()) return; const file = gi('ds-file').files[0]; if (!file) return showAlert('ds-alert', 'danger', 'Select a JSON file first'); const btn = gi('ds-upload-btn'); btn.disabled = true; gi('ds-spin').style.display = 'inline-block'; try { const form = new FormData(); form.append('file', file); const kind = gi('ds-kind').value, name = gi('ds-name').value; const res = await fetch(`${API_BASE}/datasets/upload?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + S.token }, body: form }); if (!res.ok) throw new Error(await res.text()); const d = await res.json(); showAlert('ds-alert', 'success', `✓ Uploaded — ID #${d.dataset_id}`); await loadDs() } catch (e) { showAlert('ds-alert', 'danger', '⚠ ' + e.message) } finally { btn.disabled = false; gi('ds-spin').style.display = 'none' } }
     async function toggleDs(did) { if (!requireScanWrite()) return; try { const r = await apiReq('/datasets/' + did + '/toggle', { method: 'PATCH' }); showAlert('ds-alert', 'success', `✓ Dataset #${did} ${r.enabled ? 'enabled' : 'disabled'}`); await loadDs() } catch (e) { showAlert('ds-alert', 'danger', '⚠ ' + e.message) } }
     async function deleteDs(did, name) { if (!requireScanWrite()) return; if (!confirm(`Delete dataset "${name}" (#${did})?`)) return; try { await apiReq('/datasets/' + did, { method: 'DELETE' }); showAlert('ds-alert', 'success', `✓ Dataset #${did} deleted`); await loadDs() } catch (e) { showAlert('ds-alert', 'danger', '⚠ ' + e.message) } }
