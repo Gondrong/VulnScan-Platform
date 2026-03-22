@@ -222,6 +222,24 @@
       opacity: .85
     }
 
+    /* Expandable nav group */
+    .ni-expand-arrow {
+      margin-left: auto;
+      font-size: .65rem;
+      transition: transform .2s ease;
+      color: var(--text3)
+    }
+    .ni-group.open > .ni-parent .ni-expand-arrow { transform: rotate(90deg); color: var(--accent) }
+    .ni-group-items {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height .25s ease-out
+    }
+    .ni-group.open > .ni-group-items {
+      max-height: 300px;
+      transition: max-height .3s ease-in
+    }
+
     .sidebar-foot {
       padding: 14px 20px;
       border-top: 1px solid var(--border)
@@ -1367,6 +1385,18 @@
           id="running-badge" style="display:none;background:var(--accent);color:#07090f">●</span></button>
       <button class="ni ni-sub" id="nav-vulns" onclick="navTo('vulns')"><span
           class="ni-ic">⊘</span>Vulnerabilities</button>
+      <div class="nav-sec">Security Intel</div>
+      <div class="ni-group" id="nav-group-si">
+        <button class="ni ni-parent" id="nav-secinfo" onclick="toggleNavGroup('nav-group-si','secinfo')"><span class="ni-ic">🛡</span>Security Information<span class="ni-expand-arrow">▶</span></button>
+        <div class="ni-group-items">
+          <button class="ni ni-sub" id="nav-si-nvd" onclick="navTo('si-nvd')"><span class="ni-ic">📋</span>NVD</button>
+          <button class="ni ni-sub" id="nav-si-cve" onclick="navTo('si-cve')"><span class="ni-ic">🔍</span>CVE</button>
+          <button class="ni ni-sub" id="nav-si-kev" onclick="navTo('si-kev')"><span class="ni-ic">⚠</span>CISA-KEV</button>
+          <button class="ni ni-sub" id="nav-si-cms" onclick="navTo('si-cms')"><span class="ni-ic">🌐</span>CMS-CVE</button>
+          <button class="ni ni-sub" id="nav-si-epss" onclick="navTo('si-epss')"><span class="ni-ic">📊</span>EPSS</button>
+          <button class="ni ni-sub" id="nav-si-comp" onclick="navTo('si-comp')"><span class="ni-ic">✓</span>Compliance</button>
+        </div>
+      </div>
       <div class="nav-sec">Configuration</div>
       <button class="ni" id="nav-profiles" onclick="navTo('profiles')"><span class="ni-ic">⊞</span>Profiles</button>
       <button class="ni" id="nav-credentials" onclick="navTo('credentials')"><span
@@ -1718,6 +1748,23 @@
             flex-wrap: wrap;
             margin-left: auto
           }
+
+          /* Security Information expandable rows */
+          .si-toggle { cursor:pointer; color:var(--accent); font-size:.85rem; user-select:none; width:24px; text-align:center; transition:transform .15s }
+          .si-toggle.open { transform:rotate(90deg) }
+          .si-detail-row td { padding:0 !important; border-top:none !important }
+          .si-detail { overflow:hidden; max-height:0; transition:max-height .25s ease-out; background:rgba(0,212,255,.02) }
+          .si-detail.open { max-height:800px; transition:max-height .35s ease-in }
+          .si-detail-inner { padding:14px 20px; display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px 24px }
+          .si-dl { margin:0 }
+          .si-dl dt { font-family:var(--fm); font-size:.62rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text3); margin-bottom:2px }
+          .si-dl dd { margin:0 0 10px; font-size:.82rem; color:var(--text1); word-break:break-word }
+          .si-dl dd a { color:var(--accent); text-decoration:none }
+          .si-dl dd a:hover { text-decoration:underline }
+          .si-badge-row { display:flex; flex-wrap:wrap; gap:4px }
+          .si-badge-sm { display:inline-block; padding:2px 7px; font-size:.68rem; border-radius:4px; background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--text2) }
+          .si-card:hover { border-color:var(--accent); box-shadow:0 0 20px rgba(0,212,255,.08) }
+          .si-epss-bar { display:inline-block; height:8px; border-radius:4px; background:var(--accent); vertical-align:middle }
 
           .hf-chip {
             display: inline-flex;
@@ -2403,6 +2450,240 @@
         </div>
       </div>
 
+      <!-- ═══ SECURITY INFORMATION ═══ -->
+      <div id="page-secinfo" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">Security <span class="hl">Information</span></div>
+            <div class="ph-sub">// Browse threat intelligence datasets</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;padding:0 4px">
+          <div class="panel si-card" style="margin:0;cursor:pointer" onclick="navTo('si-nvd')">
+            <div class="pb" style="text-align:center;padding:28px 16px">
+              <div style="font-size:2rem;margin-bottom:8px">📋</div>
+              <div class="bright" style="font-size:1.05rem;font-weight:600;margin-bottom:4px">NVD Database</div>
+              <div class="dim" style="font-size:.78rem">National Vulnerability Database — CVE entries with CVSS scores, affected products, and references</div>
+            </div>
+          </div>
+          <div class="panel si-card" style="margin:0;cursor:pointer" onclick="navTo('si-cve')">
+            <div class="pb" style="text-align:center;padding:28px 16px">
+              <div style="font-size:2rem;margin-bottom:8px">🔍</div>
+              <div class="bright" style="font-size:1.05rem;font-weight:600;margin-bottom:4px">CVE Database</div>
+              <div class="dim" style="font-size:.78rem">Multi-source CVSS scores from CNA and ADP providers</div>
+            </div>
+          </div>
+          <div class="panel si-card" style="margin:0;cursor:pointer" onclick="navTo('si-kev')">
+            <div class="pb" style="text-align:center;padding:28px 16px">
+              <div style="font-size:2rem;margin-bottom:8px">⚠</div>
+              <div class="bright" style="font-size:1.05rem;font-weight:600;margin-bottom:4px">CISA-KEV Catalog</div>
+              <div class="dim" style="font-size:.78rem">Known Exploited Vulnerabilities — actively exploited CVEs with remediation deadlines</div>
+            </div>
+          </div>
+          <div class="panel si-card" style="margin:0;cursor:pointer" onclick="navTo('si-cms')">
+            <div class="pb" style="text-align:center;padding:28px 16px">
+              <div style="font-size:2rem;margin-bottom:8px">🌐</div>
+              <div class="bright" style="font-size:1.05rem;font-weight:600;margin-bottom:4px">CMS-CVE Map</div>
+              <div class="dim" style="font-size:.78rem">CMS-specific vulnerabilities for WordPress, Drupal, Joomla, GitLab and more</div>
+            </div>
+          </div>
+          <div class="panel si-card" style="margin:0;cursor:pointer" onclick="navTo('si-epss')">
+            <div class="pb" style="text-align:center;padding:28px 16px">
+              <div style="font-size:2rem;margin-bottom:8px">📊</div>
+              <div class="bright" style="font-size:1.05rem;font-weight:600;margin-bottom:4px">EPSS Scores</div>
+              <div class="dim" style="font-size:.78rem">Exploit Prediction Scoring System — probability of exploitation in the next 30 days</div>
+            </div>
+          </div>
+          <div class="panel si-card" style="margin:0;cursor:pointer" onclick="navTo('si-comp')">
+            <div class="pb" style="text-align:center;padding:28px 16px">
+              <div style="font-size:2rem;margin-bottom:8px">✓</div>
+              <div class="bright" style="font-size:1.05rem;font-weight:600;margin-bottom:4px">Compliance Mapping</div>
+              <div class="dim" style="font-size:.78rem">NIST 800-53, PCI DSS v4, CIS v8, and ISO 27001 control mappings</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SI: NVD -->
+      <div id="page-si-nvd" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">NVD <span class="hl">Database</span></div>
+            <div class="ph-sub">// National Vulnerability Database — CVE entries with CVSS, affected products, references</div>
+          </div>
+          <div class="ph-right"><button class="btn btn-ghost btn-sm" onclick="navTo('secinfo')">← Back</button></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>NVD Entries</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="si-nvd-search" class="fc" style="width:220px;height:32px;font-size:.78rem" placeholder="Search CVE, keyword..." onkeydown="if(event.key==='Enter')loadSiPage('nvd_cpe_cve')"/>
+              <button class="btn btn-primary btn-sm" onclick="loadSiPage('nvd_cpe_cve')">Search</button>
+              <span id="si-nvd-total" class="dim" style="font-size:.75rem;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div class="pb np">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="width:40px"></th><th>CVE</th><th>Description</th><th>Severity</th><th>CVSS</th></tr></thead>
+                <tbody id="si-nvd-tbody"><tr><td colspan="5"><div class="empty-state" style="padding:28px">Loading...</div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="si-nvd-pager" class="pager" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SI: CVE -->
+      <div id="page-si-cve" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">CVE <span class="hl">Database</span></div>
+            <div class="ph-sub">// Multi-source CVSS scores from CNA and ADP providers</div>
+          </div>
+          <div class="ph-right"><button class="btn btn-ghost btn-sm" onclick="navTo('secinfo')">← Back</button></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>CVE Entries</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="si-cve-search" class="fc" style="width:220px;height:32px;font-size:.78rem" placeholder="Search CVE..." onkeydown="if(event.key==='Enter')loadSiPage('cvedetails_cvss')"/>
+              <button class="btn btn-primary btn-sm" onclick="loadSiPage('cvedetails_cvss')">Search</button>
+              <span id="si-cve-total" class="dim" style="font-size:.75rem;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div class="pb np">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="width:40px"></th><th>CVE</th><th>Severity</th><th>CVSS</th><th>Source</th></tr></thead>
+                <tbody id="si-cve-tbody"><tr><td colspan="5"><div class="empty-state" style="padding:28px">Loading...</div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="si-cve-pager" class="pager" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SI: CISA-KEV -->
+      <div id="page-si-kev" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">CISA-KEV <span class="hl">Catalog</span></div>
+            <div class="ph-sub">// Known Exploited Vulnerabilities with remediation deadlines</div>
+          </div>
+          <div class="ph-right"><button class="btn btn-ghost btn-sm" onclick="navTo('secinfo')">← Back</button></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>KEV Entries</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="si-kev-search" class="fc" style="width:220px;height:32px;font-size:.78rem" placeholder="Search CVE, vendor, product..." onkeydown="if(event.key==='Enter')loadSiPage('cisa_kev')"/>
+              <button class="btn btn-primary btn-sm" onclick="loadSiPage('cisa_kev')">Search</button>
+              <span id="si-kev-total" class="dim" style="font-size:.75rem;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div class="pb np">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="width:40px"></th><th>CVE</th><th>Vendor / Product</th><th>Date Added</th><th>Due Date</th><th>Ransomware</th></tr></thead>
+                <tbody id="si-kev-tbody"><tr><td colspan="6"><div class="empty-state" style="padding:28px">Loading...</div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="si-kev-pager" class="pager" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SI: CMS-CVE -->
+      <div id="page-si-cms" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">CMS-CVE <span class="hl">Map</span></div>
+            <div class="ph-sub">// CMS-specific vulnerabilities for popular platforms</div>
+          </div>
+          <div class="ph-right"><button class="btn btn-ghost btn-sm" onclick="navTo('secinfo')">← Back</button></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>CMS CVE Entries</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="si-cms-search" class="fc" style="width:220px;height:32px;font-size:.78rem" placeholder="Search CVE, CMS name..." onkeydown="if(event.key==='Enter')loadSiPage('cms_cve_map')"/>
+              <button class="btn btn-primary btn-sm" onclick="loadSiPage('cms_cve_map')">Search</button>
+              <span id="si-cms-total" class="dim" style="font-size:.75rem;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div class="pb np">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="width:40px"></th><th>CVE</th><th>CMS</th><th>Description</th><th>Severity</th><th>CVSS</th></tr></thead>
+                <tbody id="si-cms-tbody"><tr><td colspan="6"><div class="empty-state" style="padding:28px">Loading...</div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="si-cms-pager" class="pager" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SI: EPSS -->
+      <div id="page-si-epss" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">EPSS <span class="hl">Scores</span></div>
+            <div class="ph-sub">// Exploit Prediction Scoring System — probability of exploitation</div>
+          </div>
+          <div class="ph-right"><button class="btn btn-ghost btn-sm" onclick="navTo('secinfo')">← Back</button></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>EPSS Entries</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="si-epss-search" class="fc" style="width:220px;height:32px;font-size:.78rem" placeholder="Search CVE..." onkeydown="if(event.key==='Enter')loadSiPage('epss')"/>
+              <button class="btn btn-primary btn-sm" onclick="loadSiPage('epss')">Search</button>
+              <span id="si-epss-total" class="dim" style="font-size:.75rem;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div class="pb np">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="width:40px"></th><th>CVE</th><th>EPSS Score</th><th>Percentile</th><th>Date</th></tr></thead>
+                <tbody id="si-epss-tbody"><tr><td colspan="5"><div class="empty-state" style="padding:28px">Loading...</div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="si-epss-pager" class="pager" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SI: Compliance -->
+      <div id="page-si-comp" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">Compliance <span class="hl">Mapping</span></div>
+            <div class="ph-sub">// NIST 800-53 · PCI DSS v4 · CIS v8 · ISO 27001</div>
+          </div>
+          <div class="ph-right"><button class="btn btn-ghost btn-sm" onclick="navTo('secinfo')">← Back</button></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>Compliance Mappings</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="si-comp-search" class="fc" style="width:220px;height:32px;font-size:.78rem" placeholder="Search category, control..." onkeydown="if(event.key==='Enter')loadSiPage('compliance_map')"/>
+              <button class="btn btn-primary btn-sm" onclick="loadSiPage('compliance_map')">Search</button>
+              <span id="si-comp-total" class="dim" style="font-size:.75rem;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div class="pb np">
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="width:40px"></th><th>Category</th><th>Description</th><th>NIST 800-53</th><th>PCI DSS v4</th><th>CIS v8</th><th>ISO 27001</th></tr></thead>
+                <tbody id="si-comp-tbody"><tr><td colspan="7"><div class="empty-state" style="padding:28px">Loading...</div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="si-comp-pager" class="pager" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ SETTINGS ═══ -->
       <div id="page-settings" class="page">
         <div class="ph">
@@ -2856,7 +3137,23 @@
     }
 
     // Nav
+    function toggleNavGroup(groupId, page) {
+      const grp = gi(groupId);
+      if (!grp) return;
+      const isOpen = grp.classList.contains('open');
+      if (isOpen) {
+        grp.classList.remove('open');
+      } else {
+        grp.classList.add('open');
+        if (page) navTo(page);
+      }
+    }
     function navTo(page) {
+      // Auto-expand Security Intel group when navigating to any si- page
+      if (page && (page === 'secinfo' || page.startsWith('si-'))) {
+        const grp = gi('nav-group-si');
+        if (grp) grp.classList.add('open');
+      }
       if (page === 'settings' && !canAdmin()) page = 'dashboard';
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
@@ -2864,11 +3161,17 @@
       if (pe) pe.classList.add('active');
       const ne = gi('nav-' + page);
       if (ne) ne.classList.add('active');
-      const labels = { dashboard: 'Dashboard', jobs: 'Tasks', vulns: 'Vulnerabilities', profiles: 'Profiles', credentials: 'Credentials', datasets: 'Datasets', settings: 'Settings' };
+      const labels = { dashboard: 'Dashboard', jobs: 'Tasks', vulns: 'Vulnerabilities', profiles: 'Profiles', credentials: 'Credentials', datasets: 'Datasets', settings: 'Settings', secinfo: 'Security Information', 'si-nvd': 'NVD Database', 'si-cve': 'CVE Database', 'si-kev': 'CISA-KEV Catalog', 'si-cms': 'CMS-CVE Map', 'si-epss': 'EPSS Scores', 'si-comp': 'Compliance Mapping' };
       gi('bc-page').textContent = labels[page] || page;
       if (page === 'settings' && canAdmin()) loadSettings();
       if (page === 'vulns') renderVulnsPage();
       if (page === 'dashboard') loadAttackGraph();
+      if (page === 'si-nvd') loadSiPage('nvd_cpe_cve');
+      if (page === 'si-cve') loadSiPage('cvedetails_cvss');
+      if (page === 'si-kev') loadSiPage('cisa_kev');
+      if (page === 'si-cms') loadSiPage('cms_cve_map');
+      if (page === 'si-epss') loadSiPage('epss');
+      if (page === 'si-comp') loadSiPage('compliance_map');
       applyRoleUI();
     }
     function showAlert(elId, type, msg, dur = 6000) { const el = gi(elId); if (!el) return; el.className = 'alert a-' + type; el.textContent = msg; el.style.display = 'flex'; if (dur > 0) setTimeout(() => { if (el) el.style.display = 'none' }, dur) }
@@ -3090,7 +3393,11 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
             '✗ Dataset refresh failed';
           gi('ds-refresh-cancel').style.display = 'none';
           await loadDs();
-          setTimeout(() => { gi('ds-refresh-status').style.display = 'none'; }, 15000);
+          showAlert('ds-alert', s.status === 'done' ? 'success' : s.status === 'partial' ? 'warning' : 'danger',
+            s.status === 'done' ? `✓ All ${total} datasets refreshed successfully` :
+            s.status === 'partial' ? `⚠ ${doneN}/${total} datasets refreshed (${failN} failed)` :
+            s.status === 'cancelled' ? '⊘ Dataset refresh cancelled' : '✗ Dataset refresh failed');
+          setTimeout(() => { gi('ds-refresh-status').style.display = 'none'; }, 10000);
         }
       } catch (e) { console.error('[pollDsRefresh]', e); }
     }
@@ -3113,6 +3420,220 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
         const s = await apiReq('/datasets/refresh/status');
         if (s.status === 'running') startDsRefreshPoll();
       } catch {}
+    }
+
+    // ─── Security Information Browse ───
+    const SI_STATE = {};
+    const SI_KIND_MAP = {
+      'nvd_cpe_cve': 'nvd', 'cvedetails_cvss': 'cve', 'cisa_kev': 'kev',
+      'cms_cve_map': 'cms', 'epss': 'epss', 'compliance_map': 'comp'
+    };
+
+    async function loadSiPage(kind, page) {
+      const key = SI_KIND_MAP[kind];
+      if (!SI_STATE[kind]) SI_STATE[kind] = { page: 1, perPage: 50 };
+      const st = SI_STATE[kind];
+      if (page !== undefined) st.page = page;
+      const searchEl = gi('si-' + key + '-search');
+      const q = searchEl ? searchEl.value.trim() : '';
+      const tbody = gi('si-' + key + '-tbody');
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state" style="padding:28px"><span class="spinner" style="display:inline-block"></span> Loading...</div></td></tr>';
+      try {
+        const data = await apiReq('/datasets/browse/' + kind + '?page=' + st.page + '&per_page=' + st.perPage + '&q=' + encodeURIComponent(q));
+        st.total = data.total;
+        st.totalPages = data.total_pages;
+        if (kind === 'compliance_map') st.extra = { control_descriptions: data.control_descriptions, frameworks: data.frameworks };
+        const totalEl = gi('si-' + key + '-total');
+        if (totalEl) totalEl.textContent = data.total.toLocaleString() + ' records';
+        renderSiTable(kind, data.records);
+        renderSiPager(kind);
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state" style="padding:28px;color:var(--red)">⚠ ' + esc(e.message) + '</div></td></tr>';
+      }
+    }
+
+    function goSiPage(kind, p) {
+      const st = SI_STATE[kind];
+      if (!st) return;
+      p = Math.max(1, Math.min(p, st.totalPages || 1));
+      loadSiPage(kind, p);
+    }
+
+    function renderSiPager(kind) {
+      const key = SI_KIND_MAP[kind];
+      const st = SI_STATE[kind];
+      if (!st || st.totalPages <= 1) { const pg = gi('si-' + key + '-pager'); if (pg) pg.style.display = 'none'; return; }
+      const start = (st.page - 1) * st.perPage + 1;
+      const end = Math.min(st.page * st.perPage, st.total);
+      let h = '<div class="pager-info">' + start + '–' + end + ' of ' + st.total.toLocaleString() + '</div><div class="pager-btns">';
+      h += '<button class="pager-btn" ' + (st.page <= 1 ? 'disabled' : '') + ' onclick="goSiPage(\'' + kind + '\',1)">«</button>';
+      h += '<button class="pager-btn" ' + (st.page <= 1 ? 'disabled' : '') + ' onclick="goSiPage(\'' + kind + '\',' + (st.page - 1) + ')">‹</button>';
+      const maxBtns = 5;
+      let pStart = Math.max(1, st.page - Math.floor(maxBtns / 2));
+      let pEnd = Math.min(st.totalPages, pStart + maxBtns - 1);
+      if (pEnd - pStart < maxBtns - 1) pStart = Math.max(1, pEnd - maxBtns + 1);
+      for (let i = pStart; i <= pEnd; i++) {
+        h += '<button class="pager-btn' + (i === st.page ? ' active' : '') + '" onclick="goSiPage(\'' + kind + '\',' + i + ')">' + i + '</button>';
+      }
+      h += '<button class="pager-btn" ' + (st.page >= st.totalPages ? 'disabled' : '') + ' onclick="goSiPage(\'' + kind + '\',' + (st.page + 1) + ')">›</button>';
+      h += '<button class="pager-btn" ' + (st.page >= st.totalPages ? 'disabled' : '') + ' onclick="goSiPage(\'' + kind + '\',' + st.totalPages + ')">»</button></div>';
+      const pg = gi('si-' + key + '-pager');
+      if (pg) { pg.innerHTML = h; pg.style.display = 'flex'; }
+    }
+
+    function toggleSiRow(id) {
+      const det = gi('si-det-' + id);
+      const tog = gi('si-tog-' + id);
+      if (!det || !tog) return;
+      det.classList.toggle('open');
+      tog.classList.toggle('open');
+    }
+
+    function renderSiTable(kind, records) {
+      const key = SI_KIND_MAP[kind];
+      const tbody = gi('si-' + key + '-tbody');
+      if (!records.length) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state" style="padding:28px">No records found</div></td></tr>'; return; }
+      let html = '';
+      records.forEach((r, i) => {
+        const rid = key + '_' + i;
+        if (kind === 'nvd_cpe_cve') html += renderSiNvdRow(r, rid);
+        else if (kind === 'cvedetails_cvss') html += renderSiCveRow(r, rid);
+        else if (kind === 'cisa_kev') html += renderSiKevRow(r, rid);
+        else if (kind === 'cms_cve_map') html += renderSiCmsRow(r, rid);
+        else if (kind === 'epss') html += renderSiEpssRow(r, rid);
+        else if (kind === 'compliance_map') html += renderSiCompRow(r, rid);
+      });
+      tbody.innerHTML = html;
+    }
+
+    // ── NVD rows ──
+    function renderSiNvdRow(r, id) {
+      const desc = r.summary || r.description || '';
+      const short = desc.length > 90 ? desc.slice(0, 90) + '…' : desc;
+      let detail = '<dl class="si-dl">';
+      detail += '<dt>Summary</dt><dd>' + esc(desc) + '</dd>';
+      detail += '<dt>CVSS Base Score</dt><dd>' + (r.cvss != null ? r.cvss : 'N/A') + '</dd>';
+      detail += '<dt>Severity</dt><dd>' + severityBadge(r.severity || 'info') + '</dd>';
+      if (r.matches && r.matches.length) {
+        detail += '<dt>Affected Products (' + r.matches.length + ')</dt><dd><div class="si-badge-row">';
+        r.matches.slice(0, 15).forEach(m => { detail += '<span class="si-badge-sm" title="' + esc(m.cpe23 || '') + '">' + esc((m.cpe23 || '').split(':').slice(3, 6).join(' ')) + (m.versionEndIncluding ? ' ≤' + esc(m.versionEndIncluding) : '') + '</span>'; });
+        if (r.matches.length > 15) detail += '<span class="si-badge-sm">+' + (r.matches.length - 15) + ' more</span>';
+        detail += '</div></dd>';
+      }
+      if (r.refs && r.refs.length) {
+        detail += '<dt>References</dt><dd>';
+        r.refs.slice(0, 8).forEach(ref => { const url = typeof ref === 'string' ? ref : (ref.url || ''); if (url) detail += '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url.replace(/https?:\/\//, '').slice(0, 60)) + '</a><br>'; });
+        detail += '</dd>';
+      }
+      detail += '</dl>';
+      return '<tr onclick="toggleSiRow(\'' + id + '\')" style="cursor:pointer"><td><span class="si-toggle" id="si-tog-' + id + '">▶</span></td><td class="mc" style="color:var(--accent);white-space:nowrap">' + esc(r.cve || '') + '</td><td class="dim" style="font-size:.8rem;max-width:400px">' + esc(short) + '</td><td>' + severityBadge(r.severity || 'info') + '</td><td class="mc">' + (r.cvss != null ? r.cvss : '—') + '</td></tr>'
+        + '<tr class="si-detail-row"><td colspan="5"><div class="si-detail" id="si-det-' + id + '"><div class="si-detail-inner">' + detail + '</div></div></td></tr>';
+    }
+
+    // ── CVE rows ──
+    function renderSiCveRow(r, id) {
+      let detail = '<dl class="si-dl">';
+      detail += '<dt>CVE</dt><dd>' + esc(r.cve || '') + '</dd>';
+      detail += '<dt>CVSS Score</dt><dd>' + (r.cvss != null ? r.cvss : 'N/A') + '</dd>';
+      detail += '<dt>Severity</dt><dd>' + severityBadge(r.severity || 'info') + '</dd>';
+      detail += '<dt>Source</dt><dd>' + esc(r.source || 'N/A') + '</dd>';
+      if (r.cna_cvss != null) detail += '<dt>CNA CVSS</dt><dd>' + r.cna_cvss + '</dd>';
+      if (r.adp_cvss != null) detail += '<dt>ADP CVSS</dt><dd>' + r.adp_cvss + '</dd>';
+      detail += '</dl>';
+      return '<tr onclick="toggleSiRow(\'' + id + '\')" style="cursor:pointer"><td><span class="si-toggle" id="si-tog-' + id + '">▶</span></td><td class="mc" style="color:var(--accent);white-space:nowrap">' + esc(r.cve || '') + '</td><td>' + severityBadge(r.severity || 'info') + '</td><td class="mc">' + (r.cvss != null ? r.cvss : '—') + '</td><td class="dim" style="font-size:.8rem">' + esc(r.source || 'N/A') + '</td></tr>'
+        + '<tr class="si-detail-row"><td colspan="5"><div class="si-detail" id="si-det-' + id + '"><div class="si-detail-inner">' + detail + '</div></div></td></tr>';
+    }
+
+    // ── CISA-KEV rows ──
+    function renderSiKevRow(r, id) {
+      const ransomware = r.knownRansomwareCampaignUse || 'Unknown';
+      const rBadge = ransomware === 'Known' ? '<span class="badge b-crit">Known</span>' : '<span class="badge b-info">' + esc(ransomware) + '</span>';
+      let detail = '<dl class="si-dl">';
+      detail += '<dt>Description</dt><dd>' + esc(r.notes || 'N/A') + '</dd>';
+      detail += '<dt>Vendor / Project</dt><dd>' + esc(r.vendorProject || '') + '</dd>';
+      detail += '<dt>Product</dt><dd>' + esc(r.product || '') + '</dd>';
+      detail += '<dt>Date Added</dt><dd>' + esc(r.dateAdded || '') + '</dd>';
+      detail += '<dt>Remediation Due Date</dt><dd>' + esc(r.dueDate || '') + '</dd>';
+      detail += '<dt>Ransomware Campaign Use</dt><dd>' + rBadge + '</dd>';
+      if (r.refs && r.refs.length) {
+        detail += '<dt>References</dt><dd>';
+        r.refs.slice(0, 8).forEach(ref => { const url = typeof ref === 'string' ? ref : (ref.url || ''); if (url) detail += '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url.replace(/https?:\/\//, '').slice(0, 60)) + '</a><br>'; });
+        detail += '</dd>';
+      }
+      detail += '</dl>';
+      return '<tr onclick="toggleSiRow(\'' + id + '\')" style="cursor:pointer"><td><span class="si-toggle" id="si-tog-' + id + '">▶</span></td><td class="mc" style="color:var(--accent);white-space:nowrap">' + esc(r.cve || '') + '</td><td class="dim" style="font-size:.8rem">' + esc((r.vendorProject || '') + ' / ' + (r.product || '')) + '</td><td class="mc dim" style="font-size:.78rem">' + esc(r.dateAdded || '') + '</td><td class="mc dim" style="font-size:.78rem">' + esc(r.dueDate || '') + '</td><td>' + rBadge + '</td></tr>'
+        + '<tr class="si-detail-row"><td colspan="6"><div class="si-detail" id="si-det-' + id + '"><div class="si-detail-inner">' + detail + '</div></div></td></tr>';
+    }
+
+    // ── CMS-CVE rows ──
+    function renderSiCmsRow(r, id) {
+      const desc = r.summary || r.description || '';
+      const short = desc.length > 80 ? desc.slice(0, 80) + '…' : desc;
+      let detail = '<dl class="si-dl">';
+      detail += '<dt>Description</dt><dd>' + esc(desc) + '</dd>';
+      detail += '<dt>CMS Platform</dt><dd><span class="badge b-info" style="text-transform:uppercase">' + esc(r.cms || '') + '</span></dd>';
+      detail += '<dt>CVSS Score</dt><dd>' + (r.cvss != null ? r.cvss : 'N/A') + '</dd>';
+      detail += '<dt>Severity</dt><dd>' + severityBadge(r.severity || 'info') + '</dd>';
+      if (r.refs && r.refs.length) {
+        detail += '<dt>References</dt><dd>';
+        r.refs.slice(0, 8).forEach(ref => { const url = typeof ref === 'string' ? ref : (ref.url || ''); if (url) detail += '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url.replace(/https?:\/\//, '').slice(0, 60)) + '</a><br>'; });
+        detail += '</dd>';
+      }
+      detail += '</dl>';
+      return '<tr onclick="toggleSiRow(\'' + id + '\')" style="cursor:pointer"><td><span class="si-toggle" id="si-tog-' + id + '">▶</span></td><td class="mc" style="color:var(--accent);white-space:nowrap">' + esc(r.cve || '') + '</td><td><span class="badge b-info" style="text-transform:uppercase">' + esc(r.cms || '') + '</span></td><td class="dim" style="font-size:.8rem;max-width:300px">' + esc(short) + '</td><td>' + severityBadge(r.severity || 'info') + '</td><td class="mc">' + (r.cvss != null ? r.cvss : '—') + '</td></tr>'
+        + '<tr class="si-detail-row"><td colspan="6"><div class="si-detail" id="si-det-' + id + '"><div class="si-detail-inner">' + detail + '</div></div></td></tr>';
+    }
+
+    // ── EPSS rows ──
+    function renderSiEpssRow(r, id) {
+      const epss = r.epss != null ? r.epss : 0;
+      const pct = r.percentile != null ? r.percentile : 0;
+      const barW = Math.max(2, Math.round(epss * 100));
+      const barColor = epss >= 0.5 ? 'var(--red)' : epss >= 0.1 ? 'var(--orange)' : epss >= 0.01 ? 'var(--yellow)' : 'var(--green)';
+      let detail = '<dl class="si-dl">';
+      detail += '<dt>CVE</dt><dd>' + esc(r.cve || '') + '</dd>';
+      detail += '<dt>EPSS Score</dt><dd>' + (epss * 100).toFixed(3) + '% probability of exploitation in 30 days</dd>';
+      detail += '<dt>Percentile</dt><dd>' + (pct * 100).toFixed(2) + '% — higher than ' + (pct * 100).toFixed(1) + '% of all CVEs</dd>';
+      detail += '<dt>Score Date</dt><dd>' + esc(r.date || '') + '</dd>';
+      detail += '</dl>';
+      return '<tr onclick="toggleSiRow(\'' + id + '\')" style="cursor:pointer"><td><span class="si-toggle" id="si-tog-' + id + '">▶</span></td><td class="mc" style="color:var(--accent);white-space:nowrap">' + esc(r.cve || '') + '</td><td class="mc">' + (epss * 100).toFixed(3) + '%&nbsp;<span class="si-epss-bar" style="width:' + barW + 'px;background:' + barColor + '"></span></td><td class="mc">' + (pct * 100).toFixed(2) + '%</td><td class="mc dim" style="font-size:.78rem">' + esc(r.date || '') + '</td></tr>'
+        + '<tr class="si-detail-row"><td colspan="5"><div class="si-detail" id="si-det-' + id + '"><div class="si-detail-inner">' + detail + '</div></div></td></tr>';
+    }
+
+    // ── Compliance rows ──
+    function renderSiCompRow(r, id) {
+      const fw = r.frameworks || {};
+      const renderCtrls = (arr) => { if (!arr || !arr.length) return '<span class="dim">—</span>'; return '<div class="si-badge-row">' + arr.map(c => '<span class="si-badge-sm">' + esc(c) + '</span>').join('') + '</div>'; };
+      const nist = fw.nist_800_53 || [];
+      const pci = fw.pci_dss_v4 || [];
+      const cis = fw.cis_v8 || [];
+      const iso = fw.iso_27001 || [];
+      let detail = '<dl class="si-dl">';
+      detail += '<dt>Description</dt><dd>' + esc(r.description || '') + '</dd>';
+      detail += '<dt>Plugin Category</dt><dd><span class="badge b-info">' + esc(r.plugin_category || '') + '</span></dd>';
+      detail += '<dt>Finding Pattern</dt><dd>' + esc(r.finding_pattern || '') + '</dd>';
+      if (r.plugin_ids && r.plugin_ids.length) {
+        detail += '<dt>Plugin IDs</dt><dd><div class="si-badge-row">' + r.plugin_ids.map(p => '<span class="si-badge-sm">' + esc(p) + '</span>').join('') + '</div></dd>';
+      }
+      detail += '<dt>NIST 800-53 Controls</dt><dd>' + renderCtrls(nist) + '</dd>';
+      detail += '<dt>PCI DSS v4 Controls</dt><dd>' + renderCtrls(pci) + '</dd>';
+      detail += '<dt>CIS v8 Controls</dt><dd>' + renderCtrls(cis) + '</dd>';
+      detail += '<dt>ISO 27001 Controls</dt><dd>' + renderCtrls(iso) + '</dd>';
+      if (r.severity_map) {
+        detail += '<dt>Severity Mapping</dt><dd>';
+        Object.entries(r.severity_map).forEach(([sev, ctrls]) => {
+          detail += severityBadge(sev) + ' → <div class="si-badge-row" style="display:inline-flex;margin-left:4px">' + (Array.isArray(ctrls) ? ctrls : [ctrls]).map(c => '<span class="si-badge-sm">' + esc(String(c)) + '</span>').join('') + '</div><br>';
+        });
+        detail += '</dd>';
+      }
+      if (r.severity_sla_days) {
+        detail += '<dt>SLA Days</dt><dd>';
+        Object.entries(r.severity_sla_days).forEach(([sev, days]) => { detail += severityBadge(sev) + ' ' + days + ' days<br>'; });
+        detail += '</dd>';
+      }
+      detail += '</dl>';
+      return '<tr onclick="toggleSiRow(\'' + id + '\')" style="cursor:pointer"><td><span class="si-toggle" id="si-tog-' + id + '">▶</span></td><td><span class="badge b-info">' + esc(r.plugin_category || '') + '</span></td><td class="dim" style="font-size:.8rem;max-width:250px">' + esc((r.description || '').slice(0, 60)) + '</td><td style="font-size:.75rem">' + renderCtrls(nist.slice(0, 3)) + '</td><td style="font-size:.75rem">' + renderCtrls(pci.slice(0, 3)) + '</td><td style="font-size:.75rem">' + renderCtrls(cis.slice(0, 3)) + '</td><td style="font-size:.75rem">' + renderCtrls(iso.slice(0, 3)) + '</td></tr>'
+        + '<tr class="si-detail-row"><td colspan="7"><div class="si-detail" id="si-det-' + id + '"><div class="si-detail-inner">' + detail + '</div></div></td></tr>';
     }
 
     // ─── Severity Distribution ───
