@@ -9,7 +9,7 @@ export default function Dashboard() {
   const [allFindings, setAllFindings] = useState([]);
   const [stats, setStats] = useState({ critical: 0, high: 0, medium: 0, low: 0, kev: 0, total: 0, totalFindings: 0 });
   const [logs, setLogs] = useState([
-    { type: "info", text: "[SYSTEM] VulnScan Platform v2.1.0 initializing..." },
+    { type: "info", text: "[SYSTEM] VulnScan Platform v1.0.2 initializing..." },
     { type: "ok",   text: "[OK] Database connection established" },
     { type: "ok",   text: "[OK] Redis queue worker active" },
     { type: "ok",   text: "[OK] Neo4j graph connected" },
