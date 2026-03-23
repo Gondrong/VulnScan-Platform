@@ -127,113 +127,74 @@ else
   green "SSH credential #${CRED_ID} created (${SSH_CRED_USER}@${SSH_CRED_TYPE})"
 fi
 
-# ── Create default scan profile ───────────────────────────────────────────────
-green "Creating default scan profile..."
-PROFILE_JSON='{
-  "name": "default",
-  "plugin_selection_json": {
-    "net.port.discovery.v2": true,
-    "net.port.discovery.nmap": true,
-    "fingerprint.http": true,
-    "fingerprint.banner.multi": true,
-    "fingerprint.web.tech": true,
-    "fingerprint.favicon.hash": true,
-    "cpe.builder": true,
-    "cve.match.nvd_cpe": true,
-    "cve.match.cms": true,
-    "priority.cisa_kev": true,
-    "tls.basic.version": true,
-    "local.security.checks": true,
-    "owasp.web.scanner": true,
-    "vuln.file.inclusion": true,
-    "recon.directory.crawl": true,
-    "auth.ssh.inventory": false,
-    "cve.match.packages": true
-  },
-  "options_json": {
-    "asset": { "criticality": 2 },
-    "nmap": { "mode": "top100" }
-  }
-}'
-
-curl -sf -X POST "${API_BASE}/scan/profiles" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "$PROFILE_JSON" >/dev/null && green "Default profile created" || yellow "Profile may already exist"
-
-# ── Create OWASP-focused profile ──────────────────────────────────────────────
-green "Creating OWASP Web Assessment profile..."
-OWASP_PROFILE='{
-  "name": "owasp-web-full",
-  "plugin_selection_json": {
-    "net.port.discovery.v2": true,
-    "net.port.discovery.nmap": true,
-    "fingerprint.http": true,
-    "fingerprint.banner.multi": true,
-    "fingerprint.web.tech": true,
-    "fingerprint.favicon.hash": true,
-    "cpe.builder": true,
-    "cve.match.nvd_cpe": true,
-    "cve.match.cms": true,
-    "priority.cisa_kev": true,
-    "tls.basic.version": true,
-    "local.security.checks": true,
-    "owasp.web.scanner": true,
-    "vuln.file.inclusion": true,
-    "recon.directory.crawl": true,
-    "auth.ssh.inventory": false,
-    "cve.match.packages": true
-  },
-  "options_json": {
-    "asset": { "criticality": 3 },
-    "nmap": { "mode": "top1000" }
-  }
-}'
-
-curl -sf -X POST "${API_BASE}/scan/profiles" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "$OWASP_PROFILE" >/dev/null && green "OWASP profile created" || yellow "Profile may already exist"
-
-# ── Create Infrastructure Audit profile (with SSH) ────────────────────────────
-green "Creating Infrastructure Audit profile (with SSH credential #${CRED_ID})..."
-
-# Use python to build JSON with dynamic CRED_ID
-INFRA_PROFILE="$(python3 -c "
+# ── Helper: build profile JSON with python (dynamic CRED_ID + all plugins) ───
+build_profile() {
+  python3 -c "
 import json, sys
 cred_id = int(sys.argv[1])
+name = sys.argv[2]
+criticality = int(sys.argv[3])
+nmap_mode = sys.argv[4]
+ssh_enabled = sys.argv[5] == 'true'
 print(json.dumps({
-    'name': 'infra-full-audit',
+    'name': name,
     'plugin_selection_json': {
         'net.port.discovery.v2': True,
         'net.port.discovery.nmap': True,
+        'recon.dns.enum': True,
+        'recon.directory.crawl': True,
         'fingerprint.http': True,
         'fingerprint.banner.multi': True,
         'fingerprint.web.tech': True,
         'fingerprint.favicon.hash': True,
+        'fingerprint.deep': True,
         'cpe.builder': True,
         'cve.match.nvd_cpe': True,
         'cve.match.cms': True,
+        'cve.endpoint_prober': True,
+        'cve.verifier': True,
         'priority.cisa_kev': True,
-        'tls.basic.version': True,
-        'local.security.checks': True,
         'owasp.web.scanner': True,
         'vuln.file.inclusion': True,
-        'recon.directory.crawl': True,
-        'auth.ssh.inventory': True,
-        'cve.match.packages': True,
+        'tls.basic.version': True,
+        'infra.ssh.audit': True,
+        'infra.db.auth_check': True,
+        'infra.smb.check': True,
+        'auth.ssh.inventory': ssh_enabled,
+        'cve.match.packages': ssh_enabled,
+        'local.security.checks': ssh_enabled,
     },
     'options_json': {
         'auth': {
             'ssh_credential_id': cred_id,
             'ssh_port': 22,
         },
-        'asset': {'criticality': 4},
-        'nmap': {'mode': 'full'},
+        'asset': {'criticality': criticality},
+        'nmap': {'mode': nmap_mode},
     },
 }))
-" "$CRED_ID")"
+" "$CRED_ID" "$1" "$2" "$3" "$4"
+}
 
+# ── Create default scan profile ───────────────────────────────────────────────
+green "Creating default scan profile..."
+DEFAULT_PROFILE="$(build_profile "default" 2 "top100" "false")"
+curl -sf -X POST "${API_BASE}/scan/profiles" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$DEFAULT_PROFILE" >/dev/null && green "Default profile created (SSH cred #${CRED_ID})" || yellow "Profile may already exist"
+
+# ── Create OWASP-focused profile ──────────────────────────────────────────────
+green "Creating OWASP Web Assessment profile..."
+OWASP_PROFILE="$(build_profile "owasp-web-full" 3 "top1000" "false")"
+curl -sf -X POST "${API_BASE}/scan/profiles" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$OWASP_PROFILE" >/dev/null && green "OWASP profile created (SSH cred #${CRED_ID})" || yellow "Profile may already exist"
+
+# ── Create Infrastructure Audit profile (with SSH) ────────────────────────────
+green "Creating Infrastructure Audit profile (with SSH credential #${CRED_ID})..."
+INFRA_PROFILE="$(build_profile "infra-full-audit" 4 "full" "true")"
 curl -sf -X POST "${API_BASE}/scan/profiles" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
@@ -250,7 +211,7 @@ echo " Neo4j:      http://localhost:7474  (neo4j/password)"
 echo ""
 echo " Credentials: ${DEFAULT_ADMIN_EMAIL} / ${DEFAULT_ADMIN_PASSWORD}"
 echo ""
-echo " Scan Profiles:"
+echo " Scan Profiles (all using SSH credential #${CRED_ID}):"
 echo "   • default          — Quick scan (top 100 ports + OWASP + CVE)"
 echo "   • owasp-web-full   — Web app assessment (top 1000 ports + full OWASP)"
 echo "   • infra-full-audit — Full infrastructure (65535 ports + SSH cred #${CRED_ID} + all plugins)"
