@@ -2932,7 +2932,7 @@
   </div>
 
   <script>
-    const API_BASE = (() => { if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, ''); const p = window.location.protocol, h = window.location.hostname; return `${p}//${h}:8080` })();
+    const API_BASE = (() => { if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, ''); const p = window.location.protocol, h = window.location.hostname; return `${p}//${h}:8888` })();
     const S = { token: null, userEmail: 'admin@local', userRole: 'viewer', allFindings: [], sevFilter: 'all', scanType: 'internal', profiles: [], creds: [], _allDs: [], deletedJobIds: new Set(), dashInterval: null, jobsInterval: null, clockInterval: null, jobsPage: 1, jobsPerPage: 10, schedsPage: 1, schedsPerPage: 5, _allJobs: [], _allScheds: [], profilesPage: 1, profilesPerPage: 10, credsPage: 1, credsPerPage: 10, dsPage: 1, dsPerPage: 6 };
     const gi = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
