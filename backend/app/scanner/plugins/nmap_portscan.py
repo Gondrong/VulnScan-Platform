@@ -19,7 +19,7 @@ META = PluginMeta(
     category="network",
     provides=["net.open_ports", "net.service_banners"],
     enabled_by_default=True,   # Enabled — uses top100 mode by default (fast)
-    timeout_seconds=60.0,  # Reduced from 120s; top100 mode shouldn't need more
+    timeout_seconds=90.0,  # External scans need more time (firewalls drop packets silently)
 )
 
 # Nmap top 1000 TCP ports (subset — top 200 most common shown here for speed)
@@ -150,7 +150,7 @@ class Check(Plugin):
         # Determine scan mode from profile options
         nmap_mode = options.get("nmap", {}).get("mode", "top100")
         # top100 / top1000 / full / quick
-        per_port_timeout = 2.0 if scan_type == "internal" else 3.0
+        per_port_timeout = 2.0 if scan_type == "internal" else 5.0
 
         # If target is URL, extract implied ports + do limited scan
         if re.match(r"^https?://", target_raw, re.I):

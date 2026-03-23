@@ -24,9 +24,10 @@ async def tcp_open(host: str, port: int, timeout: float) -> bool:
 
 
 async def discover_open_ports(host: str, timeout: float) -> list[int]:
-    # Run all TCP checks concurrently
+    # Run all TCP checks concurrently — cap per-port at 5s for external/slow targets
+    per_port = min(timeout, 5.0)
     results = await asyncio.gather(
-        *[tcp_open(host, p, min(timeout, 3.0)) for p in COMMON_PORTS],
+        *[tcp_open(host, p, per_port) for p in COMMON_PORTS],
         return_exceptions=True,
     )
     return [

@@ -118,9 +118,40 @@ class Check(Plugin):
             http_port_map = {80: False, 8080: False, 443: True, 8443: True, 9200: False}
 
             if scan_type == "external":
-                for p in [80, 443]:
-                    if p not in ports:
-                        ports = list(ports) + [p]
+                # For external targets with 0 discovered ports, do a quick TCP
+                # reachability check before force-probing 80/443 — avoids wasting
+                # the entire plugin timeout on a completely firewalled host.
+                if not ports:
+                    from app.scanner.fingerprint import tcp_open
+                    probe_timeout = min(base_timeout / 3, 8.0)
+                    r80, r443 = await asyncio.gather(
+                        tcp_open(target, 80, probe_timeout),
+                        tcp_open(target, 443, probe_timeout),
+                        return_exceptions=True,
+                    )
+                    reachable = []
+                    if r80 is True:
+                        reachable.append(80)
+                    if r443 is True:
+                        reachable.append(443)
+                    if not reachable:
+                        return PluginResult(
+                            findings=[Finding(
+                                severity="info",
+                                plugin_id=META.plugin_id,
+                                title="No HTTP services reachable on target",
+                                evidence=f"tcp_probe_timeout={probe_timeout:.1f}s ports_tested=[80,443] target={target}",
+                                affected=target,
+                                fingerprint=stable_fingerprint(target, META.plugin_id, "unreachable"),
+                                remediation="Target does not respond on ports 80 or 443. It may be firewalled or offline.",
+                            )],
+                            artifacts={"http.fingerprints": []},
+                        )
+                    ports = reachable
+                else:
+                    for p in [80, 443]:
+                        if p not in ports:
+                            ports = list(ports) + [p]
 
             for p, tls in http_port_map.items():
                 if p not in ports:

@@ -9,7 +9,7 @@ META = PluginMeta(
     category="network",
     provides=["net.open_ports"],
     enabled_by_default=True,
-    timeout_seconds=15.0,  # Increased from 12s for external targets
+    timeout_seconds=30.0,  # External targets need more time (firewalled ports cause full waits)
 )
 
 
