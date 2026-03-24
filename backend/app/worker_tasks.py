@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 import json
 import logging
@@ -650,6 +650,14 @@ _DS_KIND_NAMES = {
     "nvd_cpe_cve": "nvd_auto", "cisa_kev": "kev_auto", "epss": "epss_auto",
     "cms_cve_map": "cms_auto", "compliance_map": "compliance_auto", "cvedetails_cvss": "cvedetails_auto",
 }
+_DS_CANONICAL = {
+    "nvd_cpe_cve": "/data/cve/nvd_cpe_cve.json",
+    "cisa_kev": "/data/cve/cisa_kev.json",
+    "epss": "/data/cve/epss.json",
+    "cvedetails_cvss": "/data/cve/cvedetails_cvss.json",
+    "cms_cve_map": "/data/cve/cms_cve_map.json",
+    "compliance_map": "/data/cve/compliance_map.json",
+}
 
 _NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
@@ -944,10 +952,17 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
                 success, out, err = False, None, str(exc)
 
             if success and out:
-                _swap_dataset(workspace_id, kind, out, db)
-                results[kind] = out
+                # Copy timestamped file → canonical (non-timestamped) file
+                canonical = _DS_CANONICAL.get(kind)
+                if canonical:
+                    import shutil
+                    shutil.copy2(out, canonical)
+                    logger.info("  %s: copied %s -> %s", kind, out, canonical)
+                # DB record points to canonical path (stable, won't break if timestamped backup is deleted)
+                _swap_dataset(workspace_id, kind, canonical or out, db)
+                results[kind] = canonical or out
                 state["kinds"][kind] = {"status": "done", "message": ""}
-                logger.info("  %s: done -> %s", kind, out)
+                logger.info("  %s: done -> %s", kind, canonical or out)
             else:
                 state["kinds"][kind] = {"status": "failed", "message": err or "Unknown error"}
                 logger.error("  %s: failed — %s", kind, err)
