@@ -194,6 +194,8 @@ cd VulnScan-Platform
 
 Navigate to **Datasets** in the sidebar and click **Refresh All**. The platform will fetch the latest data from NVD, CISA, EPSS, and CVE.org automatically.
 
+> **Note:** Before you click **Refresh All** change the NVD_API_KEY in the .env file to speedup fetching the datasets.
+
 ### Option 2: Manual Scripts
 
 ```bash
