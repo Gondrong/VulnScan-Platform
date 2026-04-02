@@ -321,3 +321,4 @@ class Check(Plugin):
                         ))
 
         return PluginResult(findings=findings, artifacts={"cve.endpoint_probes": probe_results})
+

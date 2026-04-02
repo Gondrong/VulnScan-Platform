@@ -179,3 +179,4 @@ class Check(Plugin):
             findings=findings,
             artifacts={"fingerprint.http": {"http": out}},
         )
+

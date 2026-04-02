@@ -501,3 +501,4 @@ class Check(Plugin):
             findings=findings,
             artifacts={"infra.ssh.audit": audit_results},
         )
+

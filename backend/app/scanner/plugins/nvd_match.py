@@ -217,3 +217,4 @@ class Check(Plugin):
                 remediation=_build_remediation(cve, h),
             ))
         return PluginResult(findings=findings, artifacts={"cve.nvd_hits": hits})
+

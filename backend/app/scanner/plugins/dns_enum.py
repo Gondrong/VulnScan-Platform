@@ -425,3 +425,4 @@ class Check(Plugin):
                 "recon.dns.subdomains": discovered_subdomains,
             },
         )
+

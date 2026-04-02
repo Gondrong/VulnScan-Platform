@@ -37,6 +37,22 @@ _BUILTIN_PLUGINS = [
     "db_auth_check",
     "ssh_audit",
     "smb_check",
+    # Tier 1 security checks + MQTT
+    "api_key_exposure",
+    "jwt_scanner",
+    "graphql_scanner",
+    "security_headers",
+    "mqtt_scanner",
+    # Tier 2 — infrastructure & injection plugins
+    "snmp_community",
+    "ftp_anon",
+    "redis_noauth",
+    "host_header_injection",
+    "crlf_injection",
+    "docker_api",
+    "cloud_storage_misconfig",
+    "waf_detection",
+    "ssti_scanner",
 ]
 
 

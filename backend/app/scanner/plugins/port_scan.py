@@ -81,3 +81,4 @@ class Check(Plugin):
             ],
             artifacts={"net.open_ports": ports},
         )
+

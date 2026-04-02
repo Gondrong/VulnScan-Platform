@@ -495,3 +495,4 @@ class Check(Plugin):
             findings=findings,
             artifacts={"infra.smb.findings": len(findings)},
         )
+

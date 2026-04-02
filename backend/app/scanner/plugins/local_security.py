@@ -631,3 +631,4 @@ class Check(Plugin):
             findings=findings,
             artifacts={"local.security.findings": matched_advisories},
         )
+
