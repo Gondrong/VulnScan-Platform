@@ -14,3 +14,7 @@ cryptography==42.0.8
 mmh3==4.1.0
 packaging==24.0
 requests>=2.31.0
+paho-mqtt==1.6.1
+openai>=1.30.0
+google-generativeai>=0.7.0
+
