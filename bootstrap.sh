@@ -160,6 +160,20 @@ print(json.dumps({
         'infra.ssh.audit': True,
         'infra.db.auth_check': True,
         'infra.smb.check': True,
+        'web.api_key_exposure': True,
+        'web.jwt_scanner': True,
+        'web.graphql_scanner': True,
+        'web.security_headers': True,
+        'iot.mqtt_scanner': True,
+        'infra.snmp.community': True,
+        'infra.ftp.anonymous': True,
+        'infra.redis.deep': True,
+        'web.host_header_injection': True,
+        'web.crlf_injection': True,
+        'infra.docker.api': True,
+        'cloud.storage.misconfig': True,
+        'web.waf.detection': True,
+        'web.ssti.scanner': True,
         'auth.ssh.inventory': ssh_enabled,
         'cve.match.packages': ssh_enabled,
         'local.security.checks': ssh_enabled,
@@ -227,3 +241,4 @@ echo ""
 echo " To customize SSH creds at bootstrap time:"
 echo "   SSH_CRED_USER=admin SSH_CRED_SECRET=mypassword ./bootstrap.sh"
 echo "   SSH_CRED_TYPE=SSH_KEY SSH_CRED_SECRET=\"\$(cat ~/.ssh/id_rsa)\" ./bootstrap.sh"
+

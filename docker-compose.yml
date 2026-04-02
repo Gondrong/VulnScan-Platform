@@ -76,7 +76,9 @@ services:
       - ./data:/data
       - ./backend:/app
       - ./scripts:/scripts
-    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} scans
+      # Mount Claude auth/config from host
+      - /root/.claude:/root/.claude
+    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} scans ai
     restart: unless-stopped
 
   frontend:
