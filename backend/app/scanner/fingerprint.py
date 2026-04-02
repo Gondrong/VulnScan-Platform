@@ -120,3 +120,4 @@ def tls_handshake(host: str, port: int, timeout: float) -> dict:
         raise RuntimeError(f"TLS error: {e}") from e
     except (OSError, socket.timeout) as e:
         raise RuntimeError(f"Connection error: {e}") from e
+

@@ -123,9 +123,15 @@ def _enabled(selection_json: str) -> list[str]:
             if chk.meta.enabled_by_default
         }
     else:
-        enabled = {
-            pid for pid, v in sel.items() if v and pid in PLUGINS
-        }
+        # Explicitly selected plugins + new plugins not yet in the profile
+        # (fall back to enabled_by_default so existing profiles pick up new plugins)
+        enabled = set()
+        for pid, chk in PLUGINS.items():
+            if pid in sel:
+                if sel[pid]:
+                    enabled.add(pid)
+            elif chk.meta.enabled_by_default:
+                enabled.add(pid)
 
     # Resolve dependencies
     changed = True
@@ -423,6 +429,16 @@ def _set_default_artifacts(chk, ctx):
         "infra.db.findings": 0,
         "infra.ssh.audit": {},
         "infra.smb.findings": 0,
+        # Tier 2 plugin defaults
+        "infra.snmp.findings": 0,
+        "infra.ftp.findings": 0,
+        "infra.redis.findings": 0,
+        "web.host_header.findings": 0,
+        "web.crlf.findings": 0,
+        "infra.docker.findings": 0,
+        "cloud.storage.findings": 0,
+        "web.waf.findings": {},
+        "web.ssti.findings": 0,
     }
     for key in (chk.meta.provides or []):
         if not ctx.has(key):
