@@ -354,3 +354,4 @@ def refresh_compliance_map() -> tuple[bool, str | None, str | None]:
         return True, out_path, None
     except Exception as e:
         return False, None, str(e)
+

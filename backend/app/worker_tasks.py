@@ -1014,3 +1014,18 @@ def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> Non
         db.rollback()
         logger.error("Failed to swap dataset %s: %s", kind, e)
         raise
+
+
+# ── AI Analysis Tasks ─────────────────────────────────────────────────────
+
+def run_ai_analysis(analysis_id: int) -> None:
+    """RQ task — runs AI deep analysis on scan findings."""
+    from app.ai.engine import run_analysis
+    run_analysis(analysis_id)
+
+
+def run_ai_poc(analysis_id: int, finding_id: int) -> None:
+    """RQ task — generates PoC for a single finding."""
+    from app.ai.engine import generate_poc
+    generate_poc(analysis_id, finding_id)
+

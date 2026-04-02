@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,7 @@ from app.api.routes_scan import router as scan_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_graph import router as graph_router
 from app.api.routes_integrations import router as integrations_router
+from app.api.routes_ai import router as ai_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
@@ -44,6 +46,16 @@ else:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all so unhandled errors still carry CORS headers."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
     )
 
 
@@ -128,6 +140,28 @@ def startup() -> None:
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             """))
+            db.commit()
+
+            # Add AI analyses table
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS ai_analyses (
+                    id SERIAL PRIMARY KEY,
+                    workspace_id INTEGER REFERENCES workspaces(id),
+                    job_id INTEGER REFERENCES scan_jobs(id),
+                    provider VARCHAR(50) NOT NULL,
+                    mode VARCHAR(50) NOT NULL,
+                    status VARCHAR(50) DEFAULT 'queued',
+                    progress_json TEXT,
+                    result_json TEXT,
+                    error TEXT,
+                    token_usage INTEGER,
+                    duration_seconds FLOAT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    finished_at TIMESTAMPTZ
+                )
+            """))
+            db.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_analyses_job_id ON ai_analyses(job_id)"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_analyses_workspace_id ON ai_analyses(workspace_id)"))
             db.commit()
 
             # Add columns to existing table if missing
@@ -287,3 +321,5 @@ app.include_router(scan_router)
 app.include_router(settings_router)
 app.include_router(graph_router)
 app.include_router(integrations_router)
+app.include_router(ai_router)
+

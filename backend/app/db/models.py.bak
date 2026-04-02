@@ -149,21 +149,3 @@ class Integration(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     config_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-
-
-class AiAnalysis(Base):
-    __tablename__ = "ai_analyses"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("scan_jobs.id"), index=True)
-    provider: Mapped[str] = mapped_column(String(50))          # azure_openai | claude_cli | gemini
-    mode: Mapped[str] = mapped_column(String(50))              # validate | full | full_exploit
-    status: Mapped[str] = mapped_column(String(50), default="queued")  # queued | running | done | failed
-    progress_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    token_usage: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
