@@ -105,3 +105,4 @@ def match_expr(installed: str, expr: str) -> bool:
         elif op == "==": ok = ok and (inst == pv)
         else: return False
     return ok
+

@@ -21,6 +21,31 @@ def _redis() -> Redis:
     return Redis.from_url(settings.REDIS_URL)
 
 
+# ─── Available Plugins ────────────────────────────────────────────────────────
+
+@router.get("/plugins")
+def list_plugins(user=Depends(require_role("admin", "analyst", "viewer"))):
+    """Return all available scanner plugins with their metadata."""
+    from app.scanner.plugins.loader import load_plugins
+    plugins = load_plugins()
+    result = []
+    for pid, plugin in plugins.items():
+        meta = getattr(plugin, "meta", None) or getattr(plugin, "META", None)
+        if not meta:
+            continue
+        result.append({
+            "plugin_id": meta.plugin_id,
+            "name": meta.name,
+            "category": meta.category,
+            "enabled_by_default": meta.enabled_by_default,
+            "timeout_seconds": meta.timeout_seconds,
+            "depends_on": list(meta.depends_on or []),
+        })
+    # Sort by category then name
+    result.sort(key=lambda p: (p["category"], p["name"]))
+    return {"plugins": result}
+
+
 # ─── Profiles ─────────────────────────────────────────────────────────────────
 
 @router.post("/profiles", response_model=dict)
@@ -388,6 +413,12 @@ def delete_job(
     target = job.target
     ws_id = user["ws"]
 
+    # Delete AI analyses linked to this job
+    db.query(models.AiAnalysis).filter(
+        models.AiAnalysis.job_id == job_id,
+        models.AiAnalysis.workspace_id == ws_id,
+    ).delete()
+
     db.query(models.Finding).filter(
         models.Finding.job_id == job_id,
         models.Finding.workspace_id == ws_id,
@@ -673,3 +704,4 @@ def delete_schedule(
     db.delete(sched)
     db.commit()
     return {"ok": True}
+

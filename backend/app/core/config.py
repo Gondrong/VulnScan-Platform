@@ -33,6 +33,21 @@ class Settings(BaseModel):
     # CORS: comma-separated origins, or "*" for all
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
 
+    # ── AI Providers ──────────────────────────────────────────────
+    AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+    AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
+    AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+    AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+
+    CLAUDE_CLI_PATH: str = os.getenv("CLAUDE_CLI_PATH", "claude")
+    CLAUDE_CLI_MODEL: str = os.getenv("CLAUDE_CLI_MODEL", "claude-opus-4-6")
+    CLAUDE_CLI_ENABLED: bool = os.getenv("CLAUDE_CLI_ENABLED", "false").lower() in ("true", "1", "yes")
+
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    AI_ANALYSIS_TIMEOUT: int = int(os.getenv("AI_ANALYSIS_TIMEOUT", "600"))
+
     @field_validator("SECRET_KEY")
     @classmethod
     def secret_key_not_empty(cls, v: str) -> str:
@@ -45,5 +60,30 @@ class Settings(BaseModel):
             return ["*"]
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
+    def available_ai_providers(self) -> list[dict]:
+        """Return list of configured AI providers."""
+        import shutil
+        providers = []
+        if self.AZURE_OPENAI_ENDPOINT and self.AZURE_OPENAI_API_KEY:
+            providers.append({
+                "id": "azure_openai",
+                "name": "Azure OpenAI",
+                "model": self.AZURE_OPENAI_DEPLOYMENT,
+            })
+        if self.CLAUDE_CLI_ENABLED or shutil.which(self.CLAUDE_CLI_PATH):
+            providers.append({
+                "id": "claude_cli",
+                "name": "Claude CLI",
+                "model": self.CLAUDE_CLI_MODEL,
+            })
+        if self.GEMINI_API_KEY:
+            providers.append({
+                "id": "gemini",
+                "name": "Gemini",
+                "model": self.GEMINI_MODEL,
+            })
+        return providers
+
 
 settings = Settings()
+

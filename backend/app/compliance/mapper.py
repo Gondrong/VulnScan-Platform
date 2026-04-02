@@ -1,4 +1,4 @@
-﻿"""
+"""
 Compliance framework mapper.
 Maps CVE IDs or plugin categories to compliance controls (PCI-DSS, ISO 27001, NIST, etc).
 """
