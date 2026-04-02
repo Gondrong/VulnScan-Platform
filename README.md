@@ -313,7 +313,7 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 
 ## Changelog
 
-### v2.2.0 — 2026-03-29
+## v2.1.2 — 2026-04-02
 
 #### New Features
 
@@ -371,14 +371,43 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 - External scan timeout handling: increased per-port TCP timeout, added TCP reachability pre-check
 - Claude Code CLI installed in Docker worker container for AI analysis
 
-### v2.1.0 — 2026-03-14
+##
+
+## v2.1.1 — 2026-03-23
+
+### ✨ New Features
+
+**Security Information Browser**
+- New "Security Intel" expandable/collapsible dropdown menu in the sidebar
+- Browse all 6 threat intelligence datasets directly from the UI with search and pagination (50 records/page)
+- Click any row to expand detailed information (animated slide-down)
+- Overview page with 6 clickable cards for quick navigation
+- Dataset views:
+  - **NVD** — CVE entries with CVSS, affected products (CPE), references
+  - **CVE** — Multi-source CVSS scores from CNA and ADP providers
+  - **CISA-KEV** — Known Exploited Vulnerabilities with remediation deadlines and ransomware indicators
+  - **CMS-CVE** — CMS-specific vulnerabilities (WordPress, Drupal, GitLab, etc.)
+  - **EPSS** — Exploit Prediction Scoring with visual probability bars
+  - **Compliance** — NIST 800-53, PCI DSS v4, CIS v8, and ISO 27001 control mappings
+
+**Dataset Refresh from UI**
+- "Refresh All" button to re-fetch all 6 datasets from their sources (NVD, CISA, EPSS, CVE.org) without leaving the browser
+- Real-time progress banner with per-dataset status updates
+- Cancel button to abort long-running refreshes
+- Background processing via RQ worker
+
+##
+
+## v2.1.0 — 2026-03-14
 
 - Scanning accuracy: distro-patch detection, active verification, deep fingerprinting
 - CVE verifier and endpoint prober plugins
 - Validation states with confidence caps
 - Bootstrap script with auto-credential detection
 
-### v1.0.0 — 2026-03-05
+##
+
+## v1.0.0 — 2026-03-05
 
 - Initial release
 - 17 scanner plugins
@@ -386,6 +415,7 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 - Neo4j attack graph
 - CSV/HTML/PDF export
 
+##
 ---
 
 ## License
