@@ -636,3 +636,4 @@ class Check(Plugin):
             findings=findings,
             artifacts={"infra.db.findings": len(findings)},
         )
+

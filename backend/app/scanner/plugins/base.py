@@ -56,3 +56,4 @@ class Plugin:
 
     async def run(self, target: str, ctx: ScanContext) -> PluginResult:
         raise NotImplementedError
+

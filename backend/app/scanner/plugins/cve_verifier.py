@@ -178,3 +178,4 @@ class Check(Plugin):
             ))
 
         return PluginResult(findings=findings, artifacts={"cve.verified": verified})
+

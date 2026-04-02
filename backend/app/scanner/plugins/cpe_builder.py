@@ -218,3 +218,4 @@ class Check(Plugin):
         uniq = list(best.values())
 
         return PluginResult(findings=[], artifacts={"cpe.candidates": uniq})
+
