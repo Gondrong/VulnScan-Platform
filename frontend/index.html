@@ -1766,6 +1766,49 @@
           .si-card:hover { border-color:var(--accent); box-shadow:0 0 20px rgba(0,212,255,.08) }
           .si-epss-bar { display:inline-block; height:8px; border-radius:4px; background:var(--accent); vertical-align:middle }
 
+          /* AI Analysis */
+          .ai-bar { margin:16px 0; padding:16px 20px; background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(139,92,246,.02)); border:1px solid rgba(139,92,246,.3); border-radius:8px }
+          .ai-bar-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+          .ai-bar-title { font-family:var(--fh); font-size:.95rem; font-weight:700; color:#a78bfa }
+          .ai-bar select, .ai-bar .ai-mode-btn { font-family:var(--fm); font-size:.72rem; padding:5px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text1) }
+          .ai-mode-btn { cursor:pointer; transition:all .12s }
+          .ai-mode-btn.active { background:rgba(139,92,246,.2); border-color:#a78bfa; color:#a78bfa; font-weight:700 }
+          .ai-run-btn { padding:6px 16px; background:#7c3aed; color:#fff; font-family:var(--fh); font-size:.78rem; font-weight:700; border:none; border-radius:4px; cursor:pointer; transition:background .15s }
+          .ai-run-btn:hover { background:#6d28d9 }
+          .ai-run-btn:disabled { opacity:.5; cursor:not-allowed }
+          .ai-progress { margin-top:10px; display:none }
+          .ai-progress-bar { height:6px; background:var(--surface2); border-radius:3px; overflow:hidden }
+          .ai-progress-fill { height:100%; background:linear-gradient(90deg,#7c3aed,#a78bfa); border-radius:3px; transition:width .3s }
+          .ai-progress-text { font-family:var(--fm); font-size:.68rem; color:var(--text3); margin-top:4px }
+          .ai-results { margin-top:14px; display:none }
+          .ai-results.show { display:block }
+          .ai-tab-row { display:flex; gap:4px; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:6px }
+          .ai-tab { padding:5px 12px; font-family:var(--fm); font-size:.7rem; cursor:pointer; border-radius:4px 4px 0 0; background:transparent; color:var(--text3); border:none; transition:all .12s }
+          .ai-tab.active { background:rgba(139,92,246,.15); color:#a78bfa; font-weight:700 }
+          .ai-tab-content { display:none }
+          .ai-tab-content.active { display:block }
+          .ai-summary-box { padding:14px 16px; background:rgba(139,92,246,.04); border:1px solid rgba(139,92,246,.15); border-radius:6px; font-size:.88rem; color:var(--text1); line-height:1.7 }
+          .ai-chain { padding:12px 16px; margin-bottom:8px; background:var(--surface2); border-radius:6px; border-left:3px solid #7c3aed }
+          .ai-chain-title { font-family:var(--fh); font-size:.82rem; font-weight:700; color:var(--text1); margin-bottom:6px }
+          .ai-chain-steps { font-size:.8rem; color:var(--text2); line-height:1.7 }
+          .ai-chain-step { padding:2px 0 }
+          .ai-chain-step::before { content:'→ '; color:#a78bfa }
+          .ai-remed-item { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:flex-start }
+          .ai-remed-rank { font-family:var(--fh); font-size:1rem; font-weight:700; color:#a78bfa; min-width:24px }
+          .ai-remed-action { font-size:.84rem; color:var(--text1); line-height:1.5 }
+          .ai-remed-meta { font-family:var(--fm); font-size:.65rem; color:var(--text3); margin-top:2px }
+          .ai-badge { font-size:.6rem; padding:2px 6px; border-radius:3px; font-weight:700; font-family:var(--fm); margin-left:4px; letter-spacing:.03em }
+          .ai-badge.tp { background:rgba(46,213,115,.12); color:var(--green) }
+          .ai-badge.fp { background:rgba(255,71,87,.12); color:var(--red) }
+          .ai-badge.manual { background:rgba(255,165,2,.12); color:#fbbf24 }
+          .ai-poc-block { position:relative; margin-top:10px }
+          .ai-poc-code { background:#0d1117; border:1px solid var(--border); border-radius:6px; padding:14px; font-family:var(--fm); font-size:.78rem; color:#c9d1d9; overflow-x:auto; max-height:400px; overflow-y:auto; white-space:pre; line-height:1.6 }
+          .ai-poc-copy { position:absolute; top:8px; right:8px; padding:4px 10px; font-size:.65rem; background:rgba(255,255,255,.1); border:1px solid var(--border); border-radius:3px; color:var(--text2); cursor:pointer; font-family:var(--fm) }
+          .ai-poc-copy:hover { background:rgba(255,255,255,.2) }
+          .ai-poc-btn { padding:3px 10px; font-size:.68rem; background:rgba(139,92,246,.15); border:1px solid rgba(139,92,246,.3); border-radius:3px; color:#a78bfa; cursor:pointer; font-family:var(--fm); transition:all .12s }
+          .ai-poc-btn:hover { background:rgba(139,92,246,.25) }
+          .ai-info { font-family:var(--fm); font-size:.65rem; color:var(--text3); margin-left:auto }
+
           .hf-chip {
             display: inline-flex;
             align-items: center;
@@ -1932,6 +1975,35 @@
           </div>
           <div class="ph-right"><button class="btn btn-ghost" onclick="loadDashboard(true)">↻ Refresh</button></div>
         </div>
+        <!-- AI Deep Analysis Bar -->
+        <div id="ai-analysis-bar" class="ai-bar" style="display:none">
+          <div class="ai-bar-row">
+            <span class="ai-bar-title">🤖 AI Deep Analysis</span>
+            <select id="ai-provider-sel"></select>
+            <span class="ai-mode-btn active" onclick="setAiMode('validate',this)">Validate Only</span>
+            <span class="ai-mode-btn" onclick="setAiMode('full',this)">Full Analysis</span>
+            <span class="ai-mode-btn" onclick="setAiMode('full_exploit',this)">Full + PoC</span>
+            <button class="ai-run-btn" id="ai-run-btn" onclick="startAiAnalysis()">▶ Run AI Analysis</button>
+            <span class="ai-info" id="ai-info"></span>
+          </div>
+          <div class="ai-progress" id="ai-progress">
+            <div class="ai-progress-bar"><div class="ai-progress-fill" id="ai-progress-fill" style="width:0%"></div></div>
+            <div class="ai-progress-text" id="ai-progress-text">Queued...</div>
+          </div>
+          <div class="ai-results" id="ai-results">
+            <div class="ai-tab-row">
+              <button class="ai-tab active" onclick="showAiTab('summary',this)">Summary</button>
+              <button class="ai-tab" onclick="showAiTab('chains',this)">Attack Chains</button>
+              <button class="ai-tab" onclick="showAiTab('remed',this)">Remediation</button>
+              <button class="ai-tab" onclick="showAiTab('history',this)">History</button>
+            </div>
+            <div class="ai-tab-content active" id="ai-tab-summary"></div>
+            <div class="ai-tab-content" id="ai-tab-chains"></div>
+            <div class="ai-tab-content" id="ai-tab-remed"></div>
+            <div class="ai-tab-content" id="ai-tab-history"></div>
+          </div>
+        </div>
+
         <div id="vulns-host-summary" style="margin-bottom:18px">
           <div class="panel" style="margin:0">
             <div class="panel-head">
@@ -2206,8 +2278,17 @@
               <div id="profile-alert" style="display:none"></div>
               <div class="fg"><label class="fl">Profile Name</label><input id="p-name" class="fc" value="default" />
               </div>
-              <div class="fg"><label class="fl">Plugin Selection (JSON)</label><textarea id="p-plugins" class="fc"
-                  rows="11">{"net.port.discovery.v2":true,"net.port.discovery.nmap":true,"recon.dns.enum":true,"recon.directory.crawl":true,"fingerprint.http":true,"fingerprint.banner.multi":true,"fingerprint.web.tech":true,"fingerprint.favicon.hash":true,"fingerprint.deep":true,"cpe.builder":true,"cve.match.nvd_cpe":true,"cve.match.cms":true,"cve.endpoint_prober":true,"cve.verifier":true,"priority.cisa_kev":true,"owasp.web.scanner":true,"vuln.file.inclusion":true,"tls.basic.version":true,"infra.ssh.audit":true,"infra.db.auth_check":true,"infra.smb.check":true,"local.security.checks":true,"auth.ssh.inventory":false,"cve.match.packages":false}</textarea>
+              <div class="fg">
+                <label class="fl">Plugin Selection</label>
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="pluginCheckAll(true)">Select All</button>
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="pluginCheckAll(false)">Deselect All</button>
+                  <span id="p-plugin-count" style="margin-left:auto;font-family:var(--fm);font-size:.65rem;color:var(--text3);align-self:center"></span>
+                </div>
+                <div id="p-plugin-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px;max-height:320px;overflow-y:auto;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)">
+                  <div style="color:var(--text3);font-size:.75rem;padding:8px">Loading plugins...</div>
+                </div>
+                <textarea id="p-plugins" class="fc" rows="3" style="margin-top:6px;font-size:.65rem;display:none">{"net.port.discovery.v2":true}</textarea>
               </div>
               <div
                 style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:15px">
@@ -3119,6 +3200,8 @@
       loadProfiles();
       loadCreds();
       loadDs();
+      loadPluginGrid();
+      loadAiProviders();
       checkDsRefreshRunning();
       clearInterval(S.dashInterval);
       clearInterval(S.jobsInterval);
@@ -3195,12 +3278,318 @@
       gi('findings-list').innerHTML = findings.map((f, i) => {
         const rc = f.risk_score >= 9 ? '#f87171' : f.risk_score >= 7 ? '#fb923c' : f.risk_score >= 4 ? '#fbbf24' : '#34d399';
         const rp = f.risk_score ? Math.min(100, f.risk_score * 10) : 0;
-        return `<div class="fcard" id="fc-${i}"><div class="fcard-hdr" onclick="toggleFinding(${i})">${severityBadge(f.severity)} ${f.is_kev ? '<span class="kev-tag">KEV</span>' : ''}<div class="fcard-title">${esc(f.title)}</div><div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id || '')}</div><div class="risk-wrap" style="width:108px;flex-shrink:0"><div class="risk-track"><div class="risk-fill" style="width:${rp}%;background:${rc}"></div></div><div class="risk-num" style="color:${rc}">${f.risk_score != null ? Number(f.risk_score).toFixed(1) : '—'}</div></div><span class="fcard-arrow">▾</span></div><div class="fcard-body"><div class="fmeta"><div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${rc}">${f.risk_score != null ? Number(f.risk_score).toFixed(2) : '—'}</div></div><div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base ?? '—'}</div></div><div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget || '')}</div></div></div>${renderTelemetryRow(f)}${f.evidence ? `<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">${esc(f.evidence)}</div>` : ''} ${f.description ? `<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>` : ''}<div style="margin-top:14px;display:flex;gap:8px">${f.remediation ? `<div style="margin:12px 0;padding:14px 16px;background:rgba(52,211,153,0.04);border:1px solid rgba(52,211,153,0.15);border-radius:4px"><div style="font-family:var(--fm);font-size:.62rem;color:#34d399;letter-spacing:.18em;margin-bottom:10px;font-weight:700">REMEDIATION</div><div style="font-size:.84rem;color:var(--text);line-height:1.7;white-space:pre-wrap">${formatRemediation(f.remediation)}</div></div>` : ''}
-${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding('${esc(f.fingerprint)}',event)">Suppress</button>` : ''}</div></div></div>`;
+        return `<div class="fcard" id="fc-${i}"><div class="fcard-hdr" onclick="toggleFinding(${i})">${severityBadge(f.severity)} ${f.is_kev ? '<span class="kev-tag">KEV</span>' : ''}${aiVerdictBadge(f.id)}<div class="fcard-title">${esc(f.title)}</div><div style="font-family:var(--fm);font-size:.67rem;color:var(--text3);margin-right:10px;flex-shrink:0">${esc(f.plugin_id || '')}</div><div class="risk-wrap" style="width:108px;flex-shrink:0"><div class="risk-track"><div class="risk-fill" style="width:${rp}%;background:${rc}"></div></div><div class="risk-num" style="color:${rc}">${f.risk_score != null ? Number(f.risk_score).toFixed(1) : '—'}</div></div><span class="fcard-arrow">▾</span></div><div class="fcard-body"><div class="fmeta"><div class="mi"><div class="mk">Risk Score</div><div class="mv" style="color:${rc}">${f.risk_score != null ? Number(f.risk_score).toFixed(2) : '—'}</div></div><div class="mi"><div class="mk">CVSS Base</div><div class="mv">${f.cvss_base ?? '—'}</div></div><div class="mi"><div class="mk">Job / Target</div><div class="mv" style="font-size:.7rem;word-break:break-all">#${f._jobId} — ${esc(f._jobTarget || '')}</div></div></div>${renderTelemetryRow(f)}${f.evidence ? `<div class="fl" style="margin-bottom:6px">Evidence</div><div class="terminal" style="max-height:64px;margin-bottom:12px">${esc(f.evidence)}</div>` : ''} ${f.description ? `<div class="fl" style="margin-top:8px;margin-bottom:5px">Description</div><div style="font-size:.88rem;color:var(--text2);line-height:1.6">${esc(f.description)}</div>` : ''}<div style="margin-top:14px;display:flex;gap:8px">${f.remediation ? `<div style="margin:12px 0;padding:14px 16px;background:rgba(52,211,153,0.04);border:1px solid rgba(52,211,153,0.15);border-radius:4px"><div style="font-family:var(--fm);font-size:.62rem;color:#34d399;letter-spacing:.18em;margin-bottom:10px;font-weight:700">REMEDIATION</div><div style="font-size:.84rem;color:var(--text);line-height:1.7;white-space:pre-wrap">${formatRemediation(f.remediation)}</div></div>` : ''}
+${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding('${esc(f.fingerprint)}',event)">Suppress</button>` : ''}<button class="ai-poc-btn" onclick="event.stopPropagation();generateAiPoc(${f.id})">⚡ Generate PoC</button></div></div></div>`;
       }).join('');
     }
     function toggleFinding(i) { gi('fc-' + i).classList.toggle('open') }
     async function suppressFinding(fp, e) { if (!requireScanWrite()) return; e.stopPropagation(); const reason = prompt('Suppression reason:'); if (reason === null) return; try { await apiReq('/scan/suppress', { method: 'POST', body: JSON.stringify({ fingerprint: fp, reason }) }); await loadDashboard(false) } catch (e) { alert('Error: ' + e.message) } }
+
+    // ─── AI Deep Analysis ───
+    S.aiProviders = [];
+    S.aiMode = 'validate';
+    S.aiAnalysisId = null;
+    S.aiPollInterval = null;
+    S.aiResults = null;
+    S.aiValidationMap = {};
+
+    async function loadAiProviders() {
+      try {
+        const d = await apiReq('/ai/providers');
+        S.aiProviders = d.providers || [];
+        const bar = gi('ai-analysis-bar');
+        if (!bar) return;
+        if (!S.aiProviders.length) { bar.style.display = 'none'; return; }
+        bar.style.display = 'block';
+        const sel = gi('ai-provider-sel');
+        sel.innerHTML = S.aiProviders.map(p => `<option value="${p.id}">${esc(p.name)} (${esc(p.model)})</option>`).join('');
+      } catch (e) { console.error('[AI providers]', e); }
+    }
+
+    function setAiMode(mode, el) {
+      S.aiMode = mode;
+      document.querySelectorAll('.ai-mode-btn').forEach(b => b.classList.remove('active'));
+      if (el) el.classList.add('active');
+    }
+
+    async function startAiAnalysis() {
+      const provider = gi('ai-provider-sel')?.value;
+      if (!provider) return;
+      // Find latest done job
+      const doneJobs = (S._allJobs || []).filter(j => j.status === 'done');
+      if (!doneJobs.length) return alert('No completed scan jobs to analyze');
+      const jobId = doneJobs[0].id;
+
+      const btn = gi('ai-run-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Starting...';
+
+      try {
+        const d = await apiReq('/ai/analyze', {
+          method: 'POST',
+          body: JSON.stringify({ job_id: jobId, provider, mode: S.aiMode }),
+        });
+        S.aiAnalysisId = d.analysis_id;
+        gi('ai-progress').style.display = 'block';
+        gi('ai-results').classList.remove('show');
+        gi('ai-info').textContent = `Job #${jobId} → ${provider}`;
+        startAiPoll();
+      } catch (e) {
+        alert('AI Analysis error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '▶ Run AI Analysis';
+      }
+    }
+
+    function startAiPoll() {
+      if (S.aiPollInterval) clearInterval(S.aiPollInterval);
+      S.aiPollInterval = setInterval(pollAiStatus, 3000);
+      pollAiStatus();
+    }
+
+    async function pollAiStatus() {
+      if (!S.aiAnalysisId) return;
+      try {
+        const d = await apiReq('/ai/status/' + S.aiAnalysisId);
+        const fill = gi('ai-progress-fill');
+        const txt = gi('ai-progress-text');
+        const pct = d.progress?.pct || 0;
+        fill.style.width = pct + '%';
+        txt.textContent = d.progress?.step || d.status;
+
+        if (d.status === 'done') {
+          clearInterval(S.aiPollInterval);
+          S.aiPollInterval = null;
+          gi('ai-progress').style.display = 'none';
+          gi('ai-run-btn').disabled = false;
+          gi('ai-run-btn').textContent = '▶ Run AI Analysis';
+          if (d.result) {
+            S.aiResults = d.result;
+            buildAiValidationMap(d.result);
+            renderAiResults(d.result, d);
+            renderHostSummary(S.allFindings); // re-render to add badges
+          }
+          gi('ai-info').textContent = `✓ Done in ${(d.duration_seconds || 0).toFixed(1)}s — ${d.token_usage || 0} tokens`;
+        } else if (d.status === 'failed') {
+          clearInterval(S.aiPollInterval);
+          S.aiPollInterval = null;
+          gi('ai-progress').style.display = 'none';
+          gi('ai-run-btn').disabled = false;
+          gi('ai-run-btn').textContent = '▶ Run AI Analysis';
+          gi('ai-info').textContent = '⚠ Failed: ' + (d.error || 'unknown error');
+        }
+      } catch (e) { console.error('[AI poll]', e); }
+    }
+
+    function buildAiValidationMap(result) {
+      S.aiValidationMap = {};
+      if (!result || !result.finding_validations) return;
+      for (const [fid, v] of Object.entries(result.finding_validations)) {
+        S.aiValidationMap[fid] = v;
+      }
+    }
+
+    function aiVerdictBadge(findingId) {
+      const v = S.aiValidationMap[String(findingId)];
+      if (!v) return '';
+      if (v.verdict === 'true_positive') return '<span class="ai-badge tp" title="' + esc(v.reasoning || '') + '">✅ TP</span>';
+      if (v.verdict === 'false_positive') return '<span class="ai-badge fp" title="' + esc(v.reasoning || '') + '">❌ FP</span>';
+      return '<span class="ai-badge manual" title="' + esc(v.reasoning || '') + '">⚠️ Manual</span>';
+    }
+
+    function showAiTab(tab, el) {
+      document.querySelectorAll('.ai-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.ai-tab-content').forEach(t => t.classList.remove('active'));
+      if (el) el.classList.add('active');
+      const c = gi('ai-tab-' + tab);
+      if (c) c.classList.add('active');
+    }
+
+    function renderAiResults(result, meta) {
+      gi('ai-results').classList.add('show');
+
+      // Summary tab
+      const sumEl = gi('ai-tab-summary');
+      if (result.executive_summary) {
+        const valCounts = { tp: 0, fp: 0, manual: 0 };
+        for (const v of Object.values(result.finding_validations || {})) {
+          if (v.verdict === 'true_positive') valCounts.tp++;
+          else if (v.verdict === 'false_positive') valCounts.fp++;
+          else valCounts.manual++;
+        }
+        sumEl.innerHTML = `<div class="ai-summary-box">${esc(result.executive_summary)}</div>
+          <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap">
+            <span class="ai-badge tp" style="font-size:.75rem;padding:4px 10px">✅ ${valCounts.tp} True Positives</span>
+            <span class="ai-badge fp" style="font-size:.75rem;padding:4px 10px">❌ ${valCounts.fp} False Positives</span>
+            <span class="ai-badge manual" style="font-size:.75rem;padding:4px 10px">⚠️ ${valCounts.manual} Needs Manual</span>
+          </div>`;
+      } else {
+        // Validate-only mode: just show validation counts
+        const valCounts = { tp: 0, fp: 0, manual: 0 };
+        for (const v of Object.values(result.finding_validations || {})) {
+          if (v.verdict === 'true_positive') valCounts.tp++;
+          else if (v.verdict === 'false_positive') valCounts.fp++;
+          else valCounts.manual++;
+        }
+        sumEl.innerHTML = `<div class="ai-summary-box">Validation complete. See badges on each finding below.</div>
+          <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap">
+            <span class="ai-badge tp" style="font-size:.75rem;padding:4px 10px">✅ ${valCounts.tp} True Positives</span>
+            <span class="ai-badge fp" style="font-size:.75rem;padding:4px 10px">❌ ${valCounts.fp} False Positives</span>
+            <span class="ai-badge manual" style="font-size:.75rem;padding:4px 10px">⚠️ ${valCounts.manual} Needs Manual</span>
+          </div>`;
+      }
+
+      // Attack Chains tab
+      const chainsEl = gi('ai-tab-chains');
+      if (result.attack_chains && result.attack_chains.length) {
+        chainsEl.innerHTML = result.attack_chains.map(c => `<div class="ai-chain">
+          <div class="ai-chain-title">${severityBadge(c.risk || 'high')} ${esc(c.name)}</div>
+          <div class="ai-chain-steps">${(c.steps || []).map(s => `<div class="ai-chain-step">${esc(s)}</div>`).join('')}</div>
+          ${c.impact ? `<div style="margin-top:6px;font-size:.78rem;color:var(--text3)"><strong>Impact:</strong> ${esc(c.impact)}</div>` : ''}
+        </div>`).join('');
+      } else {
+        chainsEl.innerHTML = '<div class="empty-state" style="padding:20px">No attack chains identified (run Full Analysis mode)</div>';
+      }
+
+      // Remediation tab
+      const remEl = gi('ai-tab-remed');
+      if (result.remediation_priority && result.remediation_priority.length) {
+        remEl.innerHTML = result.remediation_priority.map(r => `<div class="ai-remed-item">
+          <div class="ai-remed-rank">#${r.rank}</div>
+          <div>
+            <div class="ai-remed-action">${esc(r.action)}</div>
+            <div class="ai-remed-meta">Effort: ${esc(r.effort || '?')} · Impact: ${esc(r.impact || '?')} · Timeframe: ${esc(r.timeframe || '?')}</div>
+          </div>
+        </div>`).join('');
+      } else {
+        remEl.innerHTML = '<div class="empty-state" style="padding:20px">No remediation priorities (run Full Analysis mode)</div>';
+      }
+
+      // History tab
+      loadAiHistory();
+    }
+
+    async function loadAiHistory() {
+      const doneJobs = (S._allJobs || []).filter(j => j.status === 'done');
+      if (!doneJobs.length) return;
+      try {
+        const d = await apiReq('/ai/results/' + doneJobs[0].id);
+        const histEl = gi('ai-tab-history');
+        if (!d.analyses || !d.analyses.length) {
+          histEl.innerHTML = '<div class="empty-state" style="padding:20px">No previous analyses</div>';
+          return;
+        }
+        histEl.innerHTML = '<table class="tbl"><thead><tr><th>ID</th><th>Provider</th><th>Mode</th><th>Status</th><th>Tokens</th><th>Duration</th><th>Date</th></tr></thead><tbody>' +
+          d.analyses.map(a => `<tr>
+            <td class="mc" style="color:var(--accent)">#${a.id}</td>
+            <td class="bright">${esc(a.provider)}</td>
+            <td>${esc(a.mode)}</td>
+            <td>${a.status === 'done' ? '<span style="color:var(--green)">✓ Done</span>' : a.status === 'failed' ? '<span style="color:var(--red)">✗ Failed</span>' : esc(a.status)}</td>
+            <td class="mc">${a.token_usage || '—'}</td>
+            <td class="mc">${a.duration_seconds ? a.duration_seconds.toFixed(1) + 's' : '—'}</td>
+            <td class="mc dim" style="font-size:.72rem">${a.created_at ? a.created_at.slice(0, 19).replace('T', ' ') : '—'}</td>
+          </tr>`).join('') + '</tbody></table>';
+      } catch (e) { console.error('[AI history]', e); }
+    }
+
+    async function generateAiPoc(findingId) {
+      const btn = event?.target;
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating...'; }
+      try {
+        const payload = { finding_id: findingId };
+        if (S.aiAnalysisId) payload.analysis_id = S.aiAnalysisId;
+        const resp = await apiReq('/ai/poc', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        // If PoC was already cached, show immediately
+        if (resp.status === 'done' && resp.poc) {
+          if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate PoC'; }
+          showAiPoc(findingId, resp.poc);
+          return;
+        }
+        const pollAnalysisId = resp.analysis_id || S.aiAnalysisId;
+        if (!pollAnalysisId) {
+          if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate PoC'; }
+          alert('No AI provider available. Configure API keys in Settings.');
+          return;
+        }
+        // Poll for completion
+        const poll = setInterval(async () => {
+          try {
+            const d = await apiReq('/ai/status/' + pollAnalysisId);
+            if (d.result?.poc_results?.[String(findingId)]) {
+              clearInterval(poll);
+              const poc = d.result.poc_results[String(findingId)];
+              if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate PoC'; }
+              showAiPoc(findingId, poc);
+            }
+          } catch (e) { console.error('[PoC poll]', e); }
+        }, 3000);
+        // Timeout after 2 minutes
+        setTimeout(() => {
+          clearInterval(poll);
+          if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate PoC'; }
+        }, 120000);
+      } catch (e) {
+        alert('PoC generation error: ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate PoC'; }
+      }
+    }
+
+    function showAiPoc(findingId, poc) {
+      // Remove any existing PoC blocks
+      document.querySelectorAll('.ai-poc-block').forEach(el => el.remove());
+
+      // Find the finding card — try host-findings view first, then fcard view
+      let container = document.querySelector(`.hf-finding[data-finding-id="${findingId}"]`);
+      if (container) {
+        // Expand the detail panel if collapsed
+        const detail = container.querySelector(':scope > div:nth-child(2)');
+        if (detail) detail.style.display = 'block';
+      } else {
+        // Fallback: fcard view
+        const allFindings = S.allFindings || [];
+        const idx = allFindings.findIndex(f => f.id == findingId);
+        if (idx >= 0) {
+          const card = gi('fc-' + idx);
+          if (card) { card.classList.add('open'); container = card.querySelector('.fcard-body') || card; }
+        }
+      }
+      if (!container) return;
+
+      const block = document.createElement('div');
+      block.className = 'ai-poc-block';
+      block.innerHTML = `
+        <div style="font-family:var(--fm);font-size:.62rem;color:#a78bfa;letter-spacing:.18em;margin-bottom:6px;font-weight:700">AI GENERATED PROOF OF CONCEPT</div>
+        ${poc.description ? `<div style="font-size:.82rem;color:var(--text2);margin-bottom:8px">${esc(poc.description)}</div>` : ''}
+        <div style="position:relative">
+          <pre class="ai-poc-code">${esc(poc.code || 'No code generated')}</pre>
+          <button class="ai-poc-copy" onclick="copyPocCode(this)">📋 Copy</button>
+        </div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:6px">⚠ ${esc(poc.disclaimer || 'Authorized penetration testing only')}</div>
+      `;
+      container.appendChild(block);
+      block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function copyPocCode(btn) {
+      const pre = btn.closest('.ai-poc-block')?.querySelector('.ai-poc-code');
+      if (!pre) return;
+      const text = pre.textContent;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => { btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = '📋 Copy' }, 2000) }).catch(() => fallbackCopy(text, btn));
+      } else {
+        fallbackCopy(text, btn);
+      }
+    }
+    function fallbackCopy(text, btn) {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = '📋 Copy' }, 2000) } catch { btn.textContent = '✗ Failed' }
+      document.body.removeChild(ta);
+    }
 
     // ─── Scan Type ───
     function setScanType(type) { S.scanType = type; gi('tab-internal').classList.toggle('active', type === 'internal'); gi('tab-external').classList.toggle('active', type === 'external'); gi('external-warn').style.display = type === 'external' ? 'flex' : 'none'; if (type === 'external') { gi('target-label').textContent = 'Domain or URL'; gi('job-target').placeholder = 'https://example.com'; gi('job-target').value = 'https://testphp.vulnweb.com'; gi('quick-chips').innerHTML = `<div class="chip" onclick="setTarget('https://testphp.vulnweb.com')">testphp.vulnweb.com</div><div class="chip" onclick="setTarget('https://httpbin.org')">httpbin.org</div><div class="chip" onclick="setTarget('scanme.nmap.org')">scanme.nmap.org</div>` } else { gi('target-label').textContent = 'IP Address or Hostname'; gi('job-target').placeholder = '10.0.0.1'; gi('job-target').value = '127.0.0.1'; gi('quick-chips').innerHTML = `<div class="chip" onclick="setTarget('127.0.0.1')">127.0.0.1</div><div class="chip" onclick="setTarget('192.168.1.1')">192.168.1.1</div><div class="chip" onclick="setTarget('10.0.0.1')">10.0.0.1</div>` } clearTargetErr() }
@@ -3255,11 +3644,70 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     function viewJobResults(jid) { navTo('dashboard'); setTimeout(() => gi('host-summary')?.scrollIntoView({ behavior: 'smooth' }), 250) }
     async function deleteJob(jid, tgt) { if (!requireScanWrite()) return; if (!confirm(`Delete job #${jid} (${tgt}) and all findings?`)) return; S.deletedJobIds.add(jid); S._allJobs = S._allJobs.filter(j => j.id !== jid); renderJobsPage(); try { await apiReq('/scan/jobs/' + jid, { method: 'DELETE' }); showAlert('job-alert', 'success', `✓ Job #${jid} deleted`); loadDashboard(false); loadAttackGraph() } catch (e) { if (e.status === 404) { showAlert('job-alert', 'info', `Job #${jid} already removed`) } else { S.deletedJobIds.delete(jid); await loadJobs(); showAlert('job-alert', 'danger', '⚠ ' + e.message) } } }
 
+    // ─── Plugin Checkbox Grid ───
+    S._availablePlugins = [];
+    async function loadPluginGrid() {
+      try {
+        const d = await apiReq('/scan/plugins');
+        S._availablePlugins = d.plugins || [];
+        renderPluginGrid();
+      } catch (e) { console.error('[loadPluginGrid]', e); }
+    }
+    function renderPluginGrid(selected) {
+      const grid = gi('p-plugin-grid');
+      if (!grid || !S._availablePlugins.length) return;
+      // Parse current selection
+      let sel = {};
+      if (selected) {
+        sel = selected;
+      } else {
+        try { sel = JSON.parse(gi('p-plugins').value || '{}'); } catch { sel = {}; }
+      }
+      // Group by category
+      const cats = {};
+      S._availablePlugins.forEach(p => {
+        if (!cats[p.category]) cats[p.category] = [];
+        cats[p.category].push(p);
+      });
+      const catOrder = ['net','fingerprint','recon','web','owasp','cve','priority','tls','infra','iot','cloud','auth','local','vuln'];
+      const sorted = Object.keys(cats).sort((a, b) => {
+        const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
+      let html = '';
+      sorted.forEach(cat => {
+        html += `<div style="grid-column:1/-1;font-family:var(--fm);font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">${esc(cat)}</div>`;
+        cats[cat].forEach(p => {
+          const checked = sel[p.plugin_id] === true || (sel[p.plugin_id] === undefined && p.enabled_by_default);
+          html += `<label style="display:flex;align-items:center;gap:6px;padding:3px 6px;cursor:pointer;font-size:.72rem;color:var(--text);border-radius:3px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
+            <input type="checkbox" class="plugin-cb" data-pid="${esc(p.plugin_id)}" ${checked ? 'checked' : ''} onchange="syncPluginCheckboxes()"/>
+            <span style="font-weight:500;color:var(--bright)">${esc(p.name)}</span>
+            <span style="font-family:var(--fm);font-size:.58rem;color:var(--text3);margin-left:auto">${esc(p.plugin_id)}</span>
+          </label>`;
+        });
+      });
+      grid.innerHTML = html;
+      syncPluginCheckboxes();
+    }
+    function syncPluginCheckboxes() {
+      const cbs = document.querySelectorAll('.plugin-cb');
+      const sel = {};
+      let count = 0;
+      cbs.forEach(cb => { sel[cb.dataset.pid] = cb.checked; if (cb.checked) count++; });
+      gi('p-plugins').value = JSON.stringify(sel);
+      const countEl = gi('p-plugin-count');
+      if (countEl) countEl.textContent = count + '/' + cbs.length + ' plugins selected';
+    }
+    function pluginCheckAll(checked) {
+      document.querySelectorAll('.plugin-cb').forEach(cb => cb.checked = checked);
+      syncPluginCheckboxes();
+    }
+
     // ─── Profiles ───
     async function loadProfiles() { try { S.profiles = await apiReq('/scan/profiles'); const sel = gi('job-profile'); sel.innerHTML = S.profiles.length ? S.profiles.map(p => `<option value="${p.id}">${esc(p.name)} (#${p.id})</option>`).join('') : '<option value="">No profiles — create one first</option>'; const schedSel = gi('sched-profile'); if (schedSel) schedSel.innerHTML = sel.innerHTML; renderProfilesPage(); } catch (e) { console.error('[loadProfiles]', e) } }
     function goProfilesPage(p) { const totalPages = Math.max(1, Math.ceil(S.profiles.length / S.profilesPerPage)); S.profilesPage = Math.max(1, Math.min(p, totalPages)); renderProfilesPage(); }
     function renderProfilesPage() { const vis = S.profiles; const totalPages = Math.max(1, Math.ceil(vis.length / S.profilesPerPage)); if (S.profilesPage > totalPages) S.profilesPage = totalPages; const start = (S.profilesPage - 1) * S.profilesPerPage; const page = vis.slice(start, start + S.profilesPerPage); gi('profiles-tbody').innerHTML = page.length ? page.map(p => `<tr><td class="mc" style="color:var(--accent)">#${p.id}</td><td class="bright">${esc(p.name)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(p.created_at)}</td><td style="text-align:right"><div style="display:flex;gap:3px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="editProfile(${p.id})">✏️ Edit</button><button class="btn btn-ghost btn-sm" onclick="loadProfileAsTemplate(${p.id})">📋 Clone</button><button class="btn btn-danger btn-sm" onclick="deleteProfile(${p.id},'${esc(p.name)}')">🗑</button></div></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px">No profiles</div></td></tr>'; renderPager('profiles-pager', S.profilesPage, totalPages, vis.length, S.profilesPerPage, 'goProfilesPage'); }
-    function loadProfileAsTemplate(pid) { const p = S.profiles.find(x => x.id === pid); if (!p) return; gi('p-name').value = p.name + ' (Copy)'; gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2); const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json); gi('p-options').value = optStr; try { const o = JSON.parse(optStr); if (o.nmap && o.nmap.mode) gi('p-nmap-mode').value = o.nmap.mode; if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); } if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality); if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); } } catch (e) { console.error('Error parsing profile options', e); } window.scrollTo({ top: 0, behavior: 'smooth' }); showAlert('profile-alert', 'info', `ℹ Loaded profile #${pid} as template`); }
+    function loadProfileAsTemplate(pid) { const p = S.profiles.find(x => x.id === pid); if (!p) return; gi('p-name').value = p.name + ' (Copy)'; const pj = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json); gi('p-plugins').value = pj; try { renderPluginGrid(JSON.parse(pj)); } catch { renderPluginGrid(); } const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json); gi('p-options').value = optStr; try { const o = JSON.parse(optStr); if (o.nmap && o.nmap.mode) gi('p-nmap-mode').value = o.nmap.mode; if (o.auth) { if (o.auth.ssh_credential_id != null) gi('p-cred').value = String(o.auth.ssh_credential_id); if (o.auth.ssh_port != null) gi('p-ssh-port').value = String(o.auth.ssh_port); } if (o.asset && o.asset.criticality != null) gi('p-criticality').value = String(o.asset.criticality); if (o.cve && Array.isArray(o.cve.dataset_kinds)) { gi('p-ds-kinds').querySelectorAll('input').forEach(cb => { cb.checked = o.cve.dataset_kinds.includes(cb.value); }); } } catch (e) { console.error('Error parsing profile options', e); } window.scrollTo({ top: 0, behavior: 'smooth' }); showAlert('profile-alert', 'info', `ℹ Loaded profile #${pid} as template`); }
     async function createProfile() { if (!requireScanWrite()) return; const name = gi('p-name').value.trim(), plugins = gi('p-plugins').value.trim(), options = gi('p-options').value.trim(); if (!name) return showAlert('profile-alert', 'danger', 'Profile name required'); try { JSON.parse(plugins) } catch { return showAlert('profile-alert', 'danger', 'Plugin JSON invalid') } try { JSON.parse(options) } catch { return showAlert('profile-alert', 'danger', 'Options JSON invalid') } try { await apiReq('/scan/profiles', { method: 'POST', body: JSON.stringify({ name, plugin_selection_json: plugins, options_json: options }) }); showAlert('profile-alert', 'success', '✓ Profile "' + name + '" created'); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
     async function deleteProfile(pid, name) { if (!requireScanWrite()) return; if (!confirm(`Delete profile "${name}" (#${pid})?`)) return; try { await apiReq('/scan/profiles/' + pid, { method: 'DELETE' }); showAlert('profile-alert', 'success', `✓ Profile #${pid} deleted`); cancelEditProfile(); await loadProfiles() } catch (e) { showAlert('profile-alert', 'danger', '⚠ ' + e.message) } }
 
@@ -3269,7 +3717,9 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
       if (!p) return;
       S._editProfileId = pid;
       gi('p-name').value = p.name;
-      gi('p-plugins').value = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json, null, 2);
+      const pluginJson = typeof p.plugin_selection_json === 'string' ? p.plugin_selection_json : JSON.stringify(p.plugin_selection_json);
+      gi('p-plugins').value = pluginJson;
+      try { renderPluginGrid(JSON.parse(pluginJson)); } catch { renderPluginGrid(); }
       const optStr = typeof p.options_json === 'string' ? p.options_json : JSON.stringify(p.options_json);
       gi('p-options').value = optStr;
       try {
@@ -3702,9 +4152,9 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
 
       return sorted.map((f, i) => {
         const rc = f.risk_score >= 9 ? '#f87171' : f.risk_score >= 7 ? '#fb923c' : f.risk_score >= 4 ? '#fbbf24' : '#34d399';
-        return `<div class="hf-finding">
+        return `<div class="hf-finding" data-finding-id="${f.id}">
       <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="var d=this.nextElementSibling;d.style.display=d.style.display==='none'?'block':'none'">
-        ${severityBadge(f.severity)}${f.is_kev ? '<span class="kev-tag">KEV</span>' : ''}
+        ${severityBadge(f.severity)}${f.is_kev ? '<span class="kev-tag">KEV</span>' : ''}${aiVerdictBadge(f.id)}
         <span class="bright" style="flex:1;font-size:.84rem">${esc(f.title)}</span>
         <span class="mc dim" style="font-size:.65rem;flex-shrink:0">${esc(f.plugin_id || '')}</span>
         <span class="mc" style="color:${rc};font-size:.78rem;width:40px;text-align:right;flex-shrink:0">${f.risk_score != null ? Number(f.risk_score).toFixed(1) : '—'}</span>
@@ -3723,7 +4173,7 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
         ${f.compliance_json && f.compliance_json !== 'null' && f.compliance_json !== '[]' ? `<div class="hf-section"><div class="hf-section-title" style="color:#94a3b8">Compliance</div><div style="font-size:.78rem;color:var(--text2);line-height:1.6">${esc(f.compliance_json)}</div></div>` : ''}
         ${f.sla_days != null ? `<div class="hf-section"><div class="hf-section-title" style="color:#fbbf24">SLA Policy</div><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Remediation deadline: <strong style="color:var(--text)">${f.sla_days} days</strong> from discovery. Severity: <strong style="color:var(--${f.severity === 'info' ? 'accent' : f.severity})">${(f.severity || 'info').toUpperCase()}</strong></div></div>` : ''}
         ${f.references_json && f.references_json !== '[]' ? `<div class="hf-section"><div class="hf-section-title" style="color:#60a5fa">References</div><div style="font-size:.78rem;color:var(--accent);line-height:1.8;word-break:break-all">${(() => { try { const r = JSON.parse(f.references_json); return Array.isArray(r) ? r.map(x => '<div>- ' + esc(x) + '</div>').join('') : esc(f.references_json) } catch { return esc(f.references_json) } })()}</div></div>` : ''}
-        <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();suppressFinding('${esc(f.fingerprint)}',event)">Suppress</button></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();suppressFinding('${esc(f.fingerprint)}',event)">Suppress</button><button class="ai-poc-btn" onclick="event.stopPropagation();generateAiPoc(${f.id})">⚡ Generate PoC</button></div>
       </div>
     </div>`;
       }).join('');
@@ -4692,3 +5142,4 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
 </body>
 
 </html>
+

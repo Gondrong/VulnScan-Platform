@@ -27,12 +27,23 @@ const PLUGINS = [
   // ── Web Application Testing ─────────────────────────────────
   ["owasp.web.scanner", "web", true],
   ["vuln.file.inclusion", "web", true],
+  ["web.host_header_injection", "web", true],
+  ["web.crlf_injection", "web", true],
+  ["web.waf.detection", "web", true],
+  ["web.ssti.scanner", "web", true],
 
   // ── Infrastructure Scanning ─────────────────────────────────
   ["tls.basic.version", "infra", true],
   ["infra.ssh.audit", "infra", true],
   ["infra.db.auth_check", "infra", true],
   ["infra.smb.check", "infra", true],
+  ["infra.snmp.community", "infra", true],
+  ["infra.ftp.anonymous", "infra", true],
+  ["infra.redis.deep", "infra", true],
+  ["infra.docker.api", "infra", true],
+
+  // ── Cloud Security ─────────────────────────────────────────
+  ["cloud.storage.misconfig", "cloud", true],
 
   // ── Authenticated Scanning (opt-in) ─────────────────────────
   ["auth.ssh.inventory", "auth", false],
@@ -53,7 +64,7 @@ const CAT_COLORS = {
   network: "badge-info", recon: "badge-info", fingerprint: "badge-info",
   cpe: "badge-medium", cve: "badge-warning", validation: "badge-medium",
   priority: "badge-critical", web: "badge-high", infra: "badge-medium",
-  auth: "badge-success",
+  cloud: "badge-warning", auth: "badge-success",
 };
 
 function defaultPlugins() {
@@ -374,3 +385,4 @@ export default function Profiles() {
     </div>
   );
 }
+
