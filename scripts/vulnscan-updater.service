@@ -1,0 +1,16 @@
+[Unit]
+Description=VulnScan Platform Auto-Updater
+Documentation=https://github.com/Gondrong/VulnScan-Platform
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=__PROJECT_DIR__/scripts/vulnscan-updater.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
