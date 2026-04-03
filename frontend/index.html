@@ -1367,6 +1367,18 @@
     </div>
   </div>
 
+  <!-- UPDATE NOTIFICATION BANNER -->
+  <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 20px;background:linear-gradient(135deg,rgba(52,211,153,.15),rgba(52,211,153,.05));border-bottom:1px solid rgba(52,211,153,.3);backdrop-filter:blur(12px);display:none;align-items:center;gap:12px">
+    <span style="font-size:1.1rem">🔔</span>
+    <div style="flex:1">
+      <span style="font-family:var(--fh,sans-serif);font-weight:700;color:#34d399;font-size:.82rem">Update Available: </span>
+      <span id="update-banner-ver" style="font-family:var(--fh,sans-serif);font-weight:700;color:#f1f5f9;font-size:.82rem"></span>
+      <span id="update-banner-notes" style="font-size:.75rem;color:#94a3b8;margin-left:8px"></span>
+    </div>
+    <button class="btn btn-sm" style="background:#34d399;color:#0a0e14;font-weight:700;font-size:.7rem;padding:4px 14px" onclick="navTo('settings');setSettingsTab('system',document.querySelector('.settings-tab:last-child'))">View Update</button>
+    <button style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1rem;padding:4px" onclick="dismissUpdateBanner()">✕</button>
+  </div>
+
   <!-- SIDEBAR -->
   <nav class="sidebar" id="app-sidebar" style="display:none">
     <div class="sidebar-accent"></div>
@@ -1374,7 +1386,7 @@
       <div class="logo-name">
         <div class="logo-dot"></div>VulnScan
       </div>
-      <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v2.1.2</div>
+      <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v2.1.1</div>
     </div>
     <div class="nav-wrap">
       <div class="nav-sec">Monitoring</div>
@@ -2777,6 +2789,7 @@
           <button class="settings-tab active" onclick="setSettingsTab('general',this)">General</button>
           <button class="settings-tab" onclick="setSettingsTab('users',this)">Users</button>
           <button class="settings-tab" onclick="setSettingsTab('integrations',this)">Integrations</button>
+          <button class="settings-tab" onclick="setSettingsTab('system',this)">System</button>
         </div>
         <style>
           .settings-tab {
@@ -3007,6 +3020,66 @@
           <button class="btn btn-primary btn-lg" style="margin-top:16px" onclick="saveIntegrations()">💾 Save All
             Integrations</button>
         </div>
+
+        <!-- System Tab -->
+        <div id="stab-system" style="display:none">
+          <div id="system-alert" style="display:none"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <!-- Version & Update -->
+            <div class="panel" style="margin:0">
+              <div class="panel-head">
+                <div class="panel-title"><div class="panel-title-bar"></div>🔄 Platform Update</div>
+              </div>
+              <div class="pb">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                  <div>
+                    <div class="fl" style="margin-bottom:2px">Current Version</div>
+                    <div style="font-family:var(--fh);font-size:1.4rem;font-weight:700;color:var(--accent)" id="sys-current-ver">—</div>
+                  </div>
+                  <div style="width:1px;height:40px;background:var(--border)"></div>
+                  <div>
+                    <div class="fl" style="margin-bottom:2px">Latest Available</div>
+                    <div style="font-family:var(--fh);font-size:1.4rem;font-weight:700;color:var(--bright)" id="sys-latest-ver">—</div>
+                  </div>
+                </div>
+                <div id="sys-update-info" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);border-radius:6px">
+                  <div style="font-family:var(--fm);font-size:.68rem;color:var(--green);font-weight:700;margin-bottom:4px">✓ NEW VERSION AVAILABLE</div>
+                  <div id="sys-release-name" style="font-weight:600;color:var(--bright);font-size:.85rem;margin-bottom:4px"></div>
+                  <div id="sys-release-notes" style="font-size:.78rem;color:var(--text2);line-height:1.5;max-height:120px;overflow-y:auto"></div>
+                  <div id="sys-release-date" style="font-family:var(--fm);font-size:.62rem;color:var(--text3);margin-top:6px"></div>
+                </div>
+                <div id="sys-up-to-date" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(52,211,153,.04);border:1px solid rgba(52,211,153,.12);border-radius:6px">
+                  <span style="color:var(--green);font-weight:700">✓</span> <span style="color:var(--text)">You are running the latest version</span>
+                </div>
+                <div id="sys-update-progress" style="display:none;margin-bottom:12px">
+                  <div style="background:var(--surface);height:6px;border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-bottom:4px">
+                    <div id="sys-update-bar" style="height:100%;background:var(--accent);width:0%;transition:width .5s"></div>
+                  </div>
+                  <div id="sys-update-msg" style="font-family:var(--fm);font-size:.65rem;color:var(--text3)"></div>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-ghost" id="sys-check-btn" onclick="checkForPlatformUpdate()">🔍 Check for Updates</button>
+                  <button class="btn btn-primary" id="sys-update-btn" onclick="triggerPlatformUpdate()" style="display:none">🔄 Update Now</button>
+                </div>
+              </div>
+            </div>
+            <!-- System Info -->
+            <div class="panel" style="margin:0">
+              <div class="panel-head">
+                <div class="panel-title"><div class="panel-title-bar"></div>ℹ System Info</div>
+              </div>
+              <div class="pb">
+                <div id="sys-info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                </div>
+                <div style="margin-top:12px">
+                  <a href="https://github.com/Gondrong/VulnScan-Platform" target="_blank" style="color:var(--accent);font-size:.78rem;text-decoration:none">
+                    ⭐ GitHub Repository → github.com/Gondrong/VulnScan-Platform
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -3202,6 +3275,7 @@
       loadDs();
       loadPluginGrid();
       loadAiProviders();
+      scheduleUpdateCheck();
       checkDsRefreshRunning();
       clearInterval(S.dashInterval);
       clearInterval(S.jobsInterval);
@@ -4463,6 +4537,15 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     // ─── Scan Progress ───
     S._progressInterval = null;
     S._progressPollCount = 0;
+    async function cancelScanJob(jobId, target) {
+      if (!confirm(`Cancel running scan on ${target} (Job #${jobId})?`)) return;
+      try {
+        const r = await apiReq('/scan/jobs/' + jobId + '/cancel', { method: 'POST' });
+        showAlert('job-alert', 'success', `✓ ${r.message || 'Cancel signal sent'}`);
+        setTimeout(() => { loadJobs(); pollScanProgress(); }, 2000);
+      } catch (e) { showAlert('job-alert', 'danger', '⚠ ' + e.message) }
+    }
+
     function startProgressPolling() { if (S._progressInterval) return; S._progressPollCount = 0; S._progressInterval = setInterval(pollScanProgress, 5000); pollScanProgress() }
     function stopProgressPolling() { if (S._progressInterval) { clearInterval(S._progressInterval); S._progressInterval = null; S._progressPollCount = 0 } }
     async function pollScanProgress() {
@@ -4504,6 +4587,7 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
           <span class="badge b-info" style="font-size:.55rem">#${j.id}</span>
           <span class="sp-elapsed">⏱ ${elStr}</span>
           <span class="sp-pct">${isStale ? '⚠' : pct + '%'}</span>
+          <button class="btn btn-sm" style="margin-left:auto;padding:2px 12px;font-size:.65rem;background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25)" onclick="cancelScanJob(${j.id},'${esc(j.target)}')">✕ Cancel</button>
         </div>
         ${isStale ? `<div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:.72rem;color:#f87171">
           <strong>⚠ Job appears stuck</strong> — The scan worker may have crashed. Delete this job and retry. 
@@ -4803,7 +4887,7 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
     }
 
     // ─── Settings ───
-    function setSettingsTab(tab, btn) { if (!canAdmin()) return; document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active');['general', 'users', 'integrations'].forEach(t => { const el = gi('stab-' + t); if (el) el.style.display = t === tab ? 'block' : 'none' }); if (tab === 'users') loadUsers(); if (tab === 'integrations') loadIntegrations() }
+    function setSettingsTab(tab, btn) { if (!canAdmin()) return; document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active')); if (btn) btn.classList.add('active');['general', 'users', 'integrations', 'system'].forEach(t => { const el = gi('stab-' + t); if (el) el.style.display = t === tab ? 'block' : 'none' }); if (tab === 'users') loadUsers(); if (tab === 'integrations') loadIntegrations(); if (tab === 'system') loadSystemTab() }
 
     async function loadSettings() {
       try {
@@ -4951,6 +5035,147 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
         showAlert('integ-alert', 'success', `✓ Test ${provider} notification sent successfully!`);
       } catch (e) {
         showAlert('integ-alert', 'danger', `⚠ Failed to send ${provider} test: ` + e.message);
+      }
+    }
+
+    // ─── Platform Update ───
+    S._updateData = null;
+
+    async function checkForPlatformUpdate() {
+      const btn = gi('sys-check-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '🔍 Checking...'; }
+      try {
+        const d = await apiReq('/settings/update/check');
+        S._updateData = d;
+        gi('sys-current-ver').textContent = 'v' + (d.current || '?');
+        gi('sys-latest-ver').textContent = 'v' + (d.latest || '?');
+
+        if (d.available) {
+          gi('sys-update-info').style.display = 'block';
+          gi('sys-up-to-date').style.display = 'none';
+          gi('sys-update-btn').style.display = 'inline-block';
+          gi('sys-release-name').textContent = d.release_name || ('v' + d.latest);
+          gi('sys-release-notes').textContent = d.release_notes || '';
+          gi('sys-release-date').textContent = d.published_at ? 'Released: ' + d.published_at.slice(0, 10) : '';
+          // Show banner
+          showUpdateBanner(d);
+        } else {
+          gi('sys-update-info').style.display = 'none';
+          gi('sys-up-to-date').style.display = 'block';
+          gi('sys-update-btn').style.display = 'none';
+          hideUpdateBanner();
+        }
+        if (d.error) showAlert('system-alert', 'warn', d.error);
+      } catch (e) {
+        showAlert('system-alert', 'danger', '⚠ Update check failed: ' + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔍 Check for Updates'; }
+      }
+    }
+
+    function showUpdateBanner(d) {
+      const dismissed = localStorage.getItem('update_dismissed_ver');
+      if (dismissed === d.latest) return;
+      const banner = gi('update-banner');
+      if (!banner) return;
+      gi('update-banner-ver').textContent = 'v' + d.latest;
+      gi('update-banner-notes').textContent = (d.release_name || '').slice(0, 80);
+      banner.style.display = 'flex';
+    }
+
+    function hideUpdateBanner() {
+      const banner = gi('update-banner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    function dismissUpdateBanner() {
+      hideUpdateBanner();
+      if (S._updateData) localStorage.setItem('update_dismissed_ver', S._updateData.latest);
+    }
+
+    async function triggerPlatformUpdate() {
+      if (!confirm('Update the platform now? The system will restart and be briefly unavailable.')) return;
+      const btn = gi('sys-update-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating...'; }
+      gi('sys-update-progress').style.display = 'block';
+      gi('sys-update-bar').style.width = '10%';
+      gi('sys-update-msg').textContent = 'Triggering update...';
+      try {
+        await apiReq('/settings/update/trigger', { method: 'POST' });
+        gi('sys-update-bar').style.width = '20%';
+        gi('sys-update-msg').textContent = 'Update triggered — pulling code...';
+        pollPlatformUpdate();
+      } catch (e) {
+        showAlert('system-alert', 'danger', '⚠ ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Update Now'; }
+        gi('sys-update-progress').style.display = 'none';
+      }
+    }
+
+    function pollPlatformUpdate() {
+      const poll = setInterval(async () => {
+        try {
+          const d = await apiReq('/settings/update/status');
+          const bar = gi('sys-update-bar');
+          const msg = gi('sys-update-msg');
+          if (d.status === 'updating') {
+            msg.textContent = d.message || 'Updating...';
+            if (d.message?.includes('Pulling')) bar.style.width = '30%';
+            if (d.message?.includes('Rebuilding')) bar.style.width = '60%';
+            if (d.message?.includes('Restarting')) bar.style.width = '85%';
+          } else if (d.status === 'success') {
+            clearInterval(poll);
+            bar.style.width = '100%';
+            msg.textContent = '✓ ' + (d.message || 'Update complete!');
+            showAlert('system-alert', 'success', '✓ Platform updated successfully! Reloading in 5 seconds...');
+            hideUpdateBanner();
+            setTimeout(() => window.location.reload(), 5000);
+          } else if (d.status === 'failed') {
+            clearInterval(poll);
+            bar.style.width = '100%';
+            bar.style.background = 'var(--red)';
+            msg.textContent = '✗ ' + (d.message || 'Update failed');
+            showAlert('system-alert', 'danger', '⚠ Update failed: ' + (d.message || 'Check server logs'));
+            const btn = gi('sys-update-btn');
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Retry Update'; }
+          }
+        } catch {
+          // Backend might be restarting — keep polling
+          gi('sys-update-msg').textContent = 'Platform is restarting...';
+          gi('sys-update-bar').style.width = '90%';
+        }
+      }, 3000);
+      // Timeout after 10 minutes
+      setTimeout(() => {
+        clearInterval(poll);
+        gi('sys-update-msg').textContent = 'Update is taking longer than expected. Check server logs.';
+      }, 600000);
+    }
+
+    function loadSystemTab() {
+      checkForPlatformUpdate();
+      // Load system info
+      apiReq('/settings/info').then(d => {
+        const grid = gi('sys-info-grid');
+        if (!grid) return;
+        grid.innerHTML = [
+          ['Scan Timeout', d.scan_timeout_seconds + 's'],
+          ['Reports Dir', d.reports_dir],
+          ['Neo4j', d.neo4j_uri],
+          ['CORS', d.cors_origins],
+          ['Redis', d.redis_url],
+          ['Database', d.database_url],
+        ].map(([k, v]) => `<div style="padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px"><div class="fl" style="margin-bottom:2px">${esc(k)}</div><div style="font-family:var(--fm);font-size:.7rem;color:var(--text);word-break:break-all">${esc(v || '—')}</div></div>`).join('');
+      }).catch(() => {});
+    }
+
+    // Check for updates on login (once per 24 hours)
+    function scheduleUpdateCheck() {
+      const lastCheck = localStorage.getItem('update_last_check');
+      const now = Date.now();
+      if (!lastCheck || (now - parseInt(lastCheck)) > 86400000) {
+        localStorage.setItem('update_last_check', String(now));
+        checkForPlatformUpdate();
       }
     }
 
