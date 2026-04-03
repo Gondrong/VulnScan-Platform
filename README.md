@@ -273,10 +273,11 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 
 | Severity | Remediation Deadline |
 |----------|---------------------|
-| Critical | 7 days |
-| High | 14 days |
+| Critical | 2 days |
+| High | 7 days |
 | Medium | 30 days |
-| Low | 60 days |
+| Low | 90 days |
+| Info | 365 days |
 
 ---
 
