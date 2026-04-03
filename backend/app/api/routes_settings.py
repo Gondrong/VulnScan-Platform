@@ -6,7 +6,9 @@ import json
 import logging
 import os
 import re
+from datetime import datetime, timezone
 
+import redis
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -232,6 +234,140 @@ def test_integration(
         return {"ok": True, "message": "Webhook URL validated."}
 
     raise HTTPException(400, f"Unknown integration type: {body.type}")
+
+
+# ─── Platform Update ─────────────────────────────────────────────────────────
+
+def _redis_conn():
+    return redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+@router.get("/update/check")
+def check_for_update(user=Depends(require_role("admin", "analyst", "viewer"))):
+    """Check GitHub Releases for a newer version. Cached for 24 hours."""
+    r = _redis_conn()
+    cache_key = "update_check_cache"
+
+    # Return cached result if available
+    cached = r.get(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
+    # Fetch latest release from GitHub
+    import urllib.request
+    current = settings.PLATFORM_VERSION
+    repo = settings.GITHUB_REPO
+
+    try:
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+        req = urllib.request.Request(url, headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "VulnScan-Platform",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        return {
+            "available": False,
+            "current": current,
+            "latest": current,
+            "error": f"Could not reach GitHub: {str(e)[:200]}",
+        }
+
+    latest_tag = data.get("tag_name", "")
+    latest_ver = latest_tag.lstrip("vV")
+    release_name = data.get("name", "")
+    release_body = data.get("body", "")[:500]
+    published_at = data.get("published_at", "")
+
+    # Compare versions (simple string comparison works for semver)
+    def _ver_tuple(v):
+        try:
+            return tuple(int(x) for x in v.split("."))
+        except Exception:
+            return (0, 0, 0)
+
+    available = _ver_tuple(latest_ver) > _ver_tuple(current)
+
+    result = {
+        "available": available,
+        "current": current,
+        "latest": latest_ver,
+        "tag": latest_tag,
+        "release_name": release_name,
+        "release_notes": release_body,
+        "published_at": published_at,
+        "repo": repo,
+    }
+
+    # Cache for 24 hours
+    r.setex(cache_key, 86400, json.dumps(result))
+
+    return result
+
+
+@router.post("/update/trigger")
+def trigger_update(user=Depends(require_role("admin"))):
+    """Trigger a platform update. Writes a trigger file that the host updater picks up."""
+    trigger_path = "/data/update-trigger.json"
+    result_path = "/data/update-result.json"
+
+    # Check if update is already in progress
+    if os.path.exists(trigger_path):
+        raise HTTPException(409, "Update already triggered — waiting for host updater to process")
+
+    if os.path.exists(result_path):
+        try:
+            with open(result_path) as f:
+                status = json.load(f)
+            if status.get("status") == "updating":
+                raise HTTPException(409, f"Update in progress: {status.get('message', '...')}")
+        except (json.JSONDecodeError, HTTPException):
+            if isinstance(status, dict) and status.get("status") == "updating":
+                raise
+
+    # Write trigger file
+    trigger_data = {
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "requested_by": user.get("sub", user.get("email", "unknown")),
+    }
+    with open(trigger_path, "w") as f:
+        json.dump(trigger_data, f)
+
+    # Clear the version check cache so next check picks up new version
+    try:
+        r = _redis_conn()
+        r.delete("update_check_cache")
+    except Exception:
+        pass
+
+    logger.info("Platform update triggered by %s", trigger_data["requested_by"])
+    return {"status": "triggered", "message": "Update will begin shortly. The platform will restart automatically."}
+
+
+@router.get("/update/status")
+def update_status(user=Depends(require_role("admin", "analyst", "viewer"))):
+    """Check the current update status (written by the host updater script)."""
+    result_path = "/data/update-result.json"
+    trigger_path = "/data/update-trigger.json"
+
+    # If trigger exists but no result yet, update hasn't started
+    if os.path.exists(trigger_path):
+        return {"status": "triggered", "message": "Waiting for host updater to start..."}
+
+    if not os.path.exists(result_path):
+        return {"status": "idle", "message": "No update in progress", "version": settings.PLATFORM_VERSION}
+
+    try:
+        with open(result_path) as f:
+            result = json.load(f)
+        result["version"] = settings.PLATFORM_VERSION
+        return result
+    except Exception as e:
+        return {"status": "idle", "message": f"Could not read update status: {e}", "version": settings.PLATFORM_VERSION}
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
