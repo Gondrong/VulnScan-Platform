@@ -33,6 +33,10 @@ class Settings(BaseModel):
     # CORS: comma-separated origins, or "*" for all
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
 
+    # ── Platform Update ────────────────────────────────────────────
+    GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "2.1.1")
+
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
     AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
