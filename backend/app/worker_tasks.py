@@ -156,7 +156,7 @@ def run_scan_job(job_id: int) -> None:
                         pass
 
         try:
-            findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress))
+            findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress, job_id=job.id))
         except Exception as e:
             tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)
@@ -974,6 +974,13 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
             fail_count = sum(1 for v in state["kinds"].values() if v["status"] == "failed")
             state["status"] = "done" if fail_count == 0 else "partial" if done_count > 0 else "failed"
 
+        # Clean up old timestamped files — keep only canonical files
+        if done_count > 0:
+            try:
+                _cleanup_old_dataset_files()
+            except Exception as e:
+                logger.warning("Dataset cleanup failed: %s", e)
+
         state["finished_at"] = datetime.now(timezone.utc).isoformat()
         state["current_kind"] = None
         r.setex(status_key, 3600, json.dumps(state))
@@ -988,6 +995,45 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
     finally:
         r.delete(lock_key)
         db.close()
+
+
+def _cleanup_old_dataset_files() -> None:
+    """
+    Delete old timestamped dataset files from /data/cve/.
+    Keeps only the canonical (non-timestamped) files like nvd_cpe_cve.json.
+    """
+    import glob
+
+    data_dir = "/data/cve"
+    if not os.path.isdir(data_dir):
+        return
+
+    # Canonical filenames to keep (without path)
+    canonical_names = set(os.path.basename(p) for p in _DS_CANONICAL.values())
+
+    removed = 0
+    for filepath in glob.glob(os.path.join(data_dir, "*.json")):
+        filename = os.path.basename(filepath)
+        # Keep canonical files
+        if filename in canonical_names:
+            continue
+        # Check if it's a timestamped variant of a known dataset kind
+        is_old = False
+        for kind_prefix in _DS_CANONICAL:
+            # Matches patterns like: nvd_cpe_cve_20260322_193508.json, cisa_kev_15038ccf.json
+            if filename.startswith(kind_prefix + "_") and filename != kind_prefix + ".json":
+                is_old = True
+                break
+        if is_old:
+            try:
+                os.remove(filepath)
+                removed += 1
+                logger.info("  Cleanup: removed old dataset file %s", filename)
+            except OSError as e:
+                logger.warning("  Cleanup: failed to remove %s: %s", filename, e)
+
+    if removed:
+        logger.info("Dataset cleanup: removed %d old timestamped file(s)", removed)
 
 
 def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> None:
