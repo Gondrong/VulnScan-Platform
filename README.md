@@ -375,6 +375,8 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 - Fixed Docker: Node.js installed with all dependencies (libuv.so fix)
 - Fixed updater: git reset --hard handles __pycache__ and untracked file conflicts
 
+##
+
 ## v2.1.2 — 2026-04-02
 
 #### New Features
