@@ -463,6 +463,7 @@ def run_scan_job(job_id: int) -> None:
         # Send notifications
         from app.scanner.notifier import (
             send_slack_notification,
+            send_teams_notification,
             send_webhook_notification,
             send_email_notification,
         )
@@ -513,7 +514,7 @@ def run_scan_job(job_id: int) -> None:
                 db.query(models.Finding)
                 .filter(models.Finding.job_id == job.id)
                 .order_by(models.Finding.risk_score.desc(), models.Finding.id.desc())
-                .limit(3)
+                .limit(10)
                 .all()
             )
             top_findings_text = "\n".join(
@@ -584,6 +585,22 @@ def run_scan_job(job_id: int) -> None:
                             )
 
                         send_slack_notification(cfg, slack_payload)
+                    elif integ.provider == "teams":
+                        teams_payload = {
+                            "title": "VulnScan Scan Completed",
+                            "text": msg,
+                            "Target": job.target,
+                            "Job": f"#{job_id}",
+                            "Type": (job.scan_type or "internal").upper(),
+                            "Duration": duration_text,
+                            "Findings": str(saved_count),
+                            "Risk": risk_level,
+                            "Critical": str(crit),
+                            "High": str(high),
+                            "Medium": str(med),
+                            "Low": str(low),
+                        }
+                        send_teams_notification(cfg, teams_payload)
                     elif integ.provider == "webhook":
                         send_webhook_notification(cfg, {"event": "scan_done", "data": payload})
                     elif integ.provider == "email":
