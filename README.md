@@ -314,6 +314,67 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 
 ## Changelog
 
+## v2.1.3 — 2026-04-05
+
+### New Features
+
+**9 New Scanner Plugins (47 total)**
+- SSL Certificate Transparency — discovers subdomains and expired certs via CT logs (crt.sh)
+- Rate Limiting Check — sends 30 rapid requests to login endpoints, detects missing throttling
+- Open Redirect — tests URL parameters for unvalidated redirects to external domains
+- LDAP Injection — tests LDAP anonymous bind (port 389/636) + LDAP filter injection in web forms
+- NoSQL Injection — MongoDB operator injection ($gt, $ne, $regex) for authentication bypass
+- SSRF Deep (Cloud Metadata) — injects AWS/GCP/Azure metadata URLs into URL-accepting parameters
+- WebSocket Security — discovers WS endpoints, tests unauthenticated access and cross-origin hijacking
+- Kubernetes API — probes K8s API (6443), Kubelet (10250/10255), etcd (2379) for unauthenticated access
+- Unauthenticated API Access — tests 50+ API paths without auth token, detects broken access control
+
+**One-Click Platform Update**
+- Settings → System tab shows current vs latest version from GitHub Releases
+- "Update Now" button triggers git pull + docker rebuild automatically
+- Notification banner appears when new version is available (checks once per 24 hours)
+- Host-level systemd service handles the update (install once with `scripts/install-updater.sh`)
+- Auto-preserves user .env config during updates
+
+**Scan Cancel Button**
+- Cancel button on running scans in the progress panel
+- Stops scan after current plugin completes, auto-deletes the cancelled job
+- Redis-based cancel signal between frontend → backend → worker → scan engine
+
+**Integration Redesign**
+- Toggle-based UI with 3 states: OFF → ON + editing → ON + saved (connected)
+- Microsoft Teams integration (Adaptive Card format via Incoming Webhook)
+- Remove/disable button per integration with confirmation
+- Message format description shown for each provider
+- Per-integration Save and Test buttons (no more "Save All")
+- Top findings in notifications increased from 3 to 10
+
+**Plugin Checkbox Grid**
+- Profile creation shows visual checkbox grid instead of raw JSON textarea
+- Grouped by category with Select All / Deselect All buttons
+- GET /scan/plugins API endpoint lists all available plugins with metadata
+
+**AI Deep Analysis — Job Selector**
+- Added job selector dropdown to AI analysis bar
+- User can choose which specific scan job to analyze (previously always picked the latest)
+
+### Improvements
+
+- Release script (`scripts/release.sh`) — auto-bumps version in all 6 files, commits, tags
+- .gitignore — prevents __pycache__, .env, node_modules, data files from being tracked
+- Delete job now cleans up related AI analysis records (foreign key fix)
+- Stronger PoC generation prompts — exploitation-focused instead of validation
+- Dataset cleanup — old timestamped files auto-deleted after refresh
+- Claude CLI provider detection via CLAUDE_CLI_ENABLED env var (fixes Docker detection)
+
+### Bug Fixes
+
+- Fixed scan cancel: engine now checks Redis cancel flag between each plugin
+- Fixed job deletion: deletes ai_analyses records before findings (FK constraint)
+- Fixed AI analysis: job selector prevents analyzing wrong host's findings
+- Fixed Docker: Node.js installed with all dependencies (libuv.so fix)
+- Fixed updater: git reset --hard handles __pycache__ and untracked file conflicts
+
 ## v2.1.2 — 2026-04-02
 
 #### New Features
