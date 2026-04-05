@@ -48,7 +48,7 @@ def save_integration(
     user=Depends(require_role("admin")),
     db: Session = Depends(get_db),
 ):
-    valid_providers = {"slack", "email", "webhook"}
+    valid_providers = {"slack", "email", "webhook", "teams"}
     if provider not in valid_providers:
         raise HTTPException(status_code=400, detail="Invalid provider")
 
@@ -83,7 +83,7 @@ def test_integration(
     user=Depends(require_role("admin")),
 ):
     from app.scanner.notifier import dispatch_test_notification
-    valid_providers = {"slack", "email", "webhook"}
+    valid_providers = {"slack", "email", "webhook", "teams"}
     if provider not in valid_providers:
         raise HTTPException(status_code=400, detail="Invalid provider")
 

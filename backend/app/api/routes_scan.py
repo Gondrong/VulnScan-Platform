@@ -393,6 +393,43 @@ def job_detail(
     }
 
 
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Cancel a running or queued scan job."""
+    job = (
+        db.query(models.ScanJob)
+        .filter(
+            models.ScanJob.workspace_id == user["ws"],
+            models.ScanJob.id == job_id,
+        )
+        .first()
+    )
+    if not job:
+        raise HTTPException(404, "job not found")
+    if job.status not in ("queued", "running"):
+        raise HTTPException(400, f"Job is already {job.status}")
+
+    # Set Redis cancel flag — worker checks this each plugin iteration
+    r = _redis()
+    r.setex(f"scan_cancel:{job_id}", 600, "1")
+
+    # If still queued, cancel immediately
+    if job.status == "queued":
+        job.status = "cancelled"
+        job.meta_json = json.dumps({"cancelled": True, "cancelled_by": user.get("email", "unknown")})
+        db.commit()
+        logger.info("Cancelled queued job #%d", job_id)
+        return {"id": job_id, "status": "cancelled", "message": "Job cancelled (was queued)"}
+
+    # If running, the worker will pick up the cancel flag
+    logger.info("Cancel requested for running job #%d", job_id)
+    return {"id": job_id, "status": "cancelling", "message": "Cancel signal sent — job will stop after current plugin completes"}
+
+
 @router.delete("/jobs/{job_id}")
 def delete_job(
     job_id: int,
