@@ -39,20 +39,16 @@ while true; do
         echo "[$(date)] Phase 1: git pull" >> "$LOG"
         cd "$PROJECT"
 
-        # Clean __pycache__ files that conflict with git
-        find "$PROJECT" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
-        echo "[$(date)] Cleaned __pycache__ directories" >> "$LOG"
-
         # Backup .env before reset (user config must survive)
         cp -f "$PROJECT/.env" "$PROJECT/.env.bak" 2>/dev/null
 
-        # Reset local changes so git pull doesn't conflict
-        git checkout -- . >> "$LOG" 2>&1
-        git clean -fd --exclude=.env --exclude=.env.bak --exclude=data/ >> "$LOG" 2>&1
-
-        # Pull latest
-        git pull origin main >> "$LOG" 2>&1
+        # Hard reset: force-match remote exactly
+        # This handles tracked changes, untracked files, and __pycache__ conflicts
+        git fetch origin main >> "$LOG" 2>&1
+        git reset --hard origin/main >> "$LOG" 2>&1
+        git clean -fdx --exclude=.env --exclude=.env.bak --exclude=data/ >> "$LOG" 2>&1
         GIT_RC=$?
+        echo "[$(date)] git reset --hard origin/main completed (rc=$GIT_RC)" >> "$LOG"
 
         # Restore user's .env (preserve their config)
         if [ -f "$PROJECT/.env.bak" ]; then

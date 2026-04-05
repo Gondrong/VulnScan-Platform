@@ -1991,6 +1991,7 @@
         <div id="ai-analysis-bar" class="ai-bar" style="display:none">
           <div class="ai-bar-row">
             <span class="ai-bar-title">🤖 AI Deep Analysis</span>
+            <select id="ai-job-sel" style="font-family:var(--fm);font-size:.72rem;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text1);max-width:220px"></select>
             <select id="ai-provider-sel"></select>
             <span class="ai-mode-btn active" onclick="setAiMode('validate',this)">Validate Only</span>
             <span class="ai-mode-btn" onclick="setAiMode('full',this)">Full Analysis</span>
@@ -2955,70 +2956,146 @@
         <!-- Integrations Tab -->
         <div id="stab-integrations" style="display:none">
           <div id="integ-alert" style="display:none"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-            <div class="panel" style="margin:0">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <div class="panel-title-bar"></div>💬 Slack Webhook
-                </div>
-              </div>
-              <div class="pb">
-                <div class="fg"><label class="fl">Webhook URL</label><input id="integ-slack" class="fc"
-                    placeholder="https://hooks.slack.com/services/..." /></div>
-                <button class="btn btn-ghost btn-sm" onclick="testIntegration('slack')">Test Slack</button>
-              </div>
+          <style>
+            .integ-row { border:1px solid var(--border); border-radius:8px; margin-bottom:10px; overflow:hidden; transition:border-color .15s }
+            .integ-row.active { border-color:var(--accent) }
+            .integ-header { display:flex; align-items:center; padding:14px 18px; cursor:default }
+            .integ-icon { font-size:1.2rem; margin-right:12px }
+            .integ-name { font-family:var(--fh); font-weight:600; font-size:.88rem; color:var(--bright); flex:1 }
+            .integ-desc { font-family:var(--fm); font-size:.65rem; color:var(--text3); margin-right:12px }
+            .integ-toggle { position:relative; width:44px; height:24px; border-radius:12px; background:var(--surface); border:1px solid var(--border); cursor:pointer; transition:all .2s }
+            .integ-toggle.on { background:var(--accent); border-color:var(--accent) }
+            .integ-toggle::after { content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .2s }
+            .integ-toggle.on::after { transform:translateX(20px) }
+            .integ-body { max-height:0; overflow:hidden; transition:max-height .25s ease-out }
+            .integ-body.open { max-height:400px; transition:max-height .3s ease-in }
+            .integ-inner { padding:0 18px 16px }
+            .integ-connected { display:flex; align-items:center; gap:8px; padding:0 18px 12px; font-family:var(--fm); font-size:.72rem }
+            .integ-connected-dot { width:8px; height:8px; border-radius:50%; background:var(--green) }
+            .integ-format { font-family:var(--fm); font-size:.62rem; color:var(--text3); padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:4px; margin-top:8px; line-height:1.5 }
+          </style>
+
+          <!-- Slack -->
+          <div class="integ-row" id="integ-row-slack">
+            <div class="integ-header">
+              <span class="integ-icon">💬</span>
+              <span class="integ-name">Slack</span>
+              <span class="integ-desc" id="integ-status-slack"></span>
+              <div class="integ-toggle" id="integ-tog-slack" onclick="toggleIntegration('slack')"></div>
             </div>
-            <div class="panel" style="margin:0">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <div class="panel-title-bar"></div>📧 Email (SMTP)
-                </div>
-              </div>
-              <div class="pb">
-                <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
-                  <div class="fg"><label class="fl">SMTP Host</label><input id="integ-smtp-host" class="fc"
-                      placeholder="smtp.gmail.com" /></div>
-                  <div class="fg"><label class="fl">Port</label><input id="integ-smtp-port" class="fc" value="587" />
-                  </div>
-                </div>
-                <div class="fg"><label class="fl">From</label><input id="integ-email-from" class="fc"
-                    placeholder="alerts@company.com" /></div>
-                <div class="fg"><label class="fl">Password</label><input id="integ-email-pass" class="fc"
-                    type="password" placeholder="App password" /></div>
-                <div class="fg"><label class="fl">Send To</label><input id="integ-email-to" class="fc"
-                    placeholder="team@company.com" /></div>
-                <button class="btn btn-ghost btn-sm" onclick="testIntegration('email')">Send Test Email</button>
-              </div>
+            <div class="integ-connected" id="integ-conn-slack" style="display:none">
+              <div class="integ-connected-dot"></div>
+              <span style="color:var(--green)">Connected:</span>
+              <span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="integ-url-slack"></span>
+              <button class="btn btn-ghost btn-sm" style="font-size:.62rem" onclick="editIntegration('slack')">Edit</button>
             </div>
-            <div class="panel" style="margin:0">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <div class="panel-title-bar"></div>🔗 Generic Webhook
+            <div class="integ-body" id="integ-body-slack">
+              <div class="integ-inner">
+                <div class="fg"><label class="fl">Webhook URL</label><input id="integ-slack" class="fc" placeholder="https://hooks.slack.com/services/..." /></div>
+                <div class="integ-format">Message format: Target, Job ID, Scan Type, Duration, Findings count, Severity breakdown (Critical/High/Medium/Low/Info), Top 10 findings by risk score</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-ghost btn-sm" onclick="testIntegration('slack')">Test</button>
+                  <button class="btn btn-primary btn-sm" onclick="saveOneIntegration('slack')">Save</button>
                 </div>
-              </div>
-              <div class="pb">
-                <div class="fg"><label class="fl">Webhook URL</label><input id="integ-webhook" class="fc"
-                    placeholder="https://your-service.com/webhook" /></div>
-                <button class="btn btn-ghost btn-sm" onclick="testIntegration('webhook')">Test Webhook</button>
-              </div>
-            </div>
-            <div class="panel" style="margin:0">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <div class="panel-title-bar"></div>⚙ API Access
-                </div>
-              </div>
-              <div class="pb">
-                <div class="terminal" style="max-height:140px;font-size:.62rem"><span style="color:var(--text3)">#
-                    Authenticate</span><br>curl -X POST /auth/login -d '{"email":"...","password":"..."}'<br><br><span
-                    style="color:var(--text3)"># Launch scan</span><br>curl -X POST /scan/jobs -H "Authorization: Bearer
-                  $TOKEN"<br><br><span style="color:var(--text3)"># Get findings</span><br>curl /scan/jobs/1 -H
-                  "Authorization: Bearer $TOKEN"</div>
               </div>
             </div>
           </div>
-          <button class="btn btn-primary btn-lg" style="margin-top:16px" onclick="saveIntegrations()">💾 Save All
-            Integrations</button>
+
+          <!-- Microsoft Teams -->
+          <div class="integ-row" id="integ-row-teams">
+            <div class="integ-header">
+              <span class="integ-icon">🟦</span>
+              <span class="integ-name">Microsoft Teams</span>
+              <span class="integ-desc" id="integ-status-teams"></span>
+              <div class="integ-toggle" id="integ-tog-teams" onclick="toggleIntegration('teams')"></div>
+            </div>
+            <div class="integ-connected" id="integ-conn-teams" style="display:none">
+              <div class="integ-connected-dot"></div>
+              <span style="color:var(--green)">Connected:</span>
+              <span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="integ-url-teams"></span>
+              <button class="btn btn-ghost btn-sm" style="font-size:.62rem" onclick="editIntegration('teams')">Edit</button>
+            </div>
+            <div class="integ-body" id="integ-body-teams">
+              <div class="integ-inner">
+                <div class="fg"><label class="fl">Webhook URL</label><input id="integ-teams" class="fc" placeholder="https://outlook.office.com/webhook/..." /></div>
+                <div class="integ-format">Message format: Adaptive Card with Target, Job ID, Scan Type, Duration, Findings count, Severity breakdown, Risk level</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-ghost btn-sm" onclick="testIntegration('teams')">Test</button>
+                  <button class="btn btn-primary btn-sm" onclick="saveOneIntegration('teams')">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Email -->
+          <div class="integ-row" id="integ-row-email">
+            <div class="integ-header">
+              <span class="integ-icon">📧</span>
+              <span class="integ-name">Email (SMTP)</span>
+              <span class="integ-desc" id="integ-status-email"></span>
+              <div class="integ-toggle" id="integ-tog-email" onclick="toggleIntegration('email')"></div>
+            </div>
+            <div class="integ-connected" id="integ-conn-email" style="display:none">
+              <div class="integ-connected-dot"></div>
+              <span style="color:var(--green)">Connected:</span>
+              <span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="integ-url-email"></span>
+              <button class="btn btn-ghost btn-sm" style="font-size:.62rem" onclick="editIntegration('email')">Edit</button>
+            </div>
+            <div class="integ-body" id="integ-body-email">
+              <div class="integ-inner">
+                <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+                  <div class="fg"><label class="fl">SMTP Host</label><input id="integ-smtp-host" class="fc" placeholder="smtp.gmail.com" /></div>
+                  <div class="fg"><label class="fl">Port</label><input id="integ-smtp-port" class="fc" value="587" /></div>
+                </div>
+                <div class="fg"><label class="fl">From / Username</label><input id="integ-email-from" class="fc" placeholder="alerts@company.com" /></div>
+                <div class="fg"><label class="fl">Password</label><input id="integ-email-pass" class="fc" type="password" placeholder="App password" /></div>
+                <div class="fg"><label class="fl">Send To</label><input id="integ-email-to" class="fc" placeholder="team@company.com" /></div>
+                <div class="integ-format">Message format: Subject line with target name, body with scan summary, severity counts, and top 10 findings</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-ghost btn-sm" onclick="testIntegration('email')">Test</button>
+                  <button class="btn btn-primary btn-sm" onclick="saveOneIntegration('email')">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Generic Webhook -->
+          <div class="integ-row" id="integ-row-webhook">
+            <div class="integ-header">
+              <span class="integ-icon">🔗</span>
+              <span class="integ-name">Generic Webhook</span>
+              <span class="integ-desc" id="integ-status-webhook"></span>
+              <div class="integ-toggle" id="integ-tog-webhook" onclick="toggleIntegration('webhook')"></div>
+            </div>
+            <div class="integ-connected" id="integ-conn-webhook" style="display:none">
+              <div class="integ-connected-dot"></div>
+              <span style="color:var(--green)">Connected:</span>
+              <span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="integ-url-webhook"></span>
+              <button class="btn btn-ghost btn-sm" style="font-size:.62rem" onclick="editIntegration('webhook')">Edit</button>
+            </div>
+            <div class="integ-body" id="integ-body-webhook">
+              <div class="integ-inner">
+                <div class="fg"><label class="fl">Webhook URL</label><input id="integ-webhook" class="fc" placeholder="https://your-service.com/webhook" /></div>
+                <div class="fg"><label class="fl">Secret (optional)</label><input id="integ-webhook-secret" class="fc" type="password" placeholder="Bearer token for Authorization header" /></div>
+                <div class="integ-format">Message format: JSON payload with event type, job_id, target, status, findings_total, duration, risk_level, severities object</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-ghost btn-sm" onclick="testIntegration('webhook')">Test</button>
+                  <button class="btn btn-primary btn-sm" onclick="saveOneIntegration('webhook')">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- API Access (read-only info) -->
+          <div class="integ-row" style="border-color:var(--border)">
+            <div class="integ-header" style="cursor:default">
+              <span class="integ-icon">⚙</span>
+              <span class="integ-name">API Access</span>
+            </div>
+            <div style="padding:0 18px 14px">
+              <div class="terminal" style="max-height:140px;font-size:.62rem"><span style="color:var(--text3)"># Authenticate</span><br>curl -X POST /auth/login -d '{"email":"...","password":"..."}'<br><br><span style="color:var(--text3)"># Launch scan</span><br>curl -X POST /scan/jobs -H "Authorization: Bearer $TOKEN"<br><br><span style="color:var(--text3)"># Get findings</span><br>curl /scan/jobs/1 -H "Authorization: Bearer $TOKEN"</div>
+            </div>
+          </div>
         </div>
 
         <!-- System Tab -->
@@ -3377,7 +3454,23 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
         bar.style.display = 'block';
         const sel = gi('ai-provider-sel');
         sel.innerHTML = S.aiProviders.map(p => `<option value="${p.id}">${esc(p.name)} (${esc(p.model)})</option>`).join('');
+        // Populate job selector
+        loadAiJobSelector();
       } catch (e) { console.error('[AI providers]', e); }
+    }
+
+    function loadAiJobSelector() {
+      const sel = gi('ai-job-sel');
+      if (!sel) return;
+      const doneJobs = (S._allJobs || []).filter(j => j.status === 'done');
+      if (!doneJobs.length) {
+        sel.innerHTML = '<option value="">No completed jobs</option>';
+        return;
+      }
+      sel.innerHTML = doneJobs.map(j => {
+        const icon = j.scan_type === 'external' ? '🌐' : '🏠';
+        return `<option value="${j.id}">${icon} #${j.id} — ${esc(j.target)}</option>`;
+      }).join('');
     }
 
     function setAiMode(mode, el) {
@@ -3389,10 +3482,8 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
     async function startAiAnalysis() {
       const provider = gi('ai-provider-sel')?.value;
       if (!provider) return;
-      // Find latest done job
-      const doneJobs = (S._allJobs || []).filter(j => j.status === 'done');
-      if (!doneJobs.length) return alert('No completed scan jobs to analyze');
-      const jobId = doneJobs[0].id;
+      const jobId = parseInt(gi('ai-job-sel')?.value);
+      if (!jobId) return alert('Select a completed scan job to analyze');
 
       const btn = gi('ai-run-btn');
       btn.disabled = true;
@@ -4541,8 +4632,28 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
       if (!confirm(`Cancel running scan on ${target} (Job #${jobId})?`)) return;
       try {
         const r = await apiReq('/scan/jobs/' + jobId + '/cancel', { method: 'POST' });
-        showAlert('job-alert', 'success', `✓ ${r.message || 'Cancel signal sent'}`);
-        setTimeout(() => { loadJobs(); pollScanProgress(); }, 2000);
+        showAlert('job-alert', 'success', `✓ Cancelling job #${jobId}...`);
+        // Poll until job finishes, then auto-delete
+        const cancelPoll = setInterval(async () => {
+          try {
+            const jobs = await apiReq('/scan/jobs');
+            const job = jobs.find(j => j.id === jobId);
+            if (!job || job.status !== 'running') {
+              clearInterval(cancelPoll);
+              // Auto-delete the cancelled job
+              try {
+                await apiReq('/scan/jobs/' + jobId, { method: 'DELETE' });
+                S.deletedJobIds.add(jobId);
+                showAlert('job-alert', 'success', `✓ Job #${jobId} cancelled and removed`);
+              } catch { }
+              loadJobs();
+              pollScanProgress();
+              loadDashboard(false);
+            }
+          } catch { }
+        }, 2000);
+        // Safety timeout: stop polling after 60s
+        setTimeout(() => clearInterval(cancelPoll), 60000);
       } catch (e) { showAlert('job-alert', 'danger', '⚠ ' + e.message) }
     }
 
@@ -4949,68 +5060,140 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
       } catch (e) { showAlert('user-alert', 'danger', '⚠ ' + e.message) }
     }
 
+    // ─── Integration Toggle UI ───
+    S._integState = {};  // { provider: { enabled, config, editing } }
+
     async function loadIntegrations() {
       try {
         const integrations = await apiReq('/integrations');
-        // Reset fields
-        gi('integ-slack').value = '';
-        gi('integ-smtp-host').value = ''; gi('integ-smtp-port').value = '587';
-        gi('integ-email-from').value = ''; gi('integ-email-pass').value = ''; gi('integ-email-to').value = '';
-        gi('integ-webhook').value = '';
-
-        for (let integ of integrations) {
+        // Reset all to OFF
+        ['slack', 'teams', 'email', 'webhook'].forEach(p => {
+          S._integState[p] = { enabled: false, config: {}, editing: false };
+        });
+        // Load saved state
+        for (const integ of integrations) {
           if (!integ.enabled) continue;
-          let c = integ.config || {};
-          if (integ.provider === 'slack') gi('integ-slack').value = c.webhook_url || '';
-          if (integ.provider === 'webhook') gi('integ-webhook').value = c.url || '';
-          if (integ.provider === 'email') {
-            gi('integ-smtp-host').value = c.smtp_host || '';
-            gi('integ-smtp-port').value = c.smtp_port || '587';
-            gi('integ-email-from').value = c.from_email || '';
-            gi('integ-email-pass').value = c.smtp_pass || '';
-            gi('integ-email-to').value = c.to_email || '';
-          }
+          const c = integ.config || {};
+          S._integState[integ.provider] = { enabled: true, config: c, editing: false };
         }
+        renderIntegrations();
       } catch (e) { console.error('[Integrations]', e); }
     }
 
-    async function saveIntegrations() { if (!requireAdmin()) return;
+    function renderIntegrations() {
+      ['slack', 'teams', 'email', 'webhook'].forEach(p => {
+        const st = S._integState[p] || { enabled: false, config: {}, editing: false };
+        const row = gi('integ-row-' + p);
+        const tog = gi('integ-tog-' + p);
+        const body = gi('integ-body-' + p);
+        const conn = gi('integ-conn-' + p);
+        if (!row || !tog || !body) return;
+
+        // Toggle visual
+        if (st.enabled) { tog.classList.add('on'); row.classList.add('active'); }
+        else { tog.classList.remove('on'); row.classList.remove('active'); }
+
+        // Populate fields from config
+        if (p === 'slack') gi('integ-slack').value = st.config.webhook_url || '';
+        if (p === 'teams') gi('integ-teams').value = st.config.webhook_url || '';
+        if (p === 'webhook') {
+          gi('integ-webhook').value = st.config.url || '';
+          const sec = gi('integ-webhook-secret');
+          if (sec) sec.value = st.config.secret || '';
+        }
+        if (p === 'email') {
+          gi('integ-smtp-host').value = st.config.smtp_host || '';
+          gi('integ-smtp-port').value = st.config.smtp_port || '587';
+          gi('integ-email-from').value = st.config.from_email || st.config.smtp_user || '';
+          gi('integ-email-pass').value = st.config.smtp_pass || '';
+          gi('integ-email-to').value = st.config.to_email || '';
+        }
+
+        // Determine display URL for "Connected" bar
+        let displayUrl = '';
+        if (p === 'slack') displayUrl = st.config.webhook_url || '';
+        if (p === 'teams') displayUrl = st.config.webhook_url || '';
+        if (p === 'webhook') displayUrl = st.config.url || '';
+        if (p === 'email') displayUrl = st.config.smtp_host ? (st.config.smtp_host + ' → ' + (st.config.to_email || '')) : '';
+
+        const urlEl = gi('integ-url-' + p);
+        if (urlEl) urlEl.textContent = displayUrl;
+
+        // 3 states
+        if (!st.enabled) {
+          // OFF: hide everything
+          body.classList.remove('open');
+          if (conn) conn.style.display = 'none';
+        } else if (st.editing || !displayUrl) {
+          // ON + editing: show form
+          body.classList.add('open');
+          if (conn) conn.style.display = 'none';
+        } else {
+          // ON + saved: show connected bar, hide form
+          body.classList.remove('open');
+          if (conn) conn.style.display = 'flex';
+        }
+      });
+    }
+
+    function toggleIntegration(provider) {
+      if (!canAdmin()) return;
+      const st = S._integState[provider] || { enabled: false, config: {}, editing: false };
+
+      if (st.enabled) {
+        // Turning OFF — confirm and disable
+        if (!confirm(`Disable ${provider} integration? The configuration will be removed.`)) return;
+        apiReq('/integrations/' + provider, {
+          method: 'POST',
+          body: JSON.stringify({ enabled: false, config: {} })
+        }).then(() => {
+          S._integState[provider] = { enabled: false, config: {}, editing: false };
+          renderIntegrations();
+          showAlert('integ-alert', 'success', `✓ ${provider} integration disabled`);
+        }).catch(e => showAlert('integ-alert', 'danger', '⚠ ' + e.message));
+      } else {
+        // Turning ON — show form for editing
+        S._integState[provider] = { enabled: true, config: st.config, editing: true };
+        renderIntegrations();
+      }
+    }
+
+    function editIntegration(provider) {
+      const st = S._integState[provider];
+      if (st) st.editing = true;
+      renderIntegrations();
+    }
+
+    async function saveOneIntegration(provider) {
+      if (!requireAdmin()) return;
+      let config = {};
+      if (provider === 'slack') config = { webhook_url: gi('integ-slack').value.trim() };
+      if (provider === 'teams') config = { webhook_url: gi('integ-teams').value.trim() };
+      if (provider === 'webhook') {
+        config = { url: gi('integ-webhook').value.trim() };
+        const sec = gi('integ-webhook-secret');
+        if (sec && sec.value.trim()) config.secret = sec.value.trim();
+      }
+      if (provider === 'email') {
+        config = {
+          smtp_host: gi('integ-smtp-host').value.trim(),
+          smtp_port: parseInt(gi('integ-smtp-port').value) || 587,
+          smtp_user: gi('integ-email-from').value.trim(),
+          smtp_pass: gi('integ-email-pass').value,
+          from_email: gi('integ-email-from').value.trim() || 'vulnscan@noreply.local',
+          to_email: gi('integ-email-to').value.trim(),
+        };
+      }
       try {
-        gi('integ-alert').style.display = 'none';
-
-        const slackUrl = gi('integ-slack').value.trim();
-        await apiReq('/integrations/slack', {
+        await apiReq('/integrations/' + provider, {
           method: 'POST',
-          body: JSON.stringify({ enabled: !!slackUrl, config: { webhook_url: slackUrl } })
+          body: JSON.stringify({ enabled: true, config })
         });
-
-        const webhookUrl = gi('integ-webhook').value.trim();
-        await apiReq('/integrations/webhook', {
-          method: 'POST',
-          body: JSON.stringify({ enabled: !!webhookUrl, config: { url: webhookUrl } })
-        });
-
-        const smtpHost = gi('integ-smtp-host').value.trim();
-        const emailTo = gi('integ-email-to').value.trim();
-        const hasEmail = smtpHost && emailTo;
-        await apiReq('/integrations/email', {
-          method: 'POST',
-          body: JSON.stringify({
-            enabled: !!hasEmail,
-            config: {
-              smtp_host: smtpHost,
-              smtp_port: parseInt(gi('integ-smtp-port').value) || 587,
-              smtp_user: gi('integ-email-from').value.trim(),
-              smtp_pass: gi('integ-email-pass').value,
-              from_email: gi('integ-email-from').value.trim() || 'vulnscan@noreply.local',
-              to_email: emailTo,
-            }
-          })
-        });
-
-        showAlert('integ-alert', 'success', '✓ Integrations saved successfully!');
+        S._integState[provider] = { enabled: true, config, editing: false };
+        renderIntegrations();
+        showAlert('integ-alert', 'success', `✓ ${provider} integration saved`);
       } catch (e) {
-        showAlert('integ-alert', 'danger', '⚠ Failed to save integrations: ' + e.message);
+        showAlert('integ-alert', 'danger', '⚠ ' + e.message);
       }
     }
 
@@ -5019,6 +5202,7 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
       let config = {};
       if (provider === 'slack') config = { webhook_url: gi('integ-slack').value.trim() };
       if (provider === 'webhook') config = { url: gi('integ-webhook').value.trim() };
+      if (provider === 'teams') config = { webhook_url: gi('integ-teams').value.trim() };
       if (provider === 'email') config = {
         smtp_host: gi('integ-smtp-host').value.trim(),
         smtp_port: parseInt(gi('integ-smtp-port').value) || 587,
