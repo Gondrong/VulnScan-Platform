@@ -41,6 +41,81 @@ def send_slack_notification(config: dict, message) -> bool:
         return False
 
 
+def send_teams_notification(config: dict, message) -> bool:
+    """Send notification to Microsoft Teams via Incoming Webhook."""
+    webhook_url = config.get("webhook_url")
+    if not webhook_url:
+        logger.error("Teams integration missing webhook_url")
+        return False
+
+    # Teams Adaptive Card format
+    if isinstance(message, dict) and "type" in message:
+        # Already an Adaptive Card payload
+        payload = message
+    elif isinstance(message, dict):
+        # Build Adaptive Card from structured data
+        facts = []
+        for k, v in message.items():
+            if k not in ("title", "text", "blocks"):
+                facts.append({"title": str(k), "value": str(v)})
+
+        payload = {
+            "type": "message",
+            "attachments": [{
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "size": "Large",
+                            "weight": "Bolder",
+                            "text": message.get("title", "VulnScan Notification"),
+                            "wrap": True,
+                        },
+                        {
+                            "type": "TextBlock",
+                            "text": message.get("text", str(message)),
+                            "wrap": True,
+                        },
+                    ] + ([{
+                        "type": "FactSet",
+                        "facts": facts,
+                    }] if facts else []),
+                },
+            }],
+        }
+    else:
+        # Simple text message
+        payload = {
+            "type": "message",
+            "attachments": [{
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [{
+                        "type": "TextBlock",
+                        "text": str(message),
+                        "wrap": True,
+                    }],
+                },
+            }],
+        }
+
+    try:
+        session = _get_session()
+        resp = session.post(webhook_url, json=payload, timeout=10)
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error("Failed to send Teams notification: %s", e)
+        return False
+
+
 def send_webhook_notification(config: dict, payload: dict) -> bool:
     url = config.get("url")
     if not url:
@@ -100,6 +175,8 @@ def send_email_notification(config: dict, subject: str, body: str) -> bool:
 def dispatch_test_notification(provider: str, config: dict) -> bool:
     if provider == "slack":
         return send_slack_notification(config, "Test notification from VulnScan Platform!")
+    elif provider == "teams":
+        return send_teams_notification(config, "Test notification from VulnScan Platform!")
     elif provider == "webhook":
         return send_webhook_notification(config, {"event": "test", "message": "Test notification from VulnScan Platform!"})
     elif provider == "email":

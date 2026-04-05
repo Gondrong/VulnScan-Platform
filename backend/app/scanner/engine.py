@@ -448,7 +448,7 @@ def _set_default_artifacts(chk, ctx):
 
 async def scan_target(
     target: str, profile: dict, workspace_id: int, scan_type: str = "internal",
-    progress_callback=None,
+    progress_callback=None, job_id: int | None = None,
 ) -> list[Finding]:
     """
     Main scan entry point.
@@ -512,6 +512,27 @@ async def scan_target(
 
     for step_idx, pid in enumerate(enabled):
         chk = PLUGINS[pid]
+
+        # Check cancel flag BEFORE starting each plugin
+        if job_id:
+            try:
+                import redis as _redis_mod
+                _r = _redis_mod.from_url(settings.REDIS_URL)
+                if _r.exists(f"scan_cancel:{job_id}"):
+                    _r.delete(f"scan_cancel:{job_id}")
+                    logger.info("Scan cancelled by user (job #%d) at plugin %d/%d", job_id, step_idx, len(enabled))
+                    findings_out.append(Finding(
+                        severity="info",
+                        plugin_id="system.cancelled",
+                        title=f"Scan cancelled by user after {step_idx}/{len(enabled)} plugins",
+                        evidence=f"cancelled_at_step={step_idx} total_plugins={len(enabled)} elapsed={time.monotonic() - scan_start:.1f}s",
+                        affected=target,
+                        fingerprint=stable_fingerprint(target, "system.cancelled", str(job_id)),
+                        remediation="Scan was manually cancelled. Re-run with the same profile to complete all plugins.",
+                    ))
+                    break
+            except Exception:
+                pass
 
         # Check remaining budget BEFORE starting each plugin
         elapsed = time.monotonic() - scan_start
