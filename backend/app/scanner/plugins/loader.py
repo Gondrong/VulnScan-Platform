@@ -53,6 +53,16 @@ _BUILTIN_PLUGINS = [
     "cloud_storage_misconfig",
     "waf_detection",
     "ssti_scanner",
+    # Tier 3 — advanced recon, injection, cloud, API security
+    "ssl_ct",
+    "rate_limit_check",
+    "open_redirect",
+    "ldap_injection",
+    "nosql_injection",
+    "ssrf_deep",
+    "websocket_check",
+    "k8s_api",
+    "unauth_api",
 ]
 
 
