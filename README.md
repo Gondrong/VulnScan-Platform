@@ -22,7 +22,7 @@
 VulnScan is a self-hosted vulnerability management platform built for security teams. It combines automated scanning with multi-provider AI analysis to find, validate, and prioritize vulnerabilities across your infrastructure.
 
 **Key capabilities:**
-- **38 scanner plugins** covering network, web, infrastructure, IoT, and cloud
+- **47 scanner plugins** covering network, web, infrastructure, IoT, and cloud
 - **Multi-provider AI analysis** (Azure OpenAI, Claude, Gemini) for finding validation and PoC generation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance)
 - **Risk scoring engine** with CVSS, CISA KEV prioritization, and SLA tracking
