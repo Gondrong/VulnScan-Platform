@@ -17,4 +17,5 @@ requests>=2.31.0
 paho-mqtt==1.6.1
 openai>=1.30.0
 google-generativeai>=0.7.0
+pyyaml>=6.0
 
