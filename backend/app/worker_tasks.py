@@ -73,37 +73,46 @@ def run_scan_job(job_id: int) -> None:
             return
 
         ws_id = job.workspace_id
-        prof = (
-            db.query(models.Profile)
-            .filter(
-                models.Profile.id == job.profile_id,
-                models.Profile.workspace_id == ws_id,
-            )
-            .first()
-        )
-        if not prof:
-            job.status = "failed"
-            job.meta_json = json.dumps({
-                "error": "Profile not found",
-                "error_type": "configuration",
-                "error_detail": f"Profile ID {job.profile_id} does not exist in workspace {ws_id}. "
-                                "Create a scan profile first under Configuration -> Profiles.",
-            })
-            job.finished_at = datetime.now(timezone.utc)
-            db.commit()
-            return
-
-        job.status = "running"
-        db.commit()
-        logger.info("Starting scan job #%d target=%s type=%s", job_id, job.target, job.scan_type)
-
-        profile = {
-            "plugin_selection_json": prof.plugin_selection_json,
-            "options_json": prof.options_json,
-        }
-
-        # Pass scan_type to engine so external scans bypass allowlist
         scan_type = job.scan_type or "internal"
+
+        # API Scanner jobs don't need a profile — handle separately
+        if scan_type == "api":
+            job.status = "running"
+            db.commit()
+            logger.info("Starting API scan job #%d target=%s", job_id, job.target)
+            prof = None
+        else:
+            prof = (
+                db.query(models.Profile)
+                .filter(
+                    models.Profile.id == job.profile_id,
+                    models.Profile.workspace_id == ws_id,
+                )
+                .first()
+            )
+            if not prof:
+                job.status = "failed"
+                job.meta_json = json.dumps({
+                    "error": "Profile not found",
+                    "error_type": "configuration",
+                    "error_detail": f"Profile ID {job.profile_id} does not exist in workspace {ws_id}. "
+                                    "Create a scan profile first under Configuration -> Profiles.",
+                })
+                job.finished_at = datetime.now(timezone.utc)
+                db.commit()
+                return
+
+            job.status = "running"
+            db.commit()
+            logger.info("Starting scan job #%d target=%s type=%s", job_id, job.target, scan_type)
+
+        if prof:
+            profile = {
+                "plugin_selection_json": prof.plugin_selection_json,
+                "options_json": prof.options_json,
+            }
+        else:
+            profile = {"plugin_selection_json": "{}", "options_json": "{}"}
 
         # Progress callback - updates meta_json so frontend can poll
         # Uses a SEPARATE db session to avoid corrupting the main session
@@ -156,7 +165,14 @@ def run_scan_job(job_id: int) -> None:
                         pass
 
         try:
-            findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress, job_id=job.id))
+            if scan_type == "api":
+                # API Scanner — standalone mode
+                api_config = json.loads(job.meta_json or "{}").get("api_scanner_config", {})
+                from app.scanner.plugins.api_scanner import Check as ApiScannerCheck
+                api_checker = ApiScannerCheck()
+                findings = _run_async(api_checker.run_standalone(api_config, progress_callback=_progress))
+            else:
+                findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress, job_id=job.id))
         except Exception as e:
             tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)

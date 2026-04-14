@@ -19,13 +19,14 @@ from app.api.routes_settings import router as settings_router
 from app.api.routes_graph import router as graph_router
 from app.api.routes_integrations import router as integrations_router
 from app.api.routes_ai import router as ai_router
+from app.api.routes_api_scanner import router as api_scanner_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
 
 app = FastAPI(
     title="VulnScan Platform",
-    version="2.1.3",
+    version="2.1.4",
     description="Enterprise Risk-Based Vulnerability Management Platform",
 )
 
@@ -210,7 +211,7 @@ def startup() -> None:
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    return {"ok": True, "version": "2.1.3"}
+    return {"ok": True, "version": "2.1.4"}
 
 
 # ─── Schedule Runner (background) ─────────────────────────────────────────────
@@ -322,4 +323,5 @@ app.include_router(settings_router)
 app.include_router(graph_router)
 app.include_router(integrations_router)
 app.include_router(ai_router)
+app.include_router(api_scanner_router)
 
