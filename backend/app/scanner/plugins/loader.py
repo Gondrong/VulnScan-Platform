@@ -63,6 +63,12 @@ _BUILTIN_PLUGINS = [
     "websocket_check",
     "k8s_api",
     "unauth_api",
+    # Tier 4 — deep injection testing (advanced payloads + bypass)
+    "deep_sqli",
+    "deep_cmdi",
+    "advanced_xss",
+    # Tier 5 — API-specific scanning (OpenAPI/Postman/GraphQL)
+    "api_scanner",
 ]
 
 
