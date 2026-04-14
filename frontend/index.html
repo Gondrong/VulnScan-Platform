@@ -1386,7 +1386,7 @@
       <div class="logo-name">
         <div class="logo-dot"></div>VulnScan
       </div>
-      <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v2.1.3</div>
+      <div class="logo-tag">ENTERPRISE SECURITY PLATFORM v2.1.4</div>
     </div>
     <div class="nav-wrap">
       <div class="nav-sec">Monitoring</div>
@@ -1395,6 +1395,8 @@
       <div class="nav-sec">Operations</div>
       <button class="ni" id="nav-jobs" onclick="navTo('jobs')"><span class="ni-ic">⚡</span>Tasks<span class="ni-badge"
           id="running-badge" style="display:none;background:var(--accent);color:#07090f">●</span></button>
+      <button class="ni ni-sub" id="nav-apiscan" onclick="navTo('apiscan')"><span
+          class="ni-ic">⬢</span>API Scanner</button>
       <button class="ni ni-sub" id="nav-vulns" onclick="navTo('vulns')"><span
           class="ni-ic">⊘</span>Vulnerabilities</button>
       <div class="nav-sec">Security Intel</div>
@@ -2057,6 +2059,124 @@
                 <tbody id="vulns-host-tbody"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ API SCANNER ═══ -->
+      <div id="page-apiscan" class="page">
+        <div class="ph">
+          <div>
+            <div class="ph-title">API <span class="hl">Scanner</span></div>
+            <div class="ph-sub">// Upload OpenAPI/Swagger/Postman spec or enter endpoints manually</div>
+          </div>
+        </div>
+        <div id="apiscan-alert" style="display:none"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+          <!-- Spec Upload -->
+          <div class="panel" style="margin:0">
+            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>📄 API Specification</div></div>
+            <div class="pb">
+              <div class="fg"><label class="fl">Upload Spec File (OpenAPI/Swagger/Postman JSON/YAML)</label>
+                <input type="file" id="apiscan-file" class="fc" accept=".json,.yaml,.yml" /></div>
+              <div style="text-align:center;color:var(--text3);font-size:.72rem;margin:8px 0">— or —</div>
+              <div class="fg"><label class="fl">Spec URL</label>
+                <input id="apiscan-spec-url" class="fc" placeholder="https://api.example.com/openapi.json" /></div>
+              <button class="btn btn-ghost btn-sm" onclick="previewApiSpec()">Preview Endpoints</button>
+              <div id="apiscan-preview" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto;font-family:var(--fm);font-size:.68rem;background:var(--surface);border:1px solid var(--border);padding:8px;border-radius:4px"></div>
+            </div>
+          </div>
+          <!-- Config -->
+          <div class="panel" style="margin:0">
+            <div class="panel-head"><div class="panel-title"><div class="panel-title-bar"></div>⚙ Scan Configuration</div></div>
+            <div class="pb">
+              <div class="fg"><label class="fl">Base URL (target)</label>
+                <input id="apiscan-base-url" class="fc" placeholder="https://api.example.com" /></div>
+              <div class="fg"><label class="fl">Authentication</label>
+                <select id="apiscan-auth-type" class="fc" onchange="toggleApiScanAuth()">
+                  <option value="none">None</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="apikey">API Key</option>
+                  <option value="basic">Basic Auth</option>
+                </select></div>
+              <div id="apiscan-auth-bearer" style="display:none">
+                <div class="fg"><label class="fl">Token</label><input id="apiscan-token" class="fc" placeholder="eyJhbGciOi..." /></div>
+              </div>
+              <div id="apiscan-auth-apikey" style="display:none">
+                <div class="fg"><label class="fl">Header Name</label><input id="apiscan-apikey-name" class="fc" value="X-API-Key" /></div>
+                <div class="fg"><label class="fl">Key Value</label><input id="apiscan-apikey-value" class="fc" /></div>
+              </div>
+              <div id="apiscan-auth-basic" style="display:none">
+                <div class="fg"><label class="fl">Username</label><input id="apiscan-basic-user" class="fc" /></div>
+                <div class="fg"><label class="fl">Password</label><input id="apiscan-basic-pass" class="fc" type="password" /></div>
+              </div>
+              <details style="margin-top:10px;border:1px dashed var(--border);border-radius:4px;padding:8px">
+                <summary style="cursor:pointer;font-size:.78rem;color:var(--bright);font-weight:600">
+                  Secondary identity (optional)
+                  <span style="color:var(--text3);font-weight:400;font-size:.7rem">— required for BOLA / BFLA testing</span>
+                </summary>
+                <div style="margin-top:8px">
+                  <div class="fg"><label class="fl">Auth type (user B)</label>
+                    <select id="apiscan-auth2-type" class="fc" onchange="toggleApiScanAuth2()">
+                      <option value="none">None</option>
+                      <option value="bearer">Bearer Token</option>
+                      <option value="apikey">API Key</option>
+                      <option value="basic">Basic Auth</option>
+                    </select>
+                  </div>
+                  <div id="apiscan-auth2-bearer" style="display:none">
+                    <div class="fg"><label class="fl">Token (user B)</label>
+                      <input id="apiscan-token2" class="fc" placeholder="eyJhbGciOi..." /></div>
+                  </div>
+                  <div id="apiscan-auth2-apikey" style="display:none">
+                    <div class="fg"><label class="fl">Header Name</label><input id="apiscan-apikey2-name" class="fc" value="X-API-Key" /></div>
+                    <div class="fg"><label class="fl">Key Value</label><input id="apiscan-apikey2-value" class="fc" /></div>
+                  </div>
+                  <div id="apiscan-auth2-basic" style="display:none">
+                    <div class="fg"><label class="fl">Username</label><input id="apiscan-basic2-user" class="fc" /></div>
+                    <div class="fg"><label class="fl">Password</label><input id="apiscan-basic2-pass" class="fc" type="password" /></div>
+                  </div>
+                  <div style="font-size:.65rem;color:var(--text3);margin-top:6px">
+                    Provide credentials for a different user so BOLA can verify objects aren't accessible across identities.
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+        <!-- Check Selection -->
+        <div class="panel" style="margin:0 0 16px">
+          <div class="panel-head">
+            <div class="panel-title"><div class="panel-title-bar"></div>🔍 Security Checks</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm" onclick="apiScanCheckAll(true)">Select All</button>
+              <button class="btn btn-ghost btn-sm" onclick="apiScanCheckAll(false)">Deselect All</button>
+            </div>
+          </div>
+          <div class="pb">
+            <div id="apiscan-checks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px"></div>
+          </div>
+        </div>
+        <!-- Launch -->
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px">
+          <button class="btn btn-primary btn-lg" id="apiscan-launch" onclick="launchApiScan()">🚀 Launch API Scan</button>
+          <span id="apiscan-status" style="font-family:var(--fm);font-size:.72rem;color:var(--text3)"></span>
+        </div>
+        <!-- Progress -->
+        <div id="apiscan-progress" style="display:none;margin-bottom:16px">
+          <div style="background:var(--surface);height:6px;border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-bottom:4px">
+            <div id="apiscan-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width .3s"></div>
+          </div>
+          <div id="apiscan-progress-text" style="font-family:var(--fm);font-size:.65rem;color:var(--text3)"></div>
+        </div>
+        <!-- Results -->
+        <div id="apiscan-results" style="display:none">
+          <div class="panel" style="margin:0">
+            <div class="panel-head">
+              <div class="panel-title"><div class="panel-title-bar"></div>📊 Results</div>
+              <span class="mc dim" style="font-size:.65rem" id="apiscan-result-count"></span>
+            </div>
+            <div class="pb np" id="apiscan-result-body"></div>
           </div>
         </div>
       </div>
@@ -3163,7 +3283,16 @@
   </div>
 
   <script>
-    const API_BASE = (() => { if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, ''); const p = window.location.protocol, h = window.location.hostname; return `${p}//${h}:8888` })();
+    const API_BASE = (() => {
+      if (window.VULNSCAN_API) return window.VULNSCAN_API.replace(/\/$/, '');
+      const p = window.location.protocol, h = window.location.hostname, port = window.location.port;
+      // If served over HTTPS (likely behind a reverse proxy), use same origin (no :8888)
+      if (p === 'https:') return `${p}//${h}`;
+      // If served from Vite dev server (port 5173), API is on backend port 8888
+      if (port === '5173') return `${p}//${h}:8888`;
+      // Otherwise assume same origin
+      return `${p}//${h}${port ? ':' + port : ''}`;
+    })();
     const S = { token: null, userEmail: 'admin@local', userRole: 'viewer', allFindings: [], sevFilter: 'all', scanType: 'internal', profiles: [], creds: [], _allDs: [], deletedJobIds: new Set(), dashInterval: null, jobsInterval: null, clockInterval: null, jobsPage: 1, jobsPerPage: 10, schedsPage: 1, schedsPerPage: 5, _allJobs: [], _allScheds: [], profilesPage: 1, profilesPerPage: 10, credsPage: 1, credsPerPage: 10, dsPage: 1, dsPerPage: 6 };
     const gi = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -3395,10 +3524,11 @@
       if (pe) pe.classList.add('active');
       const ne = gi('nav-' + page);
       if (ne) ne.classList.add('active');
-      const labels = { dashboard: 'Dashboard', jobs: 'Tasks', vulns: 'Vulnerabilities', profiles: 'Profiles', credentials: 'Credentials', datasets: 'Datasets', settings: 'Settings', secinfo: 'Security Information', 'si-nvd': 'NVD Database', 'si-cve': 'CVE Database', 'si-kev': 'CISA-KEV Catalog', 'si-cms': 'CMS-CVE Map', 'si-epss': 'EPSS Scores', 'si-comp': 'Compliance Mapping' };
+      const labels = { dashboard: 'Dashboard', jobs: 'Tasks', apiscan: 'API Scanner', vulns: 'Vulnerabilities', profiles: 'Profiles', credentials: 'Credentials', datasets: 'Datasets', settings: 'Settings', secinfo: 'Security Information', 'si-nvd': 'NVD Database', 'si-cve': 'CVE Database', 'si-kev': 'CISA-KEV Catalog', 'si-cms': 'CMS-CVE Map', 'si-epss': 'EPSS Scores', 'si-comp': 'Compliance Mapping' };
       gi('bc-page').textContent = labels[page] || page;
       if (page === 'settings' && canAdmin()) loadSettings();
       if (page === 'vulns') renderVulnsPage();
+      if (page === 'apiscan') loadApiScanChecks();
       if (page === 'dashboard') loadAttackGraph();
       if (page === 'si-nvd') loadSiPage('nvd_cpe_cve');
       if (page === 'si-cve') loadSiPage('cvedetails_cvss');
@@ -3413,7 +3543,7 @@
     function renderStatusDot(status) { const dc = { running: 's-run', done: 's-done', failed: 's-fail', queued: 's-queue' }[status] || 's-queue'; const lbl = { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' }[status] || status; const col = { running: 'var(--accent)', done: 'var(--green)', failed: 'var(--red)', queued: 'var(--text3)' }[status] || 'var(--text3)'; return `<div class="sdot-wrap"><div class="sdot ${dc}"></div><span class="s-lbl" style="color:${col}">${lbl}</span></div>` }
 
     // ─── Dashboard ───
-    async function loadDashboard(sl) { try { const jobs = await apiReq('/scan/jobs'); const vis = jobs.filter(j => !S.deletedJobIds.has(j.id)); gi('stat-jobs').textContent = vis.length; let findings = []; for (const j of vis.filter(j => j.status === 'done').slice(0, 20)) { try { const d = await apiReq('/scan/jobs/' + j.id); (d.findings || []).forEach(f => findings.push({ ...f, _jobId: j.id, _jobTarget: j.target, _scanType: j.scan_type, _jobCreatedAt: j.created_at })) } catch { } } S.allFindings = findings; gi('stat-crit').textContent = findings.filter(f => f.severity === 'critical').length; gi('stat-high').textContent = findings.filter(f => f.severity === 'high').length; gi('stat-med').textContent = findings.filter(f => f.severity === 'medium').length; gi('stat-low').textContent = findings.filter(f => f.severity === 'low').length; gi('stat-info').textContent = findings.filter(f => f.severity === 'info').length; gi('stat-kev').textContent = findings.filter(f => f.is_kev).length; renderHostSummary(findings); loadAttackGraph(); gi('running-badge').style.display = vis.filter(j => j.status === 'running').length > 0 ? 'inline' : 'none'; if (vis.filter(j => j.status === 'running').length > 0) startProgressPolling(); const pm = {}; S.profiles.forEach(p => pm[p.id] = p.name); gi('dash-jobs-body').innerHTML = vis.slice(0, 8).map(j => `<tr><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright">${esc(j.target)}</td><td>${j.scan_type === 'external' ? '<span class="badge b-ok">🌐 External</span>' : '<span class="badge b-info">🏠 Internal</span>'}</td><td>${renderStatusDot(j.status)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td></tr>`).join('') || '<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs</div></td></tr>' } catch (e) { console.error('[Dashboard]', e) } }
+    async function loadDashboard(sl) { try { const jobs = await apiReq('/scan/jobs'); const vis = jobs.filter(j => !S.deletedJobIds.has(j.id)); S._allJobs = vis; gi('stat-jobs').textContent = vis.length; let findings = []; for (const j of vis.filter(j => j.status === 'done').slice(0, 20)) { try { const d = await apiReq('/scan/jobs/' + j.id); (d.findings || []).forEach(f => findings.push({ ...f, _jobId: j.id, _jobTarget: j.target, _scanType: j.scan_type, _jobCreatedAt: j.created_at })) } catch { } } const findingsChanged = JSON.stringify(S.allFindings.map(f => f.id)) !== JSON.stringify(findings.map(f => f.id)); S.allFindings = findings; gi('stat-crit').textContent = findings.filter(f => f.severity === 'critical').length; gi('stat-high').textContent = findings.filter(f => f.severity === 'high').length; gi('stat-med').textContent = findings.filter(f => f.severity === 'medium').length; gi('stat-low').textContent = findings.filter(f => f.severity === 'low').length; gi('stat-info').textContent = findings.filter(f => f.severity === 'info').length; gi('stat-kev').textContent = findings.filter(f => f.is_kev).length; if (findingsChanged || sl) renderHostSummary(findings); if (sl) loadAttackGraph(); gi('running-badge').style.display = vis.filter(j => j.status === 'running').length > 0 ? 'inline' : 'none'; if (vis.filter(j => j.status === 'running').length > 0) startProgressPolling(); loadAiJobSelector(); const pm = {}; S.profiles.forEach(p => pm[p.id] = p.name); gi('dash-jobs-body').innerHTML = vis.slice(0, 8).map(j => `<tr><td class="mc" style="color:var(--accent)">#${j.id}</td><td class="bright">${esc(j.target)}</td><td>${j.scan_type === 'external' ? '<span class="badge b-ok">🌐 External</span>' : '<span class="badge b-info">🏠 Internal</span>'}</td><td>${renderStatusDot(j.status)}</td><td class="mc dim" style="font-size:.72rem">${fmtDate(j.created_at)}</td></tr>`).join('') || '<tr><td colspan="5"><div class="empty-state" style="padding:20px">No jobs</div></td></tr>' } catch (e) { console.error('[Dashboard]', e) } }
     function setSevFilter(sev, el) { S.sevFilter = sev; document.querySelectorAll('.sev-chip').forEach(c => c.classList.remove('active')); if (el) el.classList.add('active'); renderFindings() }
     function renderFindings() {
       const findings = S.sevFilter === 'all'
@@ -3754,6 +3884,230 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
       document.body.appendChild(ta); ta.select();
       try { document.execCommand('copy'); btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = '📋 Copy' }, 2000) } catch { btn.textContent = '✗ Failed' }
       document.body.removeChild(ta);
+    }
+
+    // ─── API Scanner ───
+    S._apiScanChecks = {};
+    S._apiScanJobId = null;
+
+    async function loadApiScanChecks() {
+      try {
+        const d = await apiReq('/scan/api-scanner/checks');
+        const el = gi('apiscan-checks');
+        if (!el) return;
+        const checks = d.checks || [];
+        el.innerHTML = checks.map(c => {
+          S._apiScanChecks[c.id] = true;
+          const catColor = c.category === 'injection' ? 'var(--red)' : c.category === 'passive' ? 'var(--green)' : c.category === 'graphql' ? 'var(--purple)' : 'var(--accent)';
+          return `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.75rem">
+            <input type="checkbox" class="apiscan-cb" data-check="${esc(c.id)}" checked onchange="updateApiScanChecks()"/>
+            <div>
+              <div style="font-weight:600;color:var(--bright)">${esc(c.name)}</div>
+              <div style="font-size:.62rem;color:var(--text3)">${esc(c.description)}</div>
+            </div>
+            <span style="margin-left:auto;font-size:.55rem;padding:2px 6px;border-radius:3px;background:rgba(255,255,255,.05);color:${catColor}">${esc(c.category)}</span>
+          </label>`;
+        }).join('');
+      } catch (e) { console.error('[API Scanner checks]', e); }
+    }
+
+    function updateApiScanChecks() {
+      S._apiScanChecks = {};
+      document.querySelectorAll('.apiscan-cb').forEach(cb => { S._apiScanChecks[cb.dataset.check] = cb.checked; });
+    }
+
+    function apiScanCheckAll(checked) {
+      document.querySelectorAll('.apiscan-cb').forEach(cb => cb.checked = checked);
+      updateApiScanChecks();
+    }
+
+    function toggleApiScanAuth() {
+      const type = gi('apiscan-auth-type').value;
+      ['bearer', 'apikey', 'basic'].forEach(t => {
+        const el = gi('apiscan-auth-' + t);
+        if (el) el.style.display = t === type ? 'block' : 'none';
+      });
+    }
+
+    function toggleApiScanAuth2() {
+      const type = gi('apiscan-auth2-type').value;
+      ['bearer', 'apikey', 'basic'].forEach(t => {
+        const el = gi('apiscan-auth2-' + t);
+        if (el) el.style.display = t === type ? 'block' : 'none';
+      });
+    }
+
+    async function previewApiSpec() {
+      const fileInput = gi('apiscan-file');
+      const specUrl = gi('apiscan-spec-url').value.trim();
+      const preview = gi('apiscan-preview');
+
+      try {
+        let data;
+        if (fileInput.files.length > 0) {
+          const form = new FormData();
+          form.append('spec_file', fileInput.files[0]);
+          const res = await fetch(API_BASE + '/scan/api-scanner/parse', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + S.token }, body: form
+          });
+          if (!res.ok) throw new Error(await res.text());
+          data = await res.json();
+        } else if (specUrl) {
+          const form = new FormData();
+          form.append('spec_url', specUrl);
+          const res = await fetch(API_BASE + '/scan/api-scanner/parse', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + S.token }, body: form
+          });
+          if (!res.ok) throw new Error(await res.text());
+          data = await res.json();
+        } else {
+          return showAlert('apiscan-alert', 'danger', 'Upload a spec file or enter a spec URL');
+        }
+
+        const eps = data.endpoints || [];
+        const summary = data.summary || {};
+        preview.style.display = 'block';
+        preview.innerHTML = `<div style="margin-bottom:6px;color:var(--accent);font-weight:700">${summary.total_endpoints || 0} endpoints found</div>` +
+          `<div style="margin-bottom:6px;color:var(--text3)">Methods: ${JSON.stringify(summary.methods || {})} | Params: ${summary.total_parameters || 0}</div>` +
+          eps.slice(0, 30).map(ep => `<div style="padding:2px 0"><span class="badge b-info" style="font-size:.55rem;margin-right:4px">${esc(ep.method)}</span>${esc(ep.path)} <span style="color:var(--text3)">(${ep.parameters?.length || 0} params)</span></div>`).join('') +
+          (eps.length > 30 ? `<div style="color:var(--text3)">...and ${eps.length - 30} more</div>` : '');
+
+        // Auto-fill base URL from spec
+        if (!gi('apiscan-base-url').value && eps.length > 0) {
+          // Try to extract from spec URL
+          if (specUrl) {
+            try {
+              const u = new URL(specUrl);
+              gi('apiscan-base-url').value = u.origin;
+            } catch {}
+          }
+        }
+      } catch (e) {
+        showAlert('apiscan-alert', 'danger', '⚠ ' + e.message);
+      }
+    }
+
+    async function launchApiScan() {
+      const baseUrl = gi('apiscan-base-url').value.trim();
+      if (!baseUrl) return showAlert('apiscan-alert', 'danger', 'Base URL is required');
+
+      const selectedChecks = Object.entries(S._apiScanChecks).filter(([k, v]) => v).map(([k]) => k);
+      if (!selectedChecks.length) return showAlert('apiscan-alert', 'danger', 'Select at least one check');
+
+      // Build auth config
+      const authType = gi('apiscan-auth-type').value;
+      let auth = { type: authType };
+      if (authType === 'bearer') auth.token = gi('apiscan-token').value.trim();
+      else if (authType === 'apikey') { auth.key_name = gi('apiscan-apikey-name').value.trim(); auth.key_value = gi('apiscan-apikey-value').value.trim(); auth.key_in = 'header'; }
+      else if (authType === 'basic') { auth.username = gi('apiscan-basic-user').value.trim(); auth.password = gi('apiscan-basic-pass').value; }
+
+      const config = { base_url: baseUrl, auth, checks: selectedChecks, max_concurrent: 5, timeout: 10 };
+
+      // Optional secondary identity (enables BOLA / BFLA two-identity comparison)
+      const auth2El = gi('apiscan-auth2-type');
+      const authType2 = auth2El ? auth2El.value : 'none';
+      if (authType2 && authType2 !== 'none') {
+        let auth2 = { type: authType2 };
+        if (authType2 === 'bearer') auth2.token = gi('apiscan-token2').value.trim();
+        else if (authType2 === 'apikey') { auth2.key_name = gi('apiscan-apikey2-name').value.trim(); auth2.key_value = gi('apiscan-apikey2-value').value.trim(); auth2.key_in = 'header'; }
+        else if (authType2 === 'basic') { auth2.username = gi('apiscan-basic2-user').value.trim(); auth2.password = gi('apiscan-basic2-pass').value; }
+        config.secondary_auth = auth2;
+      }
+
+      // Add spec URL if provided
+      const specUrl = gi('apiscan-spec-url').value.trim();
+      if (specUrl) config.spec_url = specUrl;
+
+      const btn = gi('apiscan-launch');
+      btn.disabled = true;
+      btn.textContent = '⏳ Launching...';
+
+      try {
+        const form = new FormData();
+        const fileInput = gi('apiscan-file');
+        if (fileInput.files.length > 0) form.append('spec_file', fileInput.files[0]);
+        form.append('config_json', JSON.stringify(config));
+
+        const res = await fetch(API_BASE + '/scan/api-scanner/jobs', {
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + S.token }, body: form
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+
+        S._apiScanJobId = data.id;
+        showAlert('apiscan-alert', 'success', `✓ API scan job #${data.id} launched — ${baseUrl}`);
+        gi('apiscan-progress').style.display = 'block';
+        gi('apiscan-status').textContent = `Job #${data.id} — scanning ${selectedChecks.length} checks...`;
+        pollApiScan(data.id);
+      } catch (e) {
+        showAlert('apiscan-alert', 'danger', '⚠ ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 Launch API Scan';
+      }
+    }
+
+    function pollApiScan(jobId) {
+      const poll = setInterval(async () => {
+        try {
+          const jobs = await apiReq('/scan/jobs');
+          const job = jobs.find(j => j.id === jobId);
+          if (!job) return;
+
+          if (job.status === 'done') {
+            clearInterval(poll);
+            gi('apiscan-progress-bar').style.width = '100%';
+            gi('apiscan-progress-text').textContent = '✓ Complete';
+            gi('apiscan-status').textContent = `Job #${jobId} — done`;
+            loadApiScanResults(jobId);
+          } else if (job.status === 'failed') {
+            clearInterval(poll);
+            gi('apiscan-progress-bar').style.width = '100%';
+            gi('apiscan-progress-bar').style.background = 'var(--red)';
+            gi('apiscan-progress-text').textContent = '✗ Failed';
+            showAlert('apiscan-alert', 'danger', '⚠ API scan failed');
+          } else if (job.status === 'running') {
+            try {
+              const meta = JSON.parse(job.meta_json || '{}');
+              const p = meta.progress || {};
+              gi('apiscan-progress-bar').style.width = (p.pct || 0) + '%';
+              gi('apiscan-progress-text').textContent = p.current_name || 'Scanning...';
+            } catch {}
+          }
+        } catch {}
+      }, 3000);
+      setTimeout(() => clearInterval(poll), 600000);
+    }
+
+    async function loadApiScanResults(jobId) {
+      try {
+        const data = await apiReq('/scan/jobs/' + jobId);
+        const findings = data.findings || [];
+        gi('apiscan-results').style.display = 'block';
+        gi('apiscan-result-count').textContent = findings.length + ' findings';
+
+        if (!findings.length) {
+          gi('apiscan-result-body').innerHTML = '<div class="empty-state" style="padding:20px">No vulnerabilities found</div>';
+          return;
+        }
+
+        // Group by severity
+        const sevOrder = ['critical', 'high', 'medium', 'low', 'info'];
+        findings.sort((a, b) => sevOrder.indexOf(a.severity) - sevOrder.indexOf(b.severity));
+
+        gi('apiscan-result-body').innerHTML = '<table class="tbl"><thead><tr><th>Severity</th><th>Finding</th><th>Plugin</th><th style="width:60px">CVSS</th></tr></thead><tbody>' +
+          findings.map((f, i) => `<tr style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
+            <td>${severityBadge(f.severity)}</td>
+            <td class="bright" style="font-size:.82rem">${esc(f.title)}</td>
+            <td class="mc dim" style="font-size:.65rem">${esc(f.plugin_id || '')}</td>
+            <td class="mc">${f.cvss_base != null ? Number(f.cvss_base).toFixed(1) : '—'}</td>
+          </tr><tr style="display:none"><td colspan="4" style="padding:12px 16px;background:var(--surface)">
+            ${f.description ? `<div style="margin-bottom:8px;font-size:.82rem;color:var(--text);line-height:1.5">${esc(f.description)}</div>` : ''}
+            ${f.evidence ? `<div class="terminal" style="max-height:80px;margin-bottom:8px;font-size:.68rem">${esc(f.evidence)}</div>` : ''}
+            ${f.remediation ? `<div style="padding:10px;background:rgba(52,211,153,.04);border:1px solid rgba(52,211,153,.12);border-radius:4px;font-size:.78rem;color:var(--text);white-space:pre-wrap;line-height:1.5">${esc(f.remediation)}</div>` : ''}
+          </td></tr>`).join('') +
+          '</tbody></table>';
+      } catch (e) { console.error('[API scan results]', e); }
     }
 
     // ─── Scan Type ───
