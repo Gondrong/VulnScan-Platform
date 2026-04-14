@@ -22,7 +22,7 @@
 VulnScan is a self-hosted vulnerability management platform built for security teams. It combines automated scanning with multi-provider AI analysis to find, validate, and prioritize vulnerabilities across your infrastructure.
 
 **Key capabilities:**
-- **47 scanner plugins** covering network, web, infrastructure, IoT, and cloud
+- **38 scanner plugins** covering network, web, infrastructure, IoT, and cloud
 - **Multi-provider AI analysis** (Azure OpenAI, Claude, Gemini) for finding validation and PoC generation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance)
 - **Risk scoring engine** with CVSS, CISA KEV prioritization, and SLA tracking
@@ -314,6 +314,72 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 
 ## Changelog
 
+## v2.1.4 — 2026-04-14
+
+### New Features
+
+**4 New Scanner Plugins (51 total)**
+
+Tier 4 — Deep injection testing (advanced payloads + WAF bypass)
+- Advanced XSS Scanner — reflected + stored XSS with 30+ payloads across HTML, attribute, JavaScript, and URL contexts; polyglot payloads; WAF-bypass via encoding, case, tag-breaking, event handlers
+- Deep SQL Injection Scanner — error-based (MySQL, PostgreSQL, MSSQL, Oracle, SQLite), boolean-based blind, time-based blind, UNION-based, stacked queries; WAF-bypass via encoding, case, comment obfuscation
+- Deep OS Command Injection Scanner — in-band marker detection and blind time-based detection on Linux and Windows; covers GET params, POST bodies, and headers; WAF-bypass via encoding, newlines, variable expansion
+
+Tier 5 — API-specific scanning (OpenAPI / Swagger / Postman)
+- API Security Scanner — new `plugins/api_scanner/` sub-package that ingests OpenAPI 3.x, Swagger 2.x, and Postman v2.1 specs and dispatches endpoints to 15 sub-checks:
+  - Injection: `sqli`, `xss`, `ssti`, `cmdi`, `xxe`, `ssrf`, `code_injection`, `type_confusion`
+  - Auth / OWASP API Top 10: `jwt_checks`, `bola` (API1), `mass_assignment` (API3)
+  - Data exposure: `excessive_data` (API3)
+  - Passive: `config_checks`, `spec_hygiene`
+  - GraphQL: `graphql` (introspection, batch abuse, depth attacks, field suggestions)
+- Shared `spec_parser` (OpenAPI 3.x / Swagger 2 / Postman v2.1) and async `http_client` with **multi-identity auth** (primary + secondary) for BOLA / BFLA comparisons
+- Runs in engine mode (part of a normal scan) or standalone via the new API endpoints
+- Opt-in (`enabled_by_default=False`) — requires spec upload or explicit enable
+
+Tier 5 — Spec-aware sub-checks (OWASP API Security Top 10 coverage)
+- **BOLA** (`bola`, OWASP API1) — two-identity comparison with Jaccard key similarity ≥ 0.8; falls back to numeric ID neighbour-walking when only one identity is configured
+- **Mass Assignment / BOPLA** (`mass_assignment`, OWASP API3) — injects `is_admin`, `role`, `balance` into POST/PUT/PATCH bodies and flags only when the server echoes the value
+- **Excessive Data Exposure** (`excessive_data`, OWASP API3) — sweeps GET responses for credentials, PII, internal markers; flags schema drift when response fields exceed declared schema by >2×
+- **Type Confusion** (`type_confusion`) — wrong-type payloads (`{"$ne": null}`, `["array"]`, long strings); triggers on 5xx or divergent 200s — a precursor pattern to NoSQL operator injection
+- **Spec Hygiene** (`spec_hygiene`) — passive analysis: endpoints without auth, missing `securitySchemes`, wildcard CORS, real secrets in examples (Stripe / AWS / JWT / private keys), plain HTTP servers
+
+**New Backend API**
+- `POST /scan/api-scanner/jobs` — standalone endpoint for spec-driven API scans
+- `POST /scan/api-scanner/parse` — preview the endpoint list before launching a scan
+- `GET /scan/api-scanner/checks` — list available sub-checks with category metadata (consumed by the UI)
+
+**API Scanner Hardening**
+- SSRF guard on `spec_url` fetches — rejects private / loopback / link-local / multicast / reserved / unspecified addresses (blocks AWS metadata `169.254.169.254`, `127.0.0.1`, RFC1918) and non-http(s) schemes
+- 5 MB cap on uploaded spec files and URL-fetched specs (HTTP 413 on oversize)
+- RQ `job_timeout` now follows `SCAN_BUDGET_SECONDS + 300` (was `AI_ANALYSIS_TIMEOUT = 600s`)
+
+**Frontend — API Scanner page**
+- New collapsible **"Secondary identity (optional)"** section with bearer / API-key / basic inputs for a second test user (required for BOLA / BFLA)
+- The 5 new spec-aware checks appear automatically in the Security Checks grid (auto-populated from `/scan/api-scanner/checks`)
+
+**Global Scan Budget**
+- New `SCAN_BUDGET_SECONDS` setting (default `900`) — engine tracks wall-clock time and skips remaining plugins when exhausted, emitting one info-level skip finding per skipped plugin
+- RQ `job_timeout` now auto-synced to `SCAN_BUDGET_SECONDS + 300s` headroom (was a hard-coded 600s); applied to new jobs and rescans
+
+**Plugin Framework — Soft Dependencies**
+- New `soft_depends_on` field on `PluginMeta` — affects execution order (runs after listed plugins) but does NOT auto-enable them
+- Used by the new Tier-4 / Tier-5 plugins to run after `owasp.web.scanner` when available, without requiring it
+
+### Improvements
+
+- Default artifact fallback — when a plugin times out or errors, the engine populates empty defaults for that plugin's declared `provides` keys so downstream plugins reading those artifacts don't break
+- Profile auto-backfill — if a plugin is missing from an existing profile's selection, the loader falls back to its `enabled_by_default` flag; old profiles now pick up newly-shipped plugins automatically
+- Per-plugin cancel check — cancel flag is now checked before each plugin, shortening cancel latency
+- New Python dependencies: `requests>=2.31.0`, `paho-mqtt==1.6.1`, `openai>=1.30.0`, `google-generativeai>=0.7.0`, `pyyaml>=6.0`
+
+### Notes
+
+- No breaking changes — existing profiles, jobs, and integrations continue to work unchanged
+- Tune `SCAN_BUDGET_SECONDS` in `.env` if you run large or slow scans; the RQ timeout follows it automatically
+
+
+##
+
 ## v2.1.3 — 2026-04-05
 
 ### New Features
@@ -374,6 +440,7 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 - Fixed AI analysis: job selector prevents analyzing wrong host's findings
 - Fixed Docker: Node.js installed with all dependencies (libuv.so fix)
 - Fixed updater: git reset --hard handles __pycache__ and untracked file conflicts
+
 
 ##
 

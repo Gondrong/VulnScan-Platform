@@ -183,6 +183,10 @@ print(json.dumps({
         'web.websocket_check': True,
         'infra.k8s.api': True,
         'web.unauth_api': True,
+        'web.deep_sqli': True,
+        'web.deep_cmdi': True,
+        'web.advanced_xss': True,
+        'api.scanner': False,
         'auth.ssh.inventory': ssh_enabled,
         'cve.match.packages': ssh_enabled,
         'local.security.checks': ssh_enabled,
@@ -222,6 +226,25 @@ curl -sf -X POST "${API_BASE}/scan/profiles" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$INFRA_PROFILE" >/dev/null && green "Infrastructure Audit profile created (SSH cred #${CRED_ID})" || yellow "Profile may already exist"
+
+# ── Create API Scanner profile ──────────────────────────────────────────────
+green "Creating API Scanner profile..."
+API_SCANNER_PROFILE=$(python3 -c "
+import json
+print(json.dumps({
+    'name': 'api-security-scan',
+    'plugin_selection_json': {
+        'api.scanner': True,
+    },
+    'options_json': {
+        'asset': {'criticality': 3},
+    },
+}))
+")
+curl -sf -X POST "${API_BASE}/scan/profiles" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "$API_SCANNER_PROFILE" >/dev/null && green "API Scanner profile created" || yellow "Profile may already exist"
 
 green ""
 green "═══════════════════════════════════════════════════"

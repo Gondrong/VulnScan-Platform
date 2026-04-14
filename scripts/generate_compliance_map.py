@@ -6,6 +6,7 @@ Maps vulnerability categories and severities to compliance framework controls:
 - NIST SP 800-53
 - PCI DSS v4.0
 - CIS Controls v8
+- ISO/IEC 27001:2022
 
 Usage:
     python3 generate_compliance_map.py --out data/cve/compliance_map.json
@@ -19,12 +20,13 @@ COMPLIANCE_MAP = [
     # --- Network / Port Discovery ---
     {
         "plugin_category": "network",
-        "plugin_ids": ["net.port.discovery.v2"],
+        "plugin_ids": ["net.port.discovery.v2", "net.port.discovery.nmap"],
         "finding_pattern": "open_port",
         "frameworks": {
             "nist_800_53": ["CM-7", "SC-7", "AC-4"],
             "pci_dss_v4": ["1.2.1", "1.3.1", "2.2.4"],
             "cis_v8": ["4.1", "4.4", "9.2"],
+            "iso_27001": ["A.8.20", "A.8.21", "A.8.22"],
         },
         "description": "Unnecessary open ports increase attack surface",
     },
@@ -37,6 +39,7 @@ COMPLIANCE_MAP = [
             "nist_800_53": ["SC-8", "SC-13", "SC-23"],
             "pci_dss_v4": ["4.2.1", "4.2.2", "2.2.7"],
             "cis_v8": ["3.10"],
+            "iso_27001": ["A.8.24", "A.8.9"],
         },
         "description": "Weak or outdated TLS configurations",
     },
@@ -50,21 +53,25 @@ COMPLIANCE_MAP = [
                 "nist_800_53": ["SI-2", "SI-5", "RA-5", "CM-6"],
                 "pci_dss_v4": ["6.3.3", "6.2.4", "11.3.1"],
                 "cis_v8": ["7.1", "7.2", "7.4"],
+                "iso_27001": ["A.8.8", "A.8.9", "A.5.24"],
             },
             "high": {
                 "nist_800_53": ["SI-2", "RA-5", "CM-6"],
                 "pci_dss_v4": ["6.3.3", "6.2.4"],
                 "cis_v8": ["7.1", "7.4"],
+                "iso_27001": ["A.8.8", "A.8.9"],
             },
             "medium": {
                 "nist_800_53": ["SI-2", "RA-5"],
                 "pci_dss_v4": ["6.3.3"],
                 "cis_v8": ["7.4"],
+                "iso_27001": ["A.8.8"],
             },
             "low": {
                 "nist_800_53": ["SI-2"],
                 "pci_dss_v4": ["6.3.3"],
                 "cis_v8": ["7.4"],
+                "iso_27001": ["A.8.8"],
             },
         },
         "description": "Known vulnerabilities in software components",
@@ -78,18 +85,20 @@ COMPLIANCE_MAP = [
             "nist_800_53": ["SI-2", "SI-5", "RA-5", "IR-6"],
             "pci_dss_v4": ["6.3.3", "6.2.4", "11.3.1", "12.10.5"],
             "cis_v8": ["7.1", "7.2", "7.4", "7.5"],
+            "iso_27001": ["A.5.24", "A.5.25", "A.8.8"],
         },
         "description": "CISA Known Exploited Vulnerabilities require immediate remediation",
     },
     # --- SSH Authentication ---
     {
         "plugin_category": "authenticated",
-        "plugin_ids": ["auth.ssh.inventory"],
+        "plugin_ids": ["auth.ssh.inventory", "infra.ssh.audit"],
         "finding_pattern": "ssh",
         "frameworks": {
             "nist_800_53": ["IA-2", "IA-5", "AC-17", "CM-8"],
             "pci_dss_v4": ["2.2.1", "8.3.1", "8.3.6"],
             "cis_v8": ["1.1", "4.1", "5.2"],
+            "iso_27001": ["A.5.17", "A.8.5", "A.5.9"],
         },
         "description": "SSH access and authenticated inventory controls",
     },
@@ -97,18 +106,123 @@ COMPLIANCE_MAP = [
     {
         "plugin_category": "fingerprint",
         "plugin_ids": [
-            "fingerprint.http",
-            "fingerprint.banner.multi",
-            "fingerprint.web.tech",
-            "fingerprint.favicon.hash",
+            "fingerprint.http", "fingerprint.banner.multi",
+            "fingerprint.web.tech", "fingerprint.favicon.hash",
+            "fingerprint.deep",
         ],
         "finding_pattern": "fingerprint",
         "frameworks": {
             "nist_800_53": ["CM-7", "SC-8", "SI-11"],
             "pci_dss_v4": ["2.2.4", "6.2.2"],
             "cis_v8": ["2.1", "2.5"],
+            "iso_27001": ["A.8.9", "A.5.9"],
         },
         "description": "Information disclosure via server banners and fingerprints",
+    },
+    # --- Web Application Security (OWASP) ---
+    {
+        "plugin_category": "web",
+        "plugin_ids": [
+            "owasp.web.scanner", "web.deep_sqli", "web.deep_cmdi",
+            "web.advanced_xss", "web.ssti.scanner", "web.crlf_injection",
+            "web.host_header_injection", "web.nosql_injection",
+            "web.open_redirect", "web.ssrf_deep", "web.ldap_injection",
+            "vuln.file.inclusion",
+        ],
+        "finding_pattern": "injection",
+        "frameworks": {
+            "nist_800_53": ["SI-10", "SI-11", "SC-18", "RA-5"],
+            "pci_dss_v4": ["6.2.4", "6.5.1", "6.5.7", "11.3.1"],
+            "cis_v8": ["16.1", "16.2", "16.6"],
+            "iso_27001": ["A.8.26", "A.8.28", "A.8.9"],
+        },
+        "description": "Web application injection and input validation vulnerabilities",
+    },
+    # --- API Security ---
+    {
+        "plugin_category": "api",
+        "plugin_ids": [
+            "api.scanner", "web.api_key_exposure", "web.jwt_scanner",
+            "web.graphql_scanner", "web.security_headers", "web.unauth_api",
+            "web.rate_limit",
+        ],
+        "finding_pattern": "api",
+        "frameworks": {
+            "nist_800_53": ["AC-3", "AC-6", "IA-2", "SC-7", "SI-10"],
+            "pci_dss_v4": ["6.2.4", "6.5.1", "8.3.1", "11.3.1"],
+            "cis_v8": ["3.3", "4.1", "16.1", "16.11"],
+            "iso_27001": ["A.5.15", "A.8.3", "A.8.5", "A.8.26"],
+        },
+        "description": "API authentication, authorization, and configuration issues",
+    },
+    # --- Infrastructure Security ---
+    {
+        "plugin_category": "infra",
+        "plugin_ids": [
+            "infra.db.auth_check", "infra.smb.check", "infra.snmp.community",
+            "infra.ftp.anonymous", "infra.redis.deep", "infra.docker.api",
+            "infra.k8s.api",
+        ],
+        "finding_pattern": "infra",
+        "frameworks": {
+            "nist_800_53": ["AC-3", "AC-6", "CM-7", "IA-2", "IA-5"],
+            "pci_dss_v4": ["2.2.1", "2.2.4", "8.3.1", "8.3.6"],
+            "cis_v8": ["4.1", "4.4", "5.2", "5.4"],
+            "iso_27001": ["A.5.15", "A.5.17", "A.8.5", "A.8.9"],
+        },
+        "description": "Infrastructure service authentication and configuration",
+    },
+    # --- IoT / MQTT ---
+    {
+        "plugin_category": "iot",
+        "plugin_ids": ["iot.mqtt_scanner"],
+        "finding_pattern": "mqtt",
+        "frameworks": {
+            "nist_800_53": ["AC-3", "IA-2", "SC-8", "SC-7"],
+            "pci_dss_v4": ["1.3.1", "2.2.4", "8.3.1"],
+            "cis_v8": ["4.1", "4.4", "5.2"],
+            "iso_27001": ["A.5.15", "A.8.5", "A.8.20"],
+        },
+        "description": "IoT protocol security (MQTT authentication, encryption)",
+    },
+    # --- Cloud Security ---
+    {
+        "plugin_category": "cloud",
+        "plugin_ids": ["cloud.storage.misconfig"],
+        "finding_pattern": "cloud",
+        "frameworks": {
+            "nist_800_53": ["AC-3", "AC-6", "SC-28", "CM-2"],
+            "pci_dss_v4": ["2.2.1", "3.4.1", "7.2.1"],
+            "cis_v8": ["3.3", "3.11", "6.5"],
+            "iso_27001": ["A.5.23", "A.8.10", "A.8.11"],
+        },
+        "description": "Cloud storage misconfiguration and data exposure",
+    },
+    # --- WAF Detection ---
+    {
+        "plugin_category": "waf",
+        "plugin_ids": ["web.waf.detection"],
+        "finding_pattern": "waf",
+        "frameworks": {
+            "nist_800_53": ["SC-7", "SI-4"],
+            "pci_dss_v4": ["6.4.1", "6.4.2"],
+            "cis_v8": ["13.6", "13.10"],
+            "iso_27001": ["A.8.22", "A.8.23"],
+        },
+        "description": "Web Application Firewall detection and bypass testing",
+    },
+    # --- DNS / Recon ---
+    {
+        "plugin_category": "recon",
+        "plugin_ids": ["recon.dns.enum", "recon.directory.crawl", "recon.ssl.ct"],
+        "finding_pattern": "recon",
+        "frameworks": {
+            "nist_800_53": ["CM-7", "CM-8", "RA-5"],
+            "pci_dss_v4": ["2.2.4", "11.3.1"],
+            "cis_v8": ["1.1", "2.1", "12.1"],
+            "iso_27001": ["A.5.9", "A.8.9"],
+        },
+        "description": "Reconnaissance — DNS enumeration, directory discovery, certificate transparency",
     },
     # --- SLA/Remediation ---
     {
@@ -116,16 +230,17 @@ COMPLIANCE_MAP = [
         "plugin_ids": [],
         "finding_pattern": "sla",
         "severity_sla_days": {
-            "critical": 15,
-            "high": 30,
-            "medium": 90,
-            "low": 180,
+            "critical": 2,
+            "high": 7,
+            "medium": 30,
+            "low": 90,
             "info": 365,
         },
         "frameworks": {
             "nist_800_53": ["SI-2", "CA-5", "PM-4"],
             "pci_dss_v4": ["6.3.3", "12.3.1"],
             "cis_v8": ["7.1", "7.2"],
+            "iso_27001": ["A.5.24", "A.5.25", "A.5.27"],
         },
         "description": "Remediation SLA timelines by severity",
     },
@@ -135,17 +250,24 @@ COMPLIANCE_MAP = [
 CONTROL_DESCRIPTIONS = {
     "nist_800_53": {
         "SI-2": "Flaw Remediation",
+        "SI-4": "System Monitoring",
         "SI-5": "Security Alerts, Advisories, and Directives",
+        "SI-10": "Information Input Validation",
         "SI-11": "Error Handling",
         "RA-5": "Vulnerability Monitoring and Scanning",
+        "CM-2": "Baseline Configuration",
         "CM-6": "Configuration Settings",
         "CM-7": "Least Functionality",
         "CM-8": "System Component Inventory",
         "SC-7": "Boundary Protection",
         "SC-8": "Transmission Confidentiality and Integrity",
         "SC-13": "Cryptographic Protection",
+        "SC-18": "Mobile Code",
         "SC-23": "Session Authenticity",
+        "SC-28": "Protection of Information at Rest",
+        "AC-3": "Access Enforcement",
         "AC-4": "Information Flow Enforcement",
+        "AC-6": "Least Privilege",
         "AC-17": "Remote Access",
         "IA-2": "Identification and Authentication",
         "IA-5": "Authenticator Management",
@@ -159,11 +281,17 @@ CONTROL_DESCRIPTIONS = {
         "2.2.1": "System security configuration standards",
         "2.2.4": "Unnecessary services and ports disabled",
         "2.2.7": "All non-console admin access encrypted",
+        "3.4.1": "PAN protected with strong cryptography",
         "4.2.1": "Strong cryptography for sensitive data transmission",
         "4.2.2": "Trusted keys and certificates maintained",
         "6.2.2": "Custom software developed securely",
         "6.2.4": "Software engineering techniques prevent attacks",
         "6.3.3": "Security patches installed timely",
+        "6.4.1": "Web application firewall (WAF) deployed",
+        "6.4.2": "Web-facing application attacks detected and prevented",
+        "6.5.1": "Injection flaws addressed",
+        "6.5.7": "Cross-site scripting (XSS) prevented",
+        "7.2.1": "Access control system configured for least privilege",
         "8.3.1": "User identity verified before modifying credentials",
         "8.3.6": "Minimum password complexity and length",
         "11.3.1": "Vulnerability scans performed quarterly",
@@ -174,15 +302,48 @@ CONTROL_DESCRIPTIONS = {
         "1.1": "Establish and Maintain Asset Inventory",
         "2.1": "Establish and Maintain Software Inventory",
         "2.5": "Allowlist Authorized Software",
+        "3.3": "Configure Data Access Control Lists",
         "3.10": "Encrypt Sensitive Data in Transit",
+        "3.11": "Encrypt Sensitive Data at Rest",
         "4.1": "Establish and Maintain Secure Configuration",
         "4.4": "Implement and Manage a Firewall on Servers",
         "5.2": "Use Unique Passwords",
+        "5.4": "Restrict Administrator Privileges to Dedicated Admin Accounts",
+        "6.5": "Require MFA for Administrative Access",
         "7.1": "Establish and Maintain Vulnerability Management Process",
         "7.2": "Establish and Maintain Remediation Process",
         "7.4": "Perform Automated Application Patch Management",
         "7.5": "Perform Automated Vulnerability Scans",
         "9.2": "Ensure Only Approved Ports and Services Are Running",
+        "12.1": "Ensure Network Infrastructure is Up to Date",
+        "13.6": "Deploy a WAF",
+        "13.10": "Perform Application Layer Filtering",
+        "16.1": "Establish and Maintain a Secure Application Development Process",
+        "16.2": "Establish and Maintain a Process for Accepting and Addressing Vulnerabilities",
+        "16.6": "Use Standard Hardening Configuration Templates",
+        "16.11": "Implement Input Validation",
+    },
+    "iso_27001": {
+        "A.5.9": "Inventory of Information and Other Associated Assets",
+        "A.5.15": "Access Control",
+        "A.5.17": "Authentication Information",
+        "A.5.23": "Information Security for Use of Cloud Services",
+        "A.5.24": "Information Security Incident Management Planning and Preparation",
+        "A.5.25": "Assessment and Decision on Information Security Events",
+        "A.5.27": "Learning from Information Security Incidents",
+        "A.8.3": "Information Access Restriction",
+        "A.8.5": "Secure Authentication",
+        "A.8.8": "Management of Technical Vulnerabilities",
+        "A.8.9": "Configuration Management",
+        "A.8.10": "Information Deletion",
+        "A.8.11": "Data Masking",
+        "A.8.20": "Networks Security",
+        "A.8.21": "Security of Network Services",
+        "A.8.22": "Segregation of Networks",
+        "A.8.23": "Web Filtering",
+        "A.8.24": "Use of Cryptography",
+        "A.8.26": "Application Security Requirements",
+        "A.8.28": "Secure Coding",
     },
 }
 
@@ -193,8 +354,8 @@ def main():
     args = ap.parse_args()
 
     output = {
-        "version": "1.0",
-        "frameworks": ["nist_800_53", "pci_dss_v4", "cis_v8"],
+        "version": "1.1",
+        "frameworks": ["nist_800_53", "pci_dss_v4", "cis_v8", "iso_27001"],
         "mappings": COMPLIANCE_MAP,
         "control_descriptions": CONTROL_DESCRIPTIONS,
     }
@@ -205,7 +366,7 @@ def main():
     total_controls = sum(
         len(v) for v in CONTROL_DESCRIPTIONS.values()
     )
-    print(f"Compliance map: {len(COMPLIANCE_MAP)} categories, {total_controls} control descriptions -> {args.out}")
+    print(f"Compliance map: {len(COMPLIANCE_MAP)} categories, {total_controls} control descriptions, 4 frameworks -> {args.out}")
 
 
 if __name__ == "__main__":
