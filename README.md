@@ -1,7 +1,3 @@
-<p align="center">
-  <img width="1918" height="901" alt="VulnScan Platform" src="https://github.com/user-attachments/assets/d92a962a-2d08-4389-acbc-8e65699b758e" />
-</p>
-
 <h1 align="center">VulnScan Platform</h1>
 <p align="center">
   <strong>Enterprise Risk-Based Vulnerability Management Platform</strong>
@@ -13,6 +9,10 @@
   <a href="#ai-deep-analysis">AI Analysis</a> &bull;
   <a href="#changelog">Changelog</a> &bull;
   <a href="#license">License</a>
+</p>
+
+<p align="center">
+  <img width="1918" height="901" alt="VulnScan Platform" src="https://github.com/user-attachments/assets/d92a962a-2d08-4389-acbc-8e65699b758e" />
 </p>
 
 ---
