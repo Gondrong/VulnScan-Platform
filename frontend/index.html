@@ -5090,7 +5090,9 @@ ${f.fingerprint ? `<button class="btn btn-ghost btn-sm" onclick="suppressFinding
         Severity: (f.severity || 'info').toUpperCase(),
         Title: f.title || '',
         Risk_Score: f.risk_score != null ? Number(f.risk_score).toFixed(2) : '',
-        CVSS_Base: f.cvss_base != null ? Number(f.cvss_base).toFixed(1) : '',
+        CVSS_Base: f.cvss_base != null
+          ? Number(f.cvss_base).toFixed(1)
+          : ({ critical: 9.5, high: 8.0, medium: 5.0, low: 2.0, info: 0.0 }[(f.severity || '').toLowerCase()] ?? null)?.toFixed(1) || '',
         Confidence: f.confidence != null ? Number(f.confidence).toFixed(2) : '',
         KEV: f.is_kev ? 'YES' : 'NO',
         Plugin: f.plugin_id || '',
@@ -5905,4 +5907,3 @@ h2{font-size:14px;color:#0a1628;margin:20px 0 8px;padding:8px 12px;background:#f
 </body>
 
 </html>
-
