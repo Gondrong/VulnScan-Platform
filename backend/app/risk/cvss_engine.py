@@ -28,6 +28,32 @@ def severity_from_score(score: float | None) -> str:
     return "info"
 
 
+def cvss_baseline_from_severity(severity: str | None) -> float | None:
+    """
+    Derive a representative CVSS v3 base score from a severity label.
+
+    Used as a fallback for plugin-discovered findings that don't map to a CVE
+    (e.g. "Exposed debug console", "Missing HSTS header") so the UI doesn't
+    show "—" for every non-CVE finding. Picks a midpoint of each band so the
+    severity round-trip is lossless via severity_from_score().
+
+      critical → 9.5  (band: 9.0–10.0)
+      high     → 8.0  (band: 7.0–8.9)
+      medium   → 5.5  (band: 4.0–6.9)
+      low      → 2.5  (band: 0.1–3.9)
+      info     → 0.0
+    """
+    if not severity:
+        return None
+    return {
+        "critical": 9.5,
+        "high":     8.0,
+        "medium":   5.5,
+        "low":      2.5,
+        "info":     0.0,
+    }.get(severity.lower())
+
+
 def cvss_v3_vector_to_score(vector: str) -> float | None:
     """
     Very lightweight CVSS v3 base score approximation from a vector string.

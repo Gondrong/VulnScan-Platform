@@ -35,7 +35,7 @@ class Settings(BaseModel):
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
-    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "2.1.4")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.0.0")
 
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
@@ -47,10 +47,17 @@ class Settings(BaseModel):
     CLAUDE_CLI_MODEL: str = os.getenv("CLAUDE_CLI_MODEL", "claude-opus-4-6")
     CLAUDE_CLI_ENABLED: bool = os.getenv("CLAUDE_CLI_ENABLED", "false").lower() in ("true", "1", "yes")
 
+    # Anthropic API — alternative to CLI when host CPU can't run Bun (no AVX)
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-5")
+
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     AI_ANALYSIS_TIMEOUT: int = int(os.getenv("AI_ANALYSIS_TIMEOUT", "600"))
+
+    # GeoIP — path to GeoLite2-City.mmdb for IP → City/Country resolution
+    GEOIP_DB_PATH: str = os.getenv("GEOIP_DB_PATH", "/data/GeoLite2-City.mmdb")
 
     @field_validator("SECRET_KEY")
     @classmethod
@@ -79,6 +86,12 @@ class Settings(BaseModel):
                 "id": "claude_cli",
                 "name": "Claude CLI",
                 "model": self.CLAUDE_CLI_MODEL,
+            })
+        if self.ANTHROPIC_API_KEY:
+            providers.append({
+                "id": "claude_api",
+                "name": "Claude (API)",
+                "model": self.ANTHROPIC_MODEL,
             })
         if self.GEMINI_API_KEY:
             providers.append({
