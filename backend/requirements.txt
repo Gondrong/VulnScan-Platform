@@ -17,5 +17,12 @@ requests>=2.31.0
 paho-mqtt==1.6.1
 openai>=1.30.0
 google-generativeai>=0.7.0
+anthropic>=0.40.0
 pyyaml>=6.0
+geoip2>=4.8.0
+
+# Report generation (PDF / DOCX / XLSX)
+reportlab>=4.0.0
+python-docx>=1.1.0
+openpyxl>=3.1.0
 
