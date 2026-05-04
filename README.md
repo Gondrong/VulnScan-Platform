@@ -113,6 +113,7 @@ git clone https://github.com/Gondrong/VulnScan-Platform.git
 cd VulnScan-Platform
 ./bootstrap.sh
 ```
+> ⚠️ If your server/linux via VMWare you must change the value from "dev": "vite" to "dev": "node node_modules/vite/bin/vite.js" at frontend/package.json. if not, your frontend not visible
 
 ### Access
 
