@@ -42,7 +42,8 @@ META = PluginMeta(
     name="OWASP Top 10 (2025) Web Scanner",
     category="vuln_scan",
     depends_on=["fingerprint.http"],
-    consumes=["fingerprint.http"],
+    soft_depends_on=["web.auth"],  # Run after web.auth so auth_session is available
+    consumes=["fingerprint.http", "web.auth_session"],
     provides=["owasp.findings", "owasp.finding_types", "owasp.tested_categories"],
     enabled_by_default=True,
     timeout_seconds=120.0,
@@ -480,11 +481,18 @@ class Check(Plugin):
         def _budget_left():
             return effective - (time.monotonic() - scan_start)
 
+        # Apply authenticated session from web.auth plugin if present
+        auth_session = ctx.get("web.auth_session") or {}
+        auth_cookies = (auth_session or {}).get("cookies") or {}
+        auth_headers = (auth_session or {}).get("headers") or {}
+
         async with httpx.AsyncClient(
             timeout=request_timeout,
             verify=False,
             follow_redirects=True,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+            cookies=auth_cookies or None,
+            headers=auth_headers or None,
         ) as client:
 
             # ─── Phase 0: Target Discovery (spider + form parsing) ────────

@@ -69,6 +69,9 @@ _BUILTIN_PLUGINS = [
     "advanced_xss",
     # Tier 5 — API-specific scanning (OpenAPI/Postman/GraphQL)
     "api_scanner",
+    # Tier 6 — Authenticated web scanning + UDP discovery (opt-in)
+    "web_auth",
+    "udp_portscan",
 ]
 
 
