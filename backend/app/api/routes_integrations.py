@@ -1,7 +1,8 @@
 import json
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,8 @@ from app.db import models
 
 logger = logging.getLogger("vulnscan.api.integrations")
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+VALID_PROVIDERS = {"slack", "email", "webhook", "teams"}
 
 
 class IntegrationSaveRequest(BaseModel):
@@ -48,8 +51,7 @@ def save_integration(
     user=Depends(require_role("admin")),
     db: Session = Depends(get_db),
 ):
-    valid_providers = {"slack", "email", "webhook", "teams"}
-    if provider not in valid_providers:
+    if provider not in VALID_PROVIDERS:
         raise HTTPException(status_code=400, detail="Invalid provider")
 
     ws_id = user["ws"]
@@ -79,16 +81,89 @@ def save_integration(
 @router.post("/{provider}/test")
 def test_integration(
     provider: str,
-    body: IntegrationSaveRequest,
+    body: Optional[IntegrationSaveRequest] = Body(None),
     user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
 ):
+    """
+    Send a test notification.
+
+    If a body with `config` is supplied, the test uses that (so the user can
+    verify their inputs before saving). Otherwise it falls back to the
+    currently-saved config for the provider.
+    """
     from app.scanner.notifier import dispatch_test_notification
-    valid_providers = {"slack", "email", "webhook", "teams"}
-    if provider not in valid_providers:
+
+    if provider not in VALID_PROVIDERS:
         raise HTTPException(status_code=400, detail="Invalid provider")
 
-    success = dispatch_test_notification(provider, body.config)
+    config: dict | None = None
+    source = ""
+    if body is not None and isinstance(body.config, dict) and body.config:
+        config = body.config
+        source = "request"
+    else:
+        existing = (
+            db.query(models.Integration)
+            .filter(
+                models.Integration.workspace_id == user["ws"],
+                models.Integration.provider == provider,
+            )
+            .first()
+        )
+        if existing:
+            try:
+                config = json.loads(existing.config_json)
+                source = "saved"
+            except Exception:
+                config = None
+
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No config available for test. Provide one in the request body, "
+                "or save the integration first."
+            ),
+        )
+
+    logger.info("Integration test: provider=%s actor=%s source=%s", provider, user.get("sub", "?"), source)
+    success = dispatch_test_notification(provider, config)
     if not success:
-        raise HTTPException(status_code=500, detail=f"Failed to send test notification via {provider}")
-    
-    return {"status": "ok", "message": "Test notification sent"}
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Test notification via {provider} did not succeed. "
+                "Check the backend logs for the exact error (often: invalid webhook URL, "
+                "SMTP auth failure, or unreachable host)."
+            ),
+        )
+
+    return {"status": "ok", "message": f"Test notification sent via {provider}"}
+
+
+@router.delete("/{provider}")
+def delete_integration(
+    provider: str,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Remove a saved integration for the workspace."""
+    if provider not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail="Invalid provider")
+
+    existing = (
+        db.query(models.Integration)
+        .filter(
+            models.Integration.workspace_id == user["ws"],
+            models.Integration.provider == provider,
+        )
+        .first()
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"No {provider} integration found")
+
+    db.delete(existing)
+    db.commit()
+    logger.info("Integration deleted: provider=%s actor=%s", provider, user.get("sub", "?"))
+    return {"status": "ok", "provider": provider, "deleted": True}

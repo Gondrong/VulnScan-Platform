@@ -131,6 +131,10 @@ def list_users(
             "email": u.email,
             "role": u.role,
             "created_at": u.created_at.isoformat() if u.created_at else None,
+            "updated_at": u.updated_at.isoformat() if u.updated_at else None,
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+            "last_login_ip": u.last_login_ip,
+            "last_login_location": u.last_login_location,
         }
         for u in users
     ]
@@ -173,6 +177,62 @@ def create_user(
     db.refresh(new_user)
     logger.info("User created: %s (role=%s) by %s", body.email, body.role, user.get("sub", "?"))
     return {"id": new_user.id, "email": new_user.email, "role": new_user.role}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.put("/users/me/password")
+def change_own_password(
+    body: PasswordChange,
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Allow any authenticated user to change their own password."""
+    target = db.query(models.User).filter(
+        models.User.workspace_id == user["ws"],
+        models.User.email == user["sub"],
+    ).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.password_hash != hashlib.sha256(body.current_password.encode("utf-8")).hexdigest():
+        raise HTTPException(403, "Current password is incorrect")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    target.password_hash = hashlib.sha256(body.new_password.encode("utf-8")).hexdigest()
+    target.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("Password changed by %s", user.get("sub", "?"))
+    return {"ok": True, "message": "Password updated successfully"}
+
+
+class AdminPasswordReset(BaseModel):
+    new_password: str
+
+
+@router.put("/users/{user_id}/password")
+def admin_reset_password(
+    user_id: int,
+    body: AdminPasswordReset,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Allow admins to reset any user's password."""
+    target = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.workspace_id == user["ws"],
+    ).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    target.password_hash = hashlib.sha256(body.new_password.encode("utf-8")).hexdigest()
+    target.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("Password reset for %s (#%d) by admin %s", target.email, user_id, user.get("sub", "?"))
+    return {"ok": True, "message": f"Password reset for {target.email}"}
 
 
 @router.delete("/users/{user_id}")
@@ -399,3 +459,79 @@ def _valid_allowlist_entry(entry: str) -> bool:
 def _redact_url(url: str) -> str:
     """Redact password from a connection URL."""
     return re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", url)
+
+
+# ─── SLA Policies ─────────────────────────────────────────────────────────────
+
+DEFAULT_SLA = {
+    "policies": [
+        {"sev": "critical", "days": 2,  "hours": 4,  "escalate": True,  "notify": ["@security-leads"]},
+        {"sev": "high",     "days": 7,  "hours": 24, "escalate": True,  "notify": ["@asset-owner"]},
+        {"sev": "medium",   "days": 30, "hours": 72, "escalate": False, "notify": ["@asset-owner"]},
+        {"sev": "low",      "days": 90, "hours": 0,  "escalate": False, "notify": []},
+        {"sev": "info",     "days": 365,"hours": 0,  "escalate": False, "notify": []},
+    ],
+    "breach_action": "notify",                # notify | ticket | page | block
+    "business_hours_only": False,
+    "pause_states": ["accepted-risk", "false-positive", "awaiting-vendor", "in-progress"],
+    "compliance_preset": "custom",            # custom | pci | hipaa | soc2 | iso | cisa
+}
+
+
+def _get_setting(db: Session, ws: int, key: str, default: dict) -> dict:
+    row = db.query(models.WorkspaceSetting).filter(
+        models.WorkspaceSetting.workspace_id == ws,
+        models.WorkspaceSetting.key == key,
+    ).first()
+    if not row:
+        return default
+    try:
+        return json.loads(row.value_json)
+    except Exception:
+        return default
+
+
+def _set_setting(db: Session, ws: int, key: str, value: dict) -> None:
+    row = db.query(models.WorkspaceSetting).filter(
+        models.WorkspaceSetting.workspace_id == ws,
+        models.WorkspaceSetting.key == key,
+    ).first()
+    if row:
+        row.value_json = json.dumps(value)
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        row = models.WorkspaceSetting(
+            workspace_id=ws,
+            key=key,
+            value_json=json.dumps(value),
+        )
+        db.add(row)
+    db.commit()
+
+
+@router.get("/sla")
+def get_sla(user=Depends(require_role("admin", "analyst", "viewer")), db: Session = Depends(get_db)):
+    return _get_setting(db, user["ws"], "sla", DEFAULT_SLA)
+
+
+class SLAUpdate(BaseModel):
+    policies: list | None = None
+    breach_action: str | None = None
+    business_hours_only: bool | None = None
+    pause_states: list | None = None
+    compliance_preset: str | None = None
+
+
+@router.put("/sla")
+def put_sla(body: SLAUpdate, user=Depends(require_role("admin", "analyst")), db: Session = Depends(get_db)):
+    current = _get_setting(db, user["ws"], "sla", DEFAULT_SLA)
+    incoming = body.dict(exclude_unset=True)
+    current.update(incoming)
+    _set_setting(db, user["ws"], "sla", current)
+    return current
+
+
+@router.post("/sla/reset")
+def reset_sla(user=Depends(require_role("admin", "analyst")), db: Session = Depends(get_db)):
+    _set_setting(db, user["ws"], "sla", DEFAULT_SLA)
+    return DEFAULT_SLA

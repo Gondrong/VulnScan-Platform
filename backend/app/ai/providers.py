@@ -1,5 +1,5 @@
 """
-AI Provider implementations — Azure OpenAI, Claude CLI, Gemini.
+AI Provider implementations — Azure OpenAI, Claude CLI, Claude API, Gemini.
 Each provider wraps its respective API/CLI to provide a uniform generate() interface.
 """
 import json
@@ -78,6 +78,7 @@ class ClaudeCLIProvider(AiProvider):
         cmd = [
             self.cli_path,
             "--print",
+            "--model", self.model,
             "--max-turns", "1",
         ]
 
@@ -109,6 +110,47 @@ class ClaudeCLIProvider(AiProvider):
             tokens_used=estimated_tokens,
             model=self.model,
         )
+
+
+class ClaudeAPIProvider(AiProvider):
+    """Anthropic API — uses the official anthropic SDK with ANTHROPIC_API_KEY.
+    Use this when the Claude CLI segfaults on the host (e.g. CPUs without AVX).
+    """
+    name = "claude_api"
+
+    def __init__(self, api_key: str, model: str):
+        import anthropic
+        self.client = anthropic.Anthropic(api_key=api_key)
+        self.model = model
+
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: int = 8192) -> AiResponse:
+        logger.info("Claude API: sending request (model=%s)", self.model)
+
+        # Anthropic API requires max_tokens; cap at model limit.
+        # Opus / Sonnet 4.x support up to 64K-128K output tokens but 8K is plenty for our prompts.
+        msg = self.client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            temperature=0.2,
+        )
+
+        # Concatenate all text blocks (Anthropic returns a list of content blocks)
+        content = "".join(
+            getattr(block, "text", "") for block in msg.content if getattr(block, "type", "") == "text"
+        )
+
+        # Token usage — input + output
+        usage = getattr(msg, "usage", None)
+        tokens = (getattr(usage, "input_tokens", 0) + getattr(usage, "output_tokens", 0)) if usage else 0
+
+        logger.info("Claude API: received %d tokens (in=%d, out=%d)",
+                    tokens,
+                    getattr(usage, "input_tokens", 0) if usage else 0,
+                    getattr(usage, "output_tokens", 0) if usage else 0)
+        return AiResponse(content=content, tokens_used=tokens, model=self.model)
 
 
 class GeminiProvider(AiProvider):
@@ -169,6 +211,14 @@ def get_provider(provider_name: str) -> AiProvider:
         return ClaudeCLIProvider(
             cli_path=settings.CLAUDE_CLI_PATH,
             model=settings.CLAUDE_CLI_MODEL,
+        )
+
+    elif provider_name == "claude_api":
+        if not settings.ANTHROPIC_API_KEY:
+            raise ValueError("Claude API not configured: set ANTHROPIC_API_KEY in .env")
+        return ClaudeAPIProvider(
+            api_key=settings.ANTHROPIC_API_KEY,
+            model=settings.ANTHROPIC_MODEL,
         )
 
     elif provider_name == "gemini":

@@ -68,7 +68,9 @@ def _extract_json(text: str) -> dict:
             except json.JSONDecodeError:
                 continue
 
-    raise ValueError(f"Could not parse JSON from AI response (length={len(text)})")
+    raise ValueError(
+        f"Could not parse JSON from AI response (length={len(text)}): {text[:200]}"
+    )
 
 
 def _validate_result(result: dict, mode: str) -> dict:
@@ -169,6 +171,10 @@ def run_analysis(analysis_id: int) -> None:
         })
 
         # Parse response
+        logger.debug(
+            "AI raw response (analysis #%d, len=%d): %.500s",
+            analysis_id, len(response.content), response.content,
+        )
         result = _extract_json(response.content)
         result = _validate_result(result, analysis.mode)
 

@@ -20,13 +20,19 @@ from app.api.routes_graph import router as graph_router
 from app.api.routes_integrations import router as integrations_router
 from app.api.routes_ai import router as ai_router
 from app.api.routes_api_scanner import router as api_scanner_router
+from app.api.routes_iac_scanner import router as iac_scanner_router
+from app.api.routes_web_auth import router as web_auth_router
+from app.api.routes_threat_intel import router as threat_intel_router
+from app.api.routes_assets import router as assets_router
+from app.api.routes_reports import router as reports_router
+from app.api.routes_events import router as events_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
 
 app = FastAPI(
     title="VulnScan Platform",
-    version="2.1.4",
+    version="3.0.0",
     description="Enterprise Risk-Based Vulnerability Management Platform",
 )
 
@@ -89,6 +95,19 @@ def _run_migrations(db: Session) -> None:
                     FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE SET NULL;
             END IF;
         END $$;
+        """,
+        # Add asset_id column to scan_jobs (nullable FK to assets) — runs after create_all so assets table exists
+        """
+        ALTER TABLE scan_jobs
+            ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL;
+        """,
+        # Add user tracking columns
+        """
+        ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(45),
+            ADD COLUMN IF NOT EXISTS last_login_location VARCHAR(100);
         """,
     ]
     for sql in migrations:
@@ -211,7 +230,7 @@ def startup() -> None:
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    return {"ok": True, "version": "2.1.4"}
+    return {"ok": True, "version": "3.0.0"}
 
 
 # ─── Schedule Runner (background) ─────────────────────────────────────────────
@@ -324,4 +343,10 @@ app.include_router(graph_router)
 app.include_router(integrations_router)
 app.include_router(ai_router)
 app.include_router(api_scanner_router)
+app.include_router(iac_scanner_router)
+app.include_router(web_auth_router)
+app.include_router(threat_intel_router)
+app.include_router(assets_router)
+app.include_router(reports_router)
+app.include_router(events_router)
 

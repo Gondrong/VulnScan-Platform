@@ -10,11 +10,17 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_role
 from app.core.config import settings
 from app.db import models
+from app.risk.cvss_engine import cvss_baseline_from_severity
 from app.worker_tasks import run_scan_job
 
 logger = logging.getLogger("vulnscan.scan")
 
 router = APIRouter(prefix="/scan", tags=["scan"])
+
+
+def _baseline_cvss(severity: str | None) -> float | None:
+    """Wrapper so route serializers can use a one-liner."""
+    return cvss_baseline_from_severity(severity)
 
 
 def _redis() -> Redis:
@@ -232,6 +238,21 @@ def create_job(
     if scan_type not in ("internal", "external"):
         scan_type = "internal"
 
+    asset_id = body.get("asset_id")
+    if asset_id is not None:
+        try:
+            asset_id = int(asset_id)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "asset_id must be an integer")
+        # Validate asset belongs to workspace
+        asset_row = (
+            db.query(models.Asset)
+            .filter(models.Asset.workspace_id == user["ws"], models.Asset.id == asset_id)
+            .first()
+        )
+        if not asset_row:
+            raise HTTPException(400, "asset_id does not match a folder in this workspace")
+
     prof = (
         db.query(models.Profile)
         .filter(
@@ -243,12 +264,30 @@ def create_job(
     if not prof:
         raise HTTPException(404, "profile not found")
 
+    # Per-job Web Authentication override (set from the New Scan dialog).
+    # Stored in meta_json under 'web_auth' so the worker can merge it into the
+    # profile's options at scan time and auto-enable the web.auth plugin.
+    web_auth_override = body.get("web_auth")
+    web_auth_ephemeral = bool(body.get("web_auth_credential_ephemeral"))
+    job_meta = None
+    if web_auth_override and isinstance(web_auth_override, dict) and web_auth_override.get("type"):
+        if web_auth_override["type"] not in ("form", "bearer", "basic", "cookie", "header"):
+            raise HTTPException(400, f"Invalid web_auth type: {web_auth_override['type']}")
+        meta_payload = {"web_auth": web_auth_override}
+        # Ephemeral credentials: the worker deletes the linked credential after the scan
+        # ends (any status). Only valid when web_auth references a credential_id.
+        if web_auth_ephemeral and web_auth_override.get("credential_id"):
+            meta_payload["web_auth_credential_ephemeral"] = True
+        job_meta = json.dumps(meta_payload)
+
     job = models.ScanJob(
         workspace_id=user["ws"],
         target=target,
         profile_id=prof.id,
+        asset_id=asset_id,
         status="queued",
         scan_type=scan_type,
+        meta_json=job_meta,
     )
     db.add(job)
     db.commit()
@@ -280,6 +319,7 @@ def create_job(
         "status": job.status,
         "scan_type": job.scan_type,
         "profile_id": job.profile_id,
+        "asset_id": job.asset_id,
         "created_at": job.created_at.isoformat() if job.created_at else None,
     }
 
@@ -300,6 +340,7 @@ def list_jobs(
             "id": r.id,
             "target": r.target,
             "profile_id": r.profile_id,
+            "asset_id": r.asset_id,
             "status": r.status,
             "scan_type": r.scan_type or "internal",
             "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -361,6 +402,7 @@ def job_detail(
             "id": job.id,
             "target": job.target,
             "profile_id": job.profile_id,
+            "asset_id": job.asset_id,
             "status": job.status,
             "scan_type": job.scan_type or "internal",
             "created_at": job.created_at.isoformat() if job.created_at else None,
@@ -379,7 +421,9 @@ def job_detail(
                 "evidence": f.evidence,
                 "fingerprint": f.fingerprint,
                 "references_json": f.references_json,
-                "cvss_base": f.cvss_base,
+                # cvss_base falls back to a severity-derived baseline so the UI
+                # doesn't show "—" for plugin findings that aren't tied to a CVE.
+                "cvss_base": f.cvss_base if f.cvss_base is not None else _baseline_cvss(f.severity),
                 "risk_score": f.risk_score,
                 "confidence": f.confidence,
                 "is_kev": f.is_kev,

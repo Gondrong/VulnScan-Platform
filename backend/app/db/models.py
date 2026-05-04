@@ -22,6 +22,10 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50), default="admin")  # admin|analyst|viewer
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    last_login_location: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
 class Credential(Base):
@@ -64,11 +68,54 @@ class ScanJob(Base):
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
     target: Mapped[str] = mapped_column(String(512))
     profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
-    status: Mapped[str] = mapped_column(String(50), default="queued")  # queued|running|done|failed
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="queued")  # queued|running|done|failed|cancelled
     scan_type: Mapped[str] = mapped_column(String(20), default="internal")  # internal|external
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Asset(Base):
+    __tablename__ = "assets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
+    owner: Mapped[str] = mapped_column(String(255), default="")
+    default_profile_id: Mapped[int | None] = mapped_column(ForeignKey("profiles.id"), nullable=True)
+    default_credential_id: Mapped[int | None] = mapped_column(ForeignKey("credentials.id"), nullable=True)
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+    sla_overrides_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    schedule_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceSetting(Base):
+    __tablename__ = "workspace_settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    key: Mapped[str] = mapped_column(String(100), index=True)
+    value_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ReportTemplate(Base):
+    __tablename__ = "report_templates"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Sections to include (JSON list of section ids)
+    sections_json: Mapped[str] = mapped_column(Text, default='["summary","severity","findings","remediation"]')
+    # Severity filter (JSON list, e.g. ["critical","high"])
+    severities_json: Mapped[str] = mapped_column(Text, default='["critical","high","medium","low","info"]')
+    # Branding & options
+    options_json: Mapped[str] = mapped_column(Text, default='{}')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Finding(Base):

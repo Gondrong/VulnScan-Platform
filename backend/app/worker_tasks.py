@@ -13,7 +13,7 @@ from app.cve.dataset_loader import load_json
 from app.db import models
 from app.db.session import SessionLocal
 from app.graph.neo4j_client import Neo4jClient
-from app.risk.cvss_engine import severity_from_score
+from app.risk.cvss_engine import severity_from_score, cvss_baseline_from_severity
 from app.risk.risk_engine import compute_risk
 from app.risk.sla_engine import assign_sla_days
 from app.scanner.engine import scan_target
@@ -75,11 +75,11 @@ def run_scan_job(job_id: int) -> None:
         ws_id = job.workspace_id
         scan_type = job.scan_type or "internal"
 
-        # API Scanner jobs don't need a profile — handle separately
-        if scan_type == "api":
+        # API Scanner & IaC Scanner jobs don't need a profile — handle separately
+        if scan_type in ("api", "iac"):
             job.status = "running"
             db.commit()
-            logger.info("Starting API scan job #%d target=%s", job_id, job.target)
+            logger.info("Starting %s scan job #%d target=%s", scan_type, job_id, job.target)
             prof = None
         else:
             prof = (
@@ -113,6 +113,35 @@ def run_scan_job(job_id: int) -> None:
             }
         else:
             profile = {"plugin_selection_json": "{}", "options_json": "{}"}
+
+        # ── Per-job Web Authentication override ──────────────────────────────
+        # The New Scan dialog can attach a `web_auth` block to the job. It
+        # overrides any profile-level web_auth and auto-enables the web.auth
+        # plugin so the user doesn't have to remember to toggle it.
+        try:
+            _job_meta_in = json.loads(job.meta_json or "{}")
+        except Exception:
+            _job_meta_in = {}
+        _job_web_auth = _job_meta_in.get("web_auth") if isinstance(_job_meta_in, dict) else None
+        if _job_web_auth and isinstance(_job_web_auth, dict) and _job_web_auth.get("type"):
+            try:
+                _opts = json.loads(profile["options_json"] or "{}")
+            except Exception:
+                _opts = {}
+            _opts["web_auth"] = _job_web_auth
+            profile["options_json"] = json.dumps(_opts)
+
+            try:
+                _sel = json.loads(profile["plugin_selection_json"] or "{}")
+            except Exception:
+                _sel = {}
+            _sel["web.auth"] = True
+            profile["plugin_selection_json"] = json.dumps(_sel)
+
+            logger.info(
+                "Job #%d: applied per-job web_auth override (type=%s, credential_id=%s)",
+                job_id, _job_web_auth.get("type"), _job_web_auth.get("credential_id"),
+            )
 
         # Progress callback - updates meta_json so frontend can poll
         # Uses a SEPARATE db session to avoid corrupting the main session
@@ -171,6 +200,12 @@ def run_scan_job(job_id: int) -> None:
                 from app.scanner.plugins.api_scanner import Check as ApiScannerCheck
                 api_checker = ApiScannerCheck()
                 findings = _run_async(api_checker.run_standalone(api_config, progress_callback=_progress))
+            elif scan_type == "iac":
+                # IaC Scanner — standalone mode (file/archive driven)
+                iac_config = json.loads(job.meta_json or "{}").get("iac_scanner_config", {})
+                from app.scanner.plugins.iac_scanner import Check as IacScannerCheck
+                iac_checker = IacScannerCheck()
+                findings = _run_async(iac_checker.run_standalone(iac_config, progress_callback=_progress))
             else:
                 findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress, job_id=job.id))
         except Exception as e:
@@ -312,6 +347,12 @@ def run_scan_job(job_id: int) -> None:
                         confidence = min(max(confidence, enriched_conf), cap)
                     else:
                         confidence = max(confidence, enriched_conf)
+
+            # Fallback: derive a baseline CVSS from severity for findings without
+            # a CVE-backed score (e.g. OWASP scanner findings like "Exposed debug
+            # console" — there's no CVE for it but the severity is meaningful).
+            if cvss is None:
+                cvss = cvss_baseline_from_severity(getattr(f, "severity", None))
 
             # ── Drop low-confidence / invalid findings ────────────────────
             # 1. Always drop findings whose validation_state is in drop_states
@@ -659,12 +700,64 @@ def run_scan_job(job_id: int) -> None:
             except Exception:
                 logger.critical("CRITICAL: Job #%d is permanently stuck as running!", job_id)
     finally:
+        # ── Ephemeral credential cleanup ──────────────────────────────────────
+        # If the scan job carried web_auth_credential_ephemeral=True, delete
+        # the linked credential now (regardless of scan outcome). This is the
+        # "auto-delete after scan" feature for one-off pentest workflows.
+        try:
+            _cleanup_ephemeral_credential(db, job_id)
+        except Exception as _eph_err:
+            logger.warning("Ephemeral credential cleanup failed for job #%d: %s", job_id, _eph_err)
+
         if neo:
             try:
                 neo.close()
             except Exception:
                 pass
         db.close()
+
+
+def _cleanup_ephemeral_credential(db: Session, job_id: int) -> None:
+    """
+    Delete the credential referenced by job.meta_json['web_auth']['credential_id']
+    when meta_json['web_auth_credential_ephemeral'] is True. Best-effort —
+    failures are logged but never raised.
+    """
+    job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
+    if not job or not job.meta_json:
+        return
+    try:
+        meta = json.loads(job.meta_json)
+    except Exception:
+        return
+    if not isinstance(meta, dict):
+        return
+    if not meta.get("web_auth_credential_ephemeral"):
+        return
+    web_auth = meta.get("web_auth") or {}
+    cred_id = web_auth.get("credential_id")
+    if not cred_id:
+        return
+
+    cred = (
+        db.query(models.Credential)
+        .filter(
+            models.Credential.id == int(cred_id),
+            models.Credential.workspace_id == job.workspace_id,
+        )
+        .first()
+    )
+    if not cred:
+        logger.info("Ephemeral cleanup: credential #%s already removed (job #%d)", cred_id, job_id)
+        return
+
+    cred_name = cred.name
+    db.delete(cred)
+    db.commit()
+    logger.info(
+        "Ephemeral cleanup: deleted credential #%s '%s' after job #%d completed",
+        cred_id, cred_name, job_id,
+    )
 
 
 # ── Dataset Refresh Task ────────────────────────────────────────────────────
@@ -675,6 +768,7 @@ import gzip
 import urllib.request
 import urllib.error
 import concurrent.futures
+import threading
 import time
 
 _DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "cvedetails_cvss", "cms_cve_map", "compliance_map"]
@@ -816,7 +910,8 @@ def _ds_refresh_epss():
     return True, out_path, None
 
 
-def _ds_refresh_cvedetails(nvd_path):
+def _ds_refresh_cvedetails(nvd_path, on_progress=None):
+    import requests as _requests
     from pathlib import Path
     out_dir = Path("/data/cve")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -840,44 +935,96 @@ def _ds_refresh_cvedetails(nvd_path):
     new_ids = [c for c in cve_ids if c not in existing]
     logger.info("CVE.org: %d total, %d new to fetch", len(cve_ids), len(new_ids))
 
+    # Tunable via env: CVEORG_WORKERS (default 5), CVEORG_REQ_PER_SEC (default 5)
+    max_workers = int(os.environ.get("CVEORG_WORKERS", "5"))
+    req_per_sec = float(os.environ.get("CVEORG_REQ_PER_SEC", "5"))
+    logger.info("CVE.org: workers=%d, rate_limit=%.1f req/s", max_workers, req_per_sec)
+
+    # Persistent session — reuses TCP connections (skips TLS handshake per request)
+    session = _requests.Session()
+    session.headers.update({"Accept": "application/json", "User-Agent": "VulnScan/2.0"})
+    adapter = _requests.adapters.HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+    session.mount("https://", adapter)
+
+    # Rate limiter across all threads to avoid being blocked
+    _rate_lock = threading.Lock()
+    _rate_interval = 1.0 / req_per_sec
+    _last_request_time = [0.0]
+
+    def _rate_wait():
+        with _rate_lock:
+            now = time.time()
+            wait = _rate_interval - (now - _last_request_time[0])
+            if wait > 0:
+                time.sleep(wait)
+            _last_request_time[0] = time.time()
+
     def _fetch_one(cve_id):
-        try:
-            raw = _ds_fetch_url(f"{_CVEORG_API}/{cve_id}", {"Accept": "application/json", "User-Agent": "VulnScan/2.0"}, 15)
-            d = json.loads(raw)
-            containers = d.get("containers", {})
-            cna_score = adp_score = None
-            for m in containers.get("cna", {}).get("metrics", []):
-                for k in ("cvssV3_1", "cvssV3_0", "cvssV4_0"):
-                    v = m.get(k)
-                    if v and v.get("baseScore"):
-                        cna_score = float(v["baseScore"]); break
-                if cna_score: break
-            for adp in containers.get("adp", []):
-                for m in adp.get("metrics", []):
+        for attempt in range(3):
+            _rate_wait()
+            try:
+                resp = session.get(f"{_CVEORG_API}/{cve_id}", timeout=15)
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 5 * (attempt + 1)))
+                    logger.warning("  CVE.org 429 rate-limited, backing off %ds", retry_after)
+                    time.sleep(retry_after)
+                    continue
+                resp.raise_for_status()
+                d = resp.json()
+                containers = d.get("containers", {})
+                cna_score = adp_score = None
+                for m in containers.get("cna", {}).get("metrics", []):
                     for k in ("cvssV3_1", "cvssV3_0", "cvssV4_0"):
                         v = m.get(k)
                         if v and v.get("baseScore"):
-                            adp_score = float(v["baseScore"]); break
+                            cna_score = float(v["baseScore"]); break
+                    if cna_score: break
+                for adp in containers.get("adp", []):
+                    for m in adp.get("metrics", []):
+                        for k in ("cvssV3_1", "cvssV3_0", "cvssV4_0"):
+                            v = m.get(k)
+                            if v and v.get("baseScore"):
+                                adp_score = float(v["baseScore"]); break
+                        if adp_score: break
                     if adp_score: break
-                if adp_score: break
-            if cna_score or adp_score:
-                best = max(filter(None, [cna_score, adp_score]))
-                sev = "critical" if best >= 9 else "high" if best >= 7 else "medium" if best >= 4 else "low" if best > 0 else "info"
-                return cve_id, {"cvss": best, "severity": sev, "cna_cvss": cna_score, "adp_cvss": adp_score}
-        except Exception:
-            pass
+                if cna_score or adp_score:
+                    best = max(filter(None, [cna_score, adp_score]))
+                    sev = "critical" if best >= 9 else "high" if best >= 7 else "medium" if best >= 4 else "low" if best > 0 else "info"
+                    return cve_id, {"cvss": best, "severity": sev, "cna_cvss": cna_score, "adp_cvss": adp_score}
+                return cve_id, None
+            except _requests.exceptions.RequestException:
+                if attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+            except Exception:
+                pass
+            break
         return cve_id, None
 
     if new_ids:
         done = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+        total = len(new_ids)
+        if on_progress:
+            on_progress(0, total)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
             for f in concurrent.futures.as_completed({pool.submit(_fetch_one, c): c for c in new_ids}):
                 cve_id, r = f.result()
                 if r:
                     existing[cve_id] = r
                 done += 1
-                if done % 500 == 0:
-                    logger.info("  CVE.org: %d/%d", done, len(new_ids))
+                if done % 100 == 0 or done == total:
+                    logger.info("  CVE.org: %d/%d", done, total)
+                    if on_progress:
+                        on_progress(done, total)
+                    # Checkpoint — save progress so crashes don't lose everything
+                    if done % 500 == 0:
+                        try:
+                            with open(cache_path, "w") as _cf:
+                                json.dump(existing, _cf)
+                        except Exception:
+                            pass
+
+    session.close()
 
     out_path = str(out_dir / f"cvedetails_cvss_{_ds_ts()}.json")
     with open(out_path, "w") as f:
@@ -945,11 +1092,20 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
     api_key = os.environ.get("NVD_API_KEY", "")
     results: dict[str, str] = {}
 
+    def _cveorg_progress(done, total):
+        """Push CVE.org fetch progress into Redis so the frontend can display it."""
+        state["kinds"]["cvedetails_cvss"]["message"] = f"{done}/{total} CVEs"
+        state["kinds"]["cvedetails_cvss"]["progress"] = round(done / total * 100) if total else 0
+        try:
+            r.setex(status_key, 3600, json.dumps(state))
+        except Exception:
+            pass
+
     _dispatch = {
         "nvd_cpe_cve": lambda: _ds_refresh_nvd(api_key),
         "cisa_kev": lambda: _ds_refresh_cisa_kev(),
         "epss": lambda: _ds_refresh_epss(),
-        "cvedetails_cvss": lambda dep: _ds_refresh_cvedetails(dep),
+        "cvedetails_cvss": lambda dep: _ds_refresh_cvedetails(dep, on_progress=_cveorg_progress),
         "cms_cve_map": lambda dep: _ds_refresh_cms_cve_map(dep),
         "compliance_map": lambda: _ds_refresh_compliance_map(),
     }
@@ -1033,7 +1189,7 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
 def _cleanup_old_dataset_files() -> None:
     """
     Delete old timestamped dataset files from /data/cve/.
-    Keeps only the canonical (non-timestamped) files like nvd_cpe_cve.json.
+    Keeps canonical files and any file still referenced by an enabled DB record.
     """
     import glob
 
@@ -1044,16 +1200,26 @@ def _cleanup_old_dataset_files() -> None:
     # Canonical filenames to keep (without path)
     canonical_names = set(os.path.basename(p) for p in _DS_CANONICAL.values())
 
+    # Also protect any file still referenced by an enabled dataset record
+    protected = set(canonical_names)
+    try:
+        db = SessionLocal()
+        for ds in db.query(models.CveDataset).filter(models.CveDataset.enabled == True).all():
+            if ds.path:
+                protected.add(os.path.basename(ds.path))
+        db.close()
+    except Exception as e:
+        logger.warning("Cleanup: could not query DB for protected files, skipping: %s", e)
+        return
+
     removed = 0
     for filepath in glob.glob(os.path.join(data_dir, "*.json")):
         filename = os.path.basename(filepath)
-        # Keep canonical files
-        if filename in canonical_names:
+        if filename in protected:
             continue
         # Check if it's a timestamped variant of a known dataset kind
         is_old = False
         for kind_prefix in _DS_CANONICAL:
-            # Matches patterns like: nvd_cpe_cve_20260322_193508.json, cisa_kev_15038ccf.json
             if filename.startswith(kind_prefix + "_") and filename != kind_prefix + ".json":
                 is_old = True
                 break
@@ -1089,6 +1255,15 @@ def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> Non
         db.add(new_ds)
         db.commit()
         logger.info("Swapped dataset %s: new ID=%d", kind, new_ds.id)
+
+        # Invalidate the Threat Intel cache for this workspace if a feeder
+        # dataset was just rotated. Best-effort — never block the swap on it.
+        if kind in ("nvd_cpe_cve", "cisa_kev", "epss"):
+            try:
+                from app.threat_intel import aggregator as _ti
+                _ti.invalidate(ws_id)
+            except Exception as _ti_err:
+                logger.debug("Threat Intel cache invalidation skipped: %s", _ti_err)
     except Exception as e:
         db.rollback()
         logger.error("Failed to swap dataset %s: %s", kind, e)
