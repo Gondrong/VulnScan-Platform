@@ -439,6 +439,10 @@ def _set_default_artifacts(chk, ctx):
         "cloud.storage.findings": 0,
         "web.waf.findings": {},
         "web.ssti.findings": 0,
+        # UDP discovery + web auth artifacts (Tier 6)
+        "net.open_udp_ports": [],
+        "net.udp_service_responses": {},
+        "web.auth_session": None,
     }
     for key in (chk.meta.provides or []):
         if not ctx.has(key):
