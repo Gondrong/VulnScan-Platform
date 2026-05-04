@@ -6,6 +6,132 @@ Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
 
+## v3.0.0 — 2026-05-03
+
+### Added
+
+**Authenticated Web Scanning** — new top-level capability
+
+- New `web.auth` plugin (53 plugins total, up from 51) that establishes an authenticated HTTP session for downstream scanners. Supports **five auth modes**: form login (with auto-CSRF harvest), bearer token, HTTP Basic, static cookies, static request headers.
+- Shared `app/scanner/auth_session.py` helper performs the actual login flow.
+- Shared `app/scanner/login_inspector.py` parses login pages.
+- Result is published to the `web.auth_session` artifact; the OWASP scanner now soft-depends on `web.auth` and applies the resulting cookies/headers to its `httpx.AsyncClient`. Other web plugins inherit the same session.
+- Credentials live in the existing encrypted Credentials store and are decrypted at scan time only — they never appear in `options_json`.
+
+**Login Form Inspector**
+
+- `POST /scan/web-auth/inspect` fetches a login page and returns ranked forms with field types, CSRF candidates, and warnings (reCAPTCHA / hCaptcha / Cloudflare Turnstile / JS-rendered SPA hints).
+- SSRF-guarded against private / loopback / link-local / metadata IPs.
+- Form action URLs are auto-resolved (form action ≠ login URL is now handled correctly — common in WordPress, Django, ASP.NET WebForms).
+
+**Web Auth on the New Scan dialog** (architectural shift)
+
+- Web Authentication panel **moved** from the Profile modal to the New Scan dialog — it's target-specific, not profile-shared. The Profile modal now owns only the scanner config (plugins + SSH credential).
+- **Smart credential suggestions**: when the inspected form's username field is `type="email"`, credentials whose username contains `@` are sorted to the top with a "✓ matches email field" badge.
+- **Empty-state CTA** when no credentials exist.
+- **Save as credential** checkbox creates a permanent credential from inline values.
+- **Auto-delete after scan** — ephemeral credential workflow for one-off pentests. Credential is created at scan launch and deleted in the worker's `finally:` block on any outcome (done / failed / cancelled).
+- New `web_auth_credential_ephemeral` field on `POST /scan/jobs`.
+
+**Test Login**
+
+- `POST /scan/web-auth/test-login` runs the auth flow once against the target and returns `{success, cookie_names, header_names, evidence, error}` so users can verify credentials before kicking off a long scan.
+- Inline result panel on the New Scan dialog. Cookie/header names are returned but **not values** — safe to log.
+
+**Threat Intelligence page** (new top-level menu)
+
+- New "Intelligence" sidebar section with the **Threat Intel** entry, sitting between Scanning and Configuration.
+- Fuses NVD + EPSS + CISA KEV by CVE-ID into a single CVE-centric view.
+- **Composite threat score (0–100)** = 40% CVSS + 35% EPSS percentile + 15% KEV bonus + 10% recency bonus on KEV-add date.
+- Filter chips: severity, CISA KEV only, ransomware-known, EPSS ≥ threshold, free-text search.
+- Sort by threat score / CVSS / EPSS / KEV due date / KEV added.
+- Detail drawer per CVE: severity card, exploitation card, description, CISA notes, vendor/product, affected CPEs (up to 50), references.
+- Four stat tiles: CVEs in catalog / KEV listed / KEV due in 7 days / Ransomware-known.
+- New endpoints: `GET /threat-intel/cves`, `GET /threat-intel/cves/{id}`, `GET /threat-intel/stats`, `POST /threat-intel/refresh`.
+- Per-workspace in-memory cache (5-min TTL), auto-invalidates when datasets rotate.
+
+**Threat Intel Dashboard band**
+
+- New band on the main Dashboard with 4 mini-tiles (New KEV 7d / KEV due 7d / Ransomware-known / High EPSS ≥50%).
+- Each tile is clickable and navigates to the Threat Intel page.
+- Auto-hides when no feeder datasets are loaded.
+
+**UDP Port Scanner** — new plugin
+
+- `udp_portscan` probes top-35 UDP ports (DNS, NTP, SNMP, NetBIOS, mDNS, SSDP, IKE, memcached, BACnet, IPMI, etc.) with protocol-specific payloads.
+- Severity-graded findings for risky exposed services: memcached UDP=critical, IPMI=high, BACnet=high, NFS=high, NetBIOS=medium.
+- Disabled by default — opt-in per profile.
+
+**Infrastructure-as-Code Scanner** — new sub-package
+
+- `app/scanner/plugins/iac_scanner/` (parser + rules + orchestrator).
+- New endpoints: `POST /scan/iac/jobs`, `POST /scan/iac/parse`, `GET /scan/iac/kinds`.
+- Accepts ZIP archive or single config file (5 MB cap, 2000 files / 2 MB each, path-traversal safe).
+- 30+ rules across six IaC formats:
+  - **Terraform** — hardcoded secrets, public S3 ACL, open security groups (0.0.0.0/0), public RDS.
+  - **Dockerfile** — no USER, `:latest` tag, USER root, ADD remote URL, secret ENV/ARG, `curl|sh`.
+  - **Kubernetes** — privileged, hostNetwork/PID/IPC, runAsUser:0, allowPrivilegeEscalation, CAP_SYS_ADMIN, default namespace, missing limits.
+  - **docker-compose** — privileged services, host network, `/var/run/docker.sock` mount, latest tag.
+  - **CloudFormation** — public S3, missing BucketEncryption, open SGs, public RDS, StorageEncrypted=false.
+  - **Helm values.yaml** — reuses K8s rules.
+
+**User password management**
+
+- `PUT /settings/users/me/password` — any authenticated user can change their own password (verifies current password + 6-char minimum).
+- `PUT /settings/users/{user_id}/password` — admin-only password reset for any workspace user.
+- Frontend `settingsApi.changePassword()` and `settingsApi.resetPassword()`.
+- Updates `users.updated_at` timestamp on change.
+
+### Changed
+
+**Integrations overhaul** (Slack / Teams / Webhook / Email)
+
+- Test buttons no longer disabled until the integration is saved (was the silent-failure bug from v2.x).
+- 422 validation errors now render as readable strings — `api.js` flattens FastAPI's array-of-errors into `"loc: msg; loc: msg"` instead of `[object Object]`.
+- Generic webhook URL field renamed `webhook_url` → `url` (matches notifier).
+- Webhook auth header field renamed `auth_header` → `secret`.
+- Email field names corrected to match the notifier: `smtp_password` → `smtp_pass`, `from_addr` → `from_email`, `to_addrs` → `to_email`.
+- New `DELETE /integrations/{provider}` endpoint and Remove button in the modal.
+- Test endpoint accepts an optional body — falls back to saved config when not supplied.
+- Per-provider client-side validation pre-checks before round-trip.
+
+**Scanner engine**
+
+- Form login now POSTs to the form's actual `<form action="…">` URL (passed as `action_url` in the auth config), not blindly to `login_url`. Older sites where action ≠ login URL now work.
+- `_set_default_artifacts` extended to cover the new `web.auth_session`, `net.open_udp_ports`, and `net.udp_service_responses` keys.
+
+**Threat Intel cache**
+
+- `_swap_dataset` in the worker now invalidates the Threat Intel cache when NVD / KEV / EPSS get rotated.
+
+**API client hardening**
+
+- Threat Intel UI normalizes API responses with strict type checks (`Number.isFinite`, `Array.isArray`) — guards against partial responses, reverse-proxy-injected HTML, and other unexpected shapes.
+
+### Fixed
+
+- Form login authentication failing silently when the form's `action` URL differs from the `login_url` (e.g., WordPress's `/wp-login.php` posting to itself with redirects).
+- Integrations Test button click being a no-op the first time (button was `disabled` until the integration was saved).
+- 422 errors from FastAPI rendering as `[object Object]` in error toasts.
+- Threat Intel page going blank if the API returned an unexpected response shape (`results.total.toLocaleString()` crashed when `total` was undefined).
+
+### Migration notes
+
+- **No DB migrations required** — all changes use the existing `meta_json` columns.
+- **Profile-modal Web Auth removed** — saved profile-level `web_auth` blocks still work (the engine reads them), but UI for editing now lives on the New Scan dialog.
+- **Email integrations** saved before v3.0 need their password re-entered (field renamed `smtp_password` → `smtp_pass`).
+- **Threat Intel** requires NVD + EPSS + CISA KEV datasets — refresh from Configuration → Datasets to populate.
+
+### Roadmap (deferred to v3.1+)
+
+- Scheduled authenticated scans (needs `ScanSchedule.meta_json` migration).
+- "Find affected assets" cross-reference from CVE → workspace findings (needs CPE-to-asset matcher).
+- SQLite-indexed Threat Intel for production scale (currently in-memory).
+- Playwright-based SPA login support.
+- Top-level React error boundary.
+
+---
+
 ## v2.1.4 — 2026-04-14
 
 ### Added

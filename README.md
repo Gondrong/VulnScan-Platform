@@ -1,3 +1,7 @@
+<p align="center">
+  <img width="1918" height="901" alt="VulnScan Platform" src="https://github.com/user-attachments/assets/d92a962a-2d08-4389-acbc-8e65699b758e" />
+</p>
+
 <h1 align="center">VulnScan Platform</h1>
 <p align="center">
   <strong>Enterprise Risk-Based Vulnerability Management Platform</strong>
@@ -11,10 +15,6 @@
   <a href="#license">License</a>
 </p>
 
-<p align="center">
-  <img width="1918" height="901" alt="VulnScan Platform" src="https://github.com/user-attachments/assets/d92a962a-2d08-4389-acbc-8e65699b758e" />
-</p>
-
 ---
 
 ## Overview
@@ -22,7 +22,7 @@
 VulnScan is a self-hosted vulnerability management platform built for security teams. It combines automated scanning with multi-provider AI analysis to find, validate, and prioritize vulnerabilities across your infrastructure.
 
 **Key capabilities:**
-- **51 scanner plugins** covering network, web, infrastructure, IoT, and cloud
+- **51 scanner plugins** covering network, web, infrastructure, IoT, cloud, and API (OpenAPI/Swagger/Postman)
 - **Multi-provider AI analysis** (Azure OpenAI, Claude, Gemini) for finding validation and PoC generation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance)
 - **Risk scoring engine** with CVSS, CISA KEV prioritization, and SLA tracking
@@ -313,6 +313,126 @@ Risk = (CVSS * exploit_weight) + KEV_bonus + asset_criticality * confidence
 ---
 
 ## Changelog
+
+## v3.0.0 — 2026-05-03
+
+### New Features
+
+**Authenticated Web Scanning** (headline feature)
+
+- New `web.auth` plugin establishes an authenticated HTTP session that downstream web plugins (OWASP scanner + injection plugins) consume via the `web.auth_session` artifact. Five auth modes supported: form login (with auto-CSRF harvest), bearer token, HTTP Basic, static cookies, static request headers.
+- Credentials live in the existing encrypted Credentials store and are decrypted at scan time only — they never appear in `options_json`.
+- Plugin count: **53 total** (was 51 in v2.1.4).
+
+**Login Form Inspector**
+
+- `POST /scan/web-auth/inspect` fetches the target login page, parses HTML forms, ranks them by likelihood of being the login form, and returns username/password/CSRF candidates so the UI can pre-fill field-name dropdowns.
+- Detects reCAPTCHA / hCaptcha / Cloudflare Turnstile and warns the user.
+- Detects JS-rendered SPA logins (large page, few static inputs) and recommends bearer/cookie auth.
+- SSRF-guarded against internal/loopback/metadata IPs.
+
+**Web Auth on the New Scan dialog** (architectural shift)
+
+- Web Authentication panel **moved out of the Profile modal** and onto the New Scan dialog — auth is target-specific, not profile-shared.
+- Smart credential suggestions: when login form has email-typed username field, credentials with `@` in the username are sorted to the top with a "✓ matches email field" badge.
+- Empty-state CTA when no credentials exist.
+- **Save as credential** checkbox creates a permanent credential from inline values.
+- **Auto-delete after scan** — ephemeral credential workflow for one-off pentests. Credential is created, used for one scan, then deleted in the worker's `finally:` block on any outcome (done / failed / cancelled).
+- Three-card layout for form login: form-field mapping → credentials → success/failure detection.
+
+**Test Login**
+
+- `POST /scan/web-auth/test-login` runs the configured auth flow once and returns success/cookies/error before launching the long scan.
+- Inline result panel on the New Scan dialog. Cookie/header **names** returned but not values — safe to log.
+
+**Threat Intelligence page** (new top-level menu)
+
+- New "Intelligence" sidebar section with the **Threat Intel** entry.
+- Fuses NVD + EPSS + CISA KEV by CVE-ID into a single CVE-centric view.
+- Composite **threat score (0–100)**: 40% CVSS + 35% EPSS percentile + 15% KEV bonus + 10% recency on KEV-add date.
+- Filter chips: severity, "CISA KEV only", "Ransomware-known", EPSS ≥ threshold, free-text search.
+- Sort by threat score / CVSS / EPSS / KEV due date / KEV added.
+- Detail drawer per CVE: severity card, exploitation card, description, CISA KEV notes, vendor/product, affected CPEs (up to 50), references.
+- Four stat tiles: CVEs in catalog / KEV listed / KEV due in 7 days / Ransomware-known.
+- New endpoints: `GET /threat-intel/cves`, `GET /threat-intel/cves/{id}`, `GET /threat-intel/stats`, `POST /threat-intel/refresh`.
+- Per-workspace in-memory cache (5-min TTL), auto-invalidates when datasets refresh.
+
+**Threat Intel Dashboard band**
+
+- New band on the main Dashboard with 4 mini-tiles (New KEV 7d / KEV due 7d / Ransomware-known / High EPSS ≥50%).
+- Each tile clickable → opens Threat Intel page.
+- Auto-hides when no feeder datasets are loaded.
+
+**UDP Port Scanner**
+
+- New `udp_portscan` plugin probes top-35 UDP ports with protocol-specific payloads (DNS, NTP, SNMP, NetBIOS-NS, mDNS, SSDP, IKE, memcached, BACnet, IPMI).
+- Severity-graded findings for risky exposed services (memcached UDP=critical, IPMI=high, BACnet=high, NFS=high, NetBIOS=medium).
+- Disabled by default — UDP scans are slow on tight budgets.
+
+**Infrastructure-as-Code Scanner**
+
+- New sub-package `plugins/iac_scanner/` for IaC static analysis.
+- Accepts ZIP archive or single config file (5 MB cap, 2000 files / 2 MB each, path-traversal safe).
+- 30+ rules across six IaC formats:
+  - **Terraform** — hardcoded secrets, public S3 ACL, open security groups (0.0.0.0/0), public RDS
+  - **Dockerfile** — no USER directive, `:latest` tag, USER root, ADD remote URL, secret ENV/ARG, `curl|sh`
+  - **Kubernetes** — privileged, hostNetwork/PID/IPC, runAsUser:0, allowPrivilegeEscalation, CAP_SYS_ADMIN, default namespace, missing limits
+  - **docker-compose** — privileged services, host network, `docker.sock` mount, latest tag
+  - **CloudFormation** — public S3, missing BucketEncryption, open SGs, public RDS, StorageEncrypted=false
+  - **Helm values.yaml** — reuses K8s rules
+- New endpoints: `POST /scan/iac/jobs`, `POST /scan/iac/parse`, `GET /scan/iac/kinds`.
+
+**User password management**
+
+- `PUT /settings/users/me/password` — any authenticated user can change their own password (verifies current password + 6-char minimum).
+- `PUT /settings/users/{user_id}/password` — admin-only password reset for any workspace user.
+- Frontend `settingsApi.changePassword()` and `settingsApi.resetPassword()`.
+
+### Improvements
+
+**Integrations overhaul** (Slack / Teams / Webhook / Email)
+
+- Test buttons now work without saving first (the disabled-until-saved gate is gone — fixes the v2.x silent-failure UX).
+- 422 errors render readably — `api.js` flattens FastAPI's array-of-validation-errors into `"loc: msg"` strings instead of `[object Object]`.
+- Generic webhook URL field uses `url` (matches notifier), separate from Slack/Teams `webhook_url`.
+- Webhook auth header field renamed `auth_header` → `secret`.
+- Email field names corrected: `smtp_password` → `smtp_pass`, `from_addr` → `from_email`, `to_addrs` → `to_email`.
+- New `DELETE /integrations/{provider}` endpoint and Remove button in the modal.
+- Test endpoint accepts an optional body — falls back to saved config if not supplied.
+- Per-provider client-side validation pre-checks before round-trip.
+
+**Auth session resilience**
+
+- Form login now POSTs to the form's actual `<form action="…">` URL (passed as `action_url`), not blindly to `login_url`. Older sites where these differ now work correctly (WordPress, Django, ASP.NET WebForms).
+- CSRF tokens auto-harvested across more patterns: `csrfmiddlewaretoken`, `_token`, `authenticity_token`, `__RequestVerificationToken`, `nonce`, `csrf*`, `xsrf*`.
+
+**API client hardening**
+
+- ThreatIntel UI normalizes API responses with strict type checks (`Number.isFinite`, `Array.isArray`) — guards against partial responses, reverse-proxy-injected HTML, etc.
+
+### Bug Fixes
+
+- Form login no longer fails silently when the form's `action` URL differs from `login_url` (POST now uses the correct URL).
+- Integrations Test button is no longer a no-op on first click.
+- FastAPI 422 validation errors now render as readable text instead of `[object Object]`.
+- Threat Intel page no longer goes blank if the API returns an unexpected response shape.
+
+### Migration Notes
+
+- **No DB migrations required** — all changes use the existing `meta_json` columns.
+- **Profile-modal Web Auth removed** — saved profile-level `web_auth` blocks still work (the engine reads them), but UI for editing now lives on the New Scan dialog.
+- **Email integrations** saved before v3.0 need their password re-entered (field renamed `smtp_password` → `smtp_pass`).
+- **Threat Intel** requires NVD + EPSS + CISA KEV datasets — refresh from Configuration → Datasets to populate.
+
+### Roadmap (deferred to v3.1+)
+
+- Scheduled authenticated scans (needs `ScanSchedule.meta_json` migration).
+- "Find affected assets" cross-reference from CVE → workspace findings.
+- SQLite-indexed Threat Intel for production scale.
+- Playwright-based SPA login support.
+- Top-level React error boundary.
+
+##
 
 ## v2.1.4 — 2026-04-14
 

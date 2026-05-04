@@ -246,6 +246,24 @@ curl -sf -X POST "${API_BASE}/scan/profiles" \
   -H "Content-Type: application/json" \
   -d "$API_SCANNER_PROFILE" >/dev/null && green "API Scanner profile created" || yellow "Profile may already exist"
 
+# ── Seed default asset folders ────────────────────────────────────────────────
+green "Seeding default asset folders..."
+EXISTING_ASSETS="$(curl -sf "${API_BASE}/assets" -H "Authorization: Bearer ${TOKEN}" 2>/dev/null)" || EXISTING_ASSETS="[]"
+EXISTING_ASSETS_COUNT="$(python3 -c "import sys,json; print(len(json.loads(sys.argv[1])))" "$EXISTING_ASSETS" 2>/dev/null)" || EXISTING_ASSETS_COUNT=0
+
+if [[ "$EXISTING_ASSETS_COUNT" -gt 0 ]]; then
+  yellow "  Asset folders already exist — skipping"
+else
+  for folder in "Production:Customer-facing production environments" "Staging:Pre-production environments" "Internal:Bastions, admin panels, internal services"; do
+    name="${folder%%:*}"
+    desc="${folder#*:}"
+    curl -sf -X POST "${API_BASE}/assets" \
+      -H "Authorization: Bearer ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\":\"${name}\",\"description\":\"${desc}\"}" >/dev/null && echo "  ✓ Created folder: ${name}" || echo "  ✗ Failed: ${name}"
+  done
+fi
+
 green ""
 green "═══════════════════════════════════════════════════"
 green " Bootstrap complete!"
@@ -273,4 +291,25 @@ echo ""
 echo " To customize SSH creds at bootstrap time:"
 echo "   SSH_CRED_USER=admin SSH_CRED_SECRET=mypassword ./bootstrap.sh"
 echo "   SSH_CRED_TYPE=SSH_KEY SSH_CRED_SECRET=\"\$(cat ~/.ssh/id_rsa)\" ./bootstrap.sh"
+echo ""
+
+# ── Claude CLI status check ───────────────────────────────────────────────────
+echo " AI Providers:"
+if docker compose exec -T worker-ai which claude >/dev/null 2>&1; then
+  CLAUDE_VER="$(docker compose exec -T worker-ai claude --version 2>/dev/null | head -1)"
+  if [[ -d /root/.claude ]] && [[ -n "$(ls -A /root/.claude 2>/dev/null)" ]]; then
+    green "   ✓ Claude CLI installed in worker (${CLAUDE_VER:-version unknown}) — auth dir mounted"
+  else
+    yellow "   ⚠ Claude CLI installed but /root/.claude is empty — run 'sudo claude login' on the host"
+  fi
+else
+  yellow "   ⚠ Claude CLI not detected in worker container — rebuild with 'docker compose build --no-cache worker-ai'"
+fi
+
+if grep -q "^AZURE_OPENAI_API_KEY=." "$ENV_FILE" && grep -q "^AZURE_OPENAI_ENDPOINT=." "$ENV_FILE"; then
+  green "   ✓ Azure OpenAI configured"
+fi
+if grep -q "^GEMINI_API_KEY=." "$ENV_FILE"; then
+  green "   ✓ Gemini configured"
+fi
 

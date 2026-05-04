@@ -55,6 +55,8 @@ services:
     volumes:
       - ./data:/data
       - ./backend:/app
+      # Claude CLI auth — same mount as worker so available_ai_providers() can probe it
+      - /root/.claude:/root/.claude
     ports:
       - "${BACKEND_PORT:-8888}:8888"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8888 --reload
@@ -65,7 +67,12 @@ services:
       timeout: 5s
       retries: 10
 
-  worker:
+  # ── Workers: separate queues run in parallel ──────────────────────
+  # worker-scan   → scan jobs (can scale: --scale worker-scan=3)
+  # worker-ai     → AI analysis + PoC generation
+  # worker-data   → dataset refresh (NVD, KEV, EPSS, …)
+
+  worker-scan:
     build: ./backend
     env_file:
       - .env
@@ -78,15 +85,54 @@ services:
       - ./data:/data
       - ./backend:/app
       - ./scripts:/scripts
-      # Mount Claude auth/config from host
       - /root/.claude:/root/.claude
-    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} scans ai
+    command: >
+      sh -c 'for i in $$(seq 1 $${SCAN_WORKERS:-1}); do
+        rq worker --url $${REDIS_URL:-redis://redis:6379/0} scans &
+      done; wait'
+    restart: unless-stopped
+
+  worker-ai:
+    build: ./backend
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+      - ./scripts:/scripts
+      - /root/.claude:/root/.claude
+    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} ai
+    restart: unless-stopped
+
+  worker-data:
+    build: ./backend
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+      - ./scripts:/scripts
+    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} datasets
     restart: unless-stopped
 
   frontend:
     build: ./frontend
     environment:
-      - VITE_API_URL=http://backend:8888
+      # Browser uses same-origin relative URLs (so the page works under any public
+      # hostname / TLS termination). In dev, the Vite dev server proxies them to
+      # the backend container via VITE_PROXY_TARGET.
+      - VITE_API_URL=
+      - VITE_PROXY_TARGET=http://backend:8888
     depends_on:
       backend:
         condition: service_healthy
