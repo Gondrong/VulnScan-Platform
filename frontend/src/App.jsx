@@ -1,53 +1,99 @@
-import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { getToken, clearToken } from "./api";
-import Sidebar from "./components/Sidebar.jsx";
-import Topbar from "./components/Topbar.jsx";
-import Login from "./pages/Login.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Profiles from "./pages/Profiles.jsx";
-import Jobs from "./pages/Jobs.jsx";
-import JobDetail from "./pages/JobDetail.jsx";
-import Credentials from "./pages/Credentials.jsx";
-import Datasets from "./pages/Datasets.jsx";
-import Settings from "./pages/Settings.jsx";
+import React, { useState, useEffect, useCallback } from "react";
+import { Nav, Topbar } from "./design/Shell.jsx";
+import { Dashboard } from "./design/Dashboard.jsx";
+import { Jobs } from "./design/Jobs.jsx";
+import { JobDetail, FindingDrawer } from "./design/JobDetail.jsx";
+import { Assets, AssetDetail, Reports } from "./design/Assets.jsx";
+import { Profiles, Credentials, Datasets, Settings } from "./design/PagesOther.jsx";
+import { ThreatIntel } from "./design/ThreatIntel.jsx";
+import { LoginPage } from "./design/Login.jsx";
+import {
+  getToken, logout as apiLogout,
+  scanApi, credentialsApi, datasetsApi, assetsApi, reportsApi, threatIntelApi,
+} from "./api.js";
 
 export default function App() {
-  const [token, setTokenState] = useState(getToken());
+  const [authed, setAuthed] = useState(() => !!getToken());
+  const [page, setPage] = useState("dashboard");
+  const [openedJob, setOpenedJob] = useState(null);
+  const [openedAsset, setOpenedAsset] = useState(null);
+  const [drawerFinding, setDrawerFinding] = useState(null);
+  const [counts, setCounts] = useState({});
 
-  useEffect(() => {
-    const t = setInterval(() => setTokenState(getToken()), 500);
-    return () => clearInterval(t);
+  const refreshCounts = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const [jobs, profiles, creds, datasets, assets, reports, ti] = await Promise.all([
+        scanApi.listJobs().catch(() => []),
+        scanApi.listProfiles().catch(() => []),
+        credentialsApi.list().catch(() => []),
+        datasetsApi.list().catch(() => []),
+        assetsApi.list().catch(() => []),
+        reportsApi.list().catch(() => []),
+        threatIntelApi.stats().catch(() => null),
+      ]);
+      setCounts(prev => ({
+        jobs: jobs.length,
+        profiles: profiles.length,
+        credentials: creds.length,
+        datasets: datasets.length,
+        assets: assets.length,
+        reports: reports.length,
+        threat_kev: ti?.kev_count ?? prev.threat_kev,
+      }));
+    } catch {}
   }, []);
 
-  function logout() {
-    clearToken();
-    setTokenState(null);
+  useEffect(() => {
+    if (!authed) return;
+    refreshCounts();
+    const t = setInterval(refreshCounts, 12000);
+    return () => clearInterval(t);
+  }, [authed, refreshCounts]);
+
+  if (!authed) {
+    return <LoginPage onLogin={() => setAuthed(true)}/>;
   }
 
-  if (!token) return <Login />;
+  const crumbs = ((p) => {
+    if (p === "dashboard")    return ["VulnScan", "Dashboard"];
+    if (p === "assets")       return openedAsset ? ["VulnScan", "Assets", openedAsset.name] : ["VulnScan", "Assets"];
+    if (p === "jobs")         return openedJob ? ["VulnScan", "Scans", `#${openedJob.id}`] : ["VulnScan", "Scan jobs"];
+    if (p === "profiles")     return ["VulnScan", "Profiles"];
+    if (p === "reports")      return ["VulnScan", "Reports"];
+    if (p === "credentials")  return ["VulnScan", "Credentials"];
+    if (p === "datasets")     return ["VulnScan", "Datasets"];
+    if (p === "threat-intel") return ["VulnScan", "Threat Intel"];
+    if (p === "settings")     return ["VulnScan", "Settings"];
+    return ["VulnScan"];
+  })(page);
+
+  function setPageWrap(p) { setOpenedJob(null); setOpenedAsset(null); setPage(p); }
 
   return (
-    <BrowserRouter>
-      <div className="app-shell">
-        <Sidebar onLogout={logout} />
-        <div className="main-area">
-          <Topbar />
-          <div className="page-content">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/profiles" element={<Profiles />} />
-              <Route path="/jobs" element={<Jobs />} />
-              <Route path="/jobs/:id" element={<JobDetail />} />
-              <Route path="/credentials" element={<Credentials />} />
-              <Route path="/datasets" element={<Datasets />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/dashboard" />} />
-            </Routes>
-          </div>
+    <div className="shell" data-screen-label={page}>
+      <Nav page={page} setPage={setPageWrap} counts={counts} onSignOut={() => {
+        apiLogout();
+        setAuthed(false);
+      }}/>
+      <div className="main">
+        <Topbar crumbs={crumbs} setPage={setPageWrap}/>
+        <div className="page">
+          {page === "dashboard"   && <Dashboard openDrawer={setDrawerFinding} setPage={setPageWrap}/>}
+          {page === "assets" && !openedAsset && <Assets openAsset={setOpenedAsset}/>}
+          {page === "assets" &&  openedAsset && <AssetDetail asset={openedAsset} back={() => setOpenedAsset(null)}/>}
+
+          {page === "jobs" && !openedJob && <Jobs openJob={setOpenedJob}/>}
+          {page === "jobs" &&  openedJob && <JobDetail job={openedJob} back={() => setOpenedJob(null)} openDrawer={setDrawerFinding}/>}
+          {page === "profiles"    && <Profiles/>}
+          {page === "reports"     && <Reports/>}
+          {page === "credentials" && <Credentials/>}
+          {page === "datasets"    && <Datasets/>}
+          {page === "threat-intel"&& <ThreatIntel/>}
+          {page === "settings"    && <Settings/>}
         </div>
       </div>
-    </BrowserRouter>
+      {drawerFinding && <FindingDrawer finding={drawerFinding} close={() => setDrawerFinding(null)}/>}
+    </div>
   );
 }
