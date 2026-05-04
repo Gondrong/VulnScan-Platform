@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.bak
+.env.local
+
+# Node
+node_modules/
+.vite/
+
+# Data (user-generated, not source code)
+data/cve/*.json
+data/raw/
+data/reports/
+!data/cve/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Backups
+*.bak
+
+# Keys
+*.pem
+*.key
+
+# Claude
+.claude/
+
+# Update system
+data/update-trigger.json
+data/update-result.json

@@ -1,18 +1,3 @@
-{
-  "name": "vulnscan-frontend",
-  "private": true,
-  "version": "3.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
-  },
-  "devDependencies": {
-    "vite": "^5.4.2",
-    "@vitejs/plugin-react": "^4.3.1"
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:ececb0a25465e6bfbb2bead50c5a67a4cd18011cd243af58d671dca119b98b59
+size 349
