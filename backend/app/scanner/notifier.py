@@ -184,3 +184,17 @@ def dispatch_test_notification(provider: str, config: dict) -> bool:
 
     logger.error("Unknown integration provider: %s", provider)
     return False
+
+
+def should_notify(prefs: dict, event_types: list[str], provider: str) -> bool:
+    """Check if any of the given event_types is enabled for this provider in preferences.
+
+    Maps 'teams' provider to 'slack' preference channel since the UI only
+    exposes email/slack/webhook and Teams uses the Slack column.
+    """
+    channel = "slack" if provider == "teams" else provider
+    for event_type in event_types:
+        event_prefs = prefs.get(event_type)
+        if event_prefs and event_prefs.get(channel, False):
+            return True
+    return False
