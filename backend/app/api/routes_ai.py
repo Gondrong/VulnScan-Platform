@@ -26,13 +26,205 @@ def _redis():
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# GET /ai/providers — list configured AI providers
+# AI Provider management
 # ─────────────────────────────────────────────────────────────────────────
 
+_VALID_PROVIDER_TYPES = {"openai", "claude_api", "gemini", "azure_openai", "openai_compat"}
+
+
 @router.get("/providers")
-def list_providers(user=Depends(require_role("admin", "analyst", "viewer"))):
-    """Return list of available AI providers (based on .env config)."""
-    return {"providers": settings.available_ai_providers()}
+def list_providers(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Return merged list of AI providers from DB, env vars, and CLI detection."""
+    from app.ai.providers import detect_cli_providers
+
+    ws = user["ws"]
+    providers = []
+    seen_types = set()
+
+    # 1. DB-configured providers (highest priority)
+    db_rows = (
+        db.query(models.AiProviderConfig)
+        .filter(models.AiProviderConfig.workspace_id == ws)
+        .order_by(models.AiProviderConfig.id)
+        .all()
+    )
+    for r in db_rows:
+        seen_types.add(r.provider_type)
+        providers.append({
+            "id": r.id,
+            "provider_type": r.provider_type,
+            "name": r.name,
+            "model": r.model,
+            "endpoint": r.endpoint or "",
+            "enabled": r.enabled,
+            "source": "db",
+        })
+
+    # 2. Env-configured providers (skip if DB has same type)
+    for ep in settings.available_ai_providers():
+        if ep["id"] not in seen_types:
+            seen_types.add(ep["id"])
+            providers.append({
+                "id": f"env_{ep['id']}",
+                "provider_type": ep["id"],
+                "name": ep["name"],
+                "model": ep["model"],
+                "endpoint": "",
+                "enabled": True,
+                "source": "env",
+            })
+
+    # 3. CLI-detected providers
+    for cli in detect_cli_providers():
+        if cli["id"] not in seen_types:
+            providers.append({
+                "id": f"cli_{cli['id']}",
+                "provider_type": cli["id"],
+                "name": cli["name"],
+                "model": cli["model"],
+                "endpoint": "",
+                "enabled": True,
+                "source": "cli",
+            })
+
+    return {"providers": providers}
+
+
+@router.post("/providers")
+def create_provider(
+    body: dict,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Add a new AI provider with API key (admin only)."""
+    from app.core.crypto import encrypt_str
+
+    provider_type = (body.get("provider_type") or "").strip()
+    if provider_type not in _VALID_PROVIDER_TYPES:
+        raise HTTPException(400, f"Invalid provider type: {provider_type}. Valid: {sorted(_VALID_PROVIDER_TYPES)}")
+
+    name = (body.get("name") or "").strip()
+    model = (body.get("model") or "").strip()
+    api_key = (body.get("api_key") or "").strip()
+    endpoint = (body.get("endpoint") or "").strip() or None
+    extra = body.get("extra") or {}
+
+    if not name:
+        raise HTTPException(400, "Name is required")
+    if not model:
+        raise HTTPException(400, "Model is required")
+    if not api_key:
+        raise HTTPException(400, "API key is required")
+
+    row = models.AiProviderConfig(
+        workspace_id=user["ws"],
+        provider_type=provider_type,
+        name=name,
+        model=model,
+        api_key_enc=encrypt_str(api_key),
+        endpoint=endpoint,
+        extra_json=json.dumps(extra) if extra else "{}",
+        enabled=True,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "ok": True}
+
+
+@router.put("/providers/{provider_id}")
+def update_provider(
+    provider_id: int,
+    body: dict,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Update an AI provider config (admin only)."""
+    from app.core.crypto import encrypt_str
+
+    row = (
+        db.query(models.AiProviderConfig)
+        .filter(
+            models.AiProviderConfig.id == provider_id,
+            models.AiProviderConfig.workspace_id == user["ws"],
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Provider not found")
+
+    if "name" in body and body["name"]:
+        row.name = body["name"].strip()
+    if "model" in body and body["model"]:
+        row.model = body["model"].strip()
+    if "api_key" in body and body["api_key"]:
+        row.api_key_enc = encrypt_str(body["api_key"].strip())
+    if "endpoint" in body:
+        row.endpoint = body["endpoint"].strip() or None
+    if "enabled" in body:
+        row.enabled = bool(body["enabled"])
+    if "extra" in body:
+        row.extra_json = json.dumps(body["extra"])
+
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/providers/{provider_id}")
+def delete_provider(
+    provider_id: int,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Delete an AI provider config (admin only)."""
+    row = (
+        db.query(models.AiProviderConfig)
+        .filter(
+            models.AiProviderConfig.id == provider_id,
+            models.AiProviderConfig.workspace_id == user["ws"],
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Provider not found")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/providers/{provider_id}/test")
+def test_provider(
+    provider_id: int,
+    user=Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Send a test prompt to verify provider configuration works."""
+    from app.ai.providers import get_provider_from_db_config
+
+    row = (
+        db.query(models.AiProviderConfig)
+        .filter(
+            models.AiProviderConfig.id == provider_id,
+            models.AiProviderConfig.workspace_id == user["ws"],
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Provider not found")
+
+    try:
+        provider = get_provider_from_db_config(row)
+        resp = provider.generate(
+            system_prompt="You are a helpful assistant. Respond in JSON.",
+            user_prompt='Respond with exactly: {"status": "ok", "message": "VulnScan AI test successful"}',
+            max_tokens=100,
+        )
+        return {"ok": True, "model": resp.model, "tokens": resp.tokens_used, "response": resp.content[:200]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:500]}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -55,12 +247,26 @@ def start_analysis(
     if mode not in VALID_MODES:
         raise HTTPException(400, f"Invalid mode: {mode}. Valid: {', '.join(VALID_MODES)}")
 
-    # Validate provider is available
-    available = [p["id"] for p in settings.available_ai_providers()]
+    # Validate provider is available (DB + env + CLI)
+    from app.ai.providers import detect_cli_providers
+    available = set()
+    # DB providers
+    for r in db.query(models.AiProviderConfig).filter(
+        models.AiProviderConfig.workspace_id == user["ws"],
+        models.AiProviderConfig.enabled == True,
+    ).all():
+        available.add(r.provider_type)
+    # Env providers
+    for p in settings.available_ai_providers():
+        available.add(p["id"])
+    # CLI providers
+    for c in detect_cli_providers():
+        available.add(c["id"])
+
     if not available:
-        raise HTTPException(400, "No AI providers configured. Set API keys in .env")
+        raise HTTPException(400, "No AI providers configured. Add one via Settings > AI Providers")
     if provider not in available:
-        raise HTTPException(400, f"Provider '{provider}' not configured. Available: {', '.join(available)}")
+        raise HTTPException(400, f"Provider '{provider}' not available. Available: {', '.join(sorted(available))}")
 
     # Validate job exists and belongs to workspace
     job = db.query(models.ScanJob).filter(

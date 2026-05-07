@@ -535,3 +535,63 @@ def put_sla(body: SLAUpdate, user=Depends(require_role("admin", "analyst")), db:
 def reset_sla(user=Depends(require_role("admin", "analyst")), db: Session = Depends(get_db)):
     _set_setting(db, user["ws"], "sla", DEFAULT_SLA)
     return DEFAULT_SLA
+
+
+# ── Notification Preferences ───────────────────────────────────────────────
+
+_VALID_NOTIF_EVENTS = {
+    "critical_finding", "cisa_kev_match", "scan_completed",
+    "scan_failed", "new_asset_discovered", "weekly_digest",
+}
+_VALID_NOTIF_CHANNELS = {"email", "slack", "webhook"}
+
+DEFAULT_NOTIFICATION_PREFS = {
+    "critical_finding":     {"email": True,  "slack": True,  "webhook": True},
+    "cisa_kev_match":       {"email": True,  "slack": True,  "webhook": False},
+    "scan_completed":       {"email": False, "slack": True,  "webhook": False},
+    "scan_failed":          {"email": True,  "slack": True,  "webhook": True},
+    "new_asset_discovered": {"email": False, "slack": False, "webhook": True},
+    "weekly_digest":        {"email": True,  "slack": False, "webhook": False},
+}
+
+
+@router.get("/notifications")
+def get_notification_prefs(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    return _get_setting(db, user["ws"], "notification_preferences", DEFAULT_NOTIFICATION_PREFS)
+
+
+@router.put("/notifications")
+def put_notification_prefs(
+    body: dict,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    # Validate: only known event keys with known channel bools
+    cleaned = {}
+    for event_key, channels in body.items():
+        if event_key not in _VALID_NOTIF_EVENTS:
+            raise HTTPException(400, f"Unknown event type: {event_key}")
+        if not isinstance(channels, dict):
+            raise HTTPException(400, f"Channels for '{event_key}' must be a dict")
+        cleaned[event_key] = {
+            ch: bool(channels.get(ch, False))
+            for ch in _VALID_NOTIF_CHANNELS
+        }
+
+    # Merge with defaults so missing keys get defaults
+    current = _get_setting(db, user["ws"], "notification_preferences", DEFAULT_NOTIFICATION_PREFS)
+    current.update(cleaned)
+    _set_setting(db, user["ws"], "notification_preferences", current)
+    return current
+
+
+@router.post("/notifications/reset")
+def reset_notification_prefs(
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    _set_setting(db, user["ws"], "notification_preferences", DEFAULT_NOTIFICATION_PREFS)
+    return DEFAULT_NOTIFICATION_PREFS

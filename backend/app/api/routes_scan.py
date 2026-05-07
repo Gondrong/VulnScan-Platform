@@ -288,6 +288,7 @@ def create_job(
         status="queued",
         scan_type=scan_type,
         meta_json=job_meta,
+        created_by_user_id=user.get("sub"),
     )
     db.add(job)
     db.commit()
@@ -335,6 +336,13 @@ def list_jobs(
         .order_by(models.ScanJob.id.desc())
         .all()
     )
+    # Build user lookup for created_by display
+    user_ids = {r.created_by_user_id for r in rows if r.created_by_user_id}
+    user_map = {}
+    if user_ids:
+        for u in db.query(models.User).filter(models.User.id.in_(user_ids)).all():
+            user_map[u.id] = u.email
+
     return [
         {
             "id": r.id,
@@ -343,6 +351,7 @@ def list_jobs(
             "asset_id": r.asset_id,
             "status": r.status,
             "scan_type": r.scan_type or "internal",
+            "created_by": user_map.get(r.created_by_user_id, "").split("@")[0] if r.created_by_user_id else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
             "meta_json": r.meta_json if r.status == "running" else None,
@@ -397,6 +406,12 @@ def job_detail(
 
     error_info = _extract_error_info(job.meta_json) if job.status == "failed" else None
 
+    created_by = None
+    if job.created_by_user_id:
+        creator = db.query(models.User).filter(models.User.id == job.created_by_user_id).first()
+        if creator:
+            created_by = creator.email.split("@")[0]
+
     return {
         "job": {
             "id": job.id,
@@ -405,6 +420,7 @@ def job_detail(
             "asset_id": job.asset_id,
             "status": job.status,
             "scan_type": job.scan_type or "internal",
+            "created_by": created_by,
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "finished_at": job.finished_at.isoformat() if job.finished_at else None,
             "meta_json": job.meta_json,

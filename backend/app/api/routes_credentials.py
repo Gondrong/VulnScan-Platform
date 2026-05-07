@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_auth
 from app.core.crypto import encrypt_str
-from app.db.session import get_db
+from app.api.deps import get_db, require_role
 from app.db import models
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
@@ -24,7 +24,7 @@ class CredCreate(BaseModel):
 
 
 @router.get("")
-def list_creds(claims=Depends(require_auth), db: Session = Depends(get_db)):
+def list_creds(claims=Depends(require_role("admin", "analyst", "viewer")), db: Session = Depends(get_db)):
     ws = claims["ws"]
     creds = (
         db.query(models.Credential)
@@ -45,7 +45,7 @@ def list_creds(claims=Depends(require_auth), db: Session = Depends(get_db)):
 
 @router.post("")
 def create_cred(
-    body: CredCreate, claims=Depends(require_auth), db: Session = Depends(get_db)
+    body: CredCreate, claims=Depends(require_role("admin", "analyst")), db: Session = Depends(get_db)
 ):
     ws = claims["ws"]
 
@@ -69,7 +69,7 @@ def create_cred(
 
 @router.delete("/{cred_id}")
 def delete_cred(
-    cred_id: int, claims=Depends(require_auth), db: Session = Depends(get_db)
+    cred_id: int, claims=Depends(require_role("admin", "analyst")), db: Session = Depends(get_db)
 ):
     ws = claims["ws"]
     c = (

@@ -12,75 +12,29 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_role
 from app.db import models
+from app.graph.neo4j_client import Neo4jClient
 
 logger = logging.getLogger("vulnscan.graph")
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
+# Shared singleton — reused across requests instead of opening a new driver each time
+_neo4j: Neo4jClient | None = None
+
+
+def _get_neo4j() -> Neo4jClient:
+    global _neo4j
+    if _neo4j is None:
+        _neo4j = Neo4jClient()
+    return _neo4j
+
 
 def _neo4j_graph(ws_id: int) -> dict | None:
-    """Try to fetch the attack graph from Neo4j."""
-    try:
-        from app.graph.neo4j_client import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        driver.verify_connectivity()
-
-        nodes = []
-        links = []
-        node_ids = set()
-
-        with driver.session() as session:
-            result = session.run(
-                """
-                MATCH (a:Asset {workspace: $ws})-[r:HAS_VULN]->(v:Vulnerability)
-                RETURN a.target AS target, v.cve AS cve, r.risk AS risk, r.plugin AS plugin
-                ORDER BY r.risk DESC
-                LIMIT 200
-                """,
-                ws=ws_id,
-            )
-
-            for record in result:
-                target = record["target"]
-                cve = record["cve"]
-                risk = record["risk"] or 0
-                plugin = record["plugin"] or ""
-
-                if target not in node_ids:
-                    nodes.append({
-                        "id": target, "label": target,
-                        "type": "asset", "size": 18,
-                    })
-                    node_ids.add(target)
-
-                if cve not in node_ids:
-                    sev = (
-                        "critical" if risk >= 9
-                        else "high" if risk >= 7
-                        else "medium" if risk >= 4
-                        else "low" if risk > 0
-                        else "info"
-                    )
-                    nodes.append({
-                        "id": cve, "label": cve, "type": "vuln",
-                        "severity": sev, "risk": round(risk, 1),
-                        "size": max(6, min(16, risk * 1.5)),
-                    })
-                    node_ids.add(cve)
-
-                links.append({
-                    "source": target, "target": cve,
-                    "risk": round(risk, 1), "plugin": plugin,
-                })
-
-        driver.close()
-        return {"nodes": nodes, "links": links, "source": "neo4j"}
-
-    except Exception as e:
-        logger.debug("Neo4j graph query failed: %s", e)
+    """Try to fetch the attack graph from the shared Neo4j client."""
+    neo = _get_neo4j()
+    if not neo.available:
         return None
+    return neo.query_attack_map(ws_id)
 
 
 def _pg_graph(ws_id: int, db: Session) -> dict:
@@ -167,19 +121,45 @@ def attack_map(
 
 @router.post("/sync")
 def sync_graph(
+    full: bool = True,
     user=Depends(require_role("admin", "analyst")),
     db: Session = Depends(get_db),
 ):
-    """Rebuild Neo4j graph from current PostgreSQL findings."""
+    """
+    Sync Neo4j graph from PostgreSQL findings.
+    full=true (default): clears graph and rebuilds entirely.
+    full=false: incremental — only syncs findings created since last sync.
+    """
     ws_id = user["ws"]
     try:
-        from app.graph.neo4j_client import Neo4jClient
-        neo = Neo4jClient()
-        findings = (
-            db.query(models.Finding)
-            .filter(models.Finding.workspace_id == ws_id)
-            .all()
+        neo = _get_neo4j()
+        if not neo.available:
+            return {"ok": False, "error": "Neo4j is not available"}
+
+        query = db.query(models.Finding).filter(
+            models.Finding.workspace_id == ws_id,
         )
+        if not full:
+            # Incremental: read last sync timestamp from workspace settings
+            setting = (
+                db.query(models.WorkspaceSetting)
+                .filter(
+                    models.WorkspaceSetting.workspace_id == ws_id,
+                    models.WorkspaceSetting.key == "graph_last_sync",
+                )
+                .first()
+            )
+            if setting:
+                try:
+                    from datetime import datetime, timezone
+                    last_sync = datetime.fromisoformat(
+                        json.loads(setting.value_json).get("at", "")
+                    )
+                    query = query.filter(models.Finding.created_at > last_sync)
+                except Exception:
+                    pass  # fall through to sync all
+
+        findings = query.all()
         finding_dicts = []
         for f in findings:
             cve = None
@@ -187,15 +167,106 @@ def sync_graph(
                 cve_match = re.search(r"(CVE-\d{4}-\d+)", f.evidence)
                 if cve_match:
                     cve = cve_match.group(1)
-            if cve:
-                finding_dicts.append({
-                    "target": f.target,
-                    "cve": cve,
-                    "plugin_id": f.plugin_id,
-                    "risk_score": f.risk_score,
-                })
-        count = neo.sync_from_findings(ws_id, finding_dicts)
-        neo.close()
+            comp_ids = None
+            if f.compliance_json:
+                try:
+                    comp_ids = json.loads(f.compliance_json)
+                except Exception:
+                    pass
+            finding_dicts.append({
+                "target": f.target,
+                "cve": cve,
+                "plugin_id": f.plugin_id,
+                "risk_score": f.risk_score,
+                "fingerprint": f.fingerprint,
+                "title": f.title,
+                "severity": f.severity,
+                "compliance_ids": comp_ids,
+            })
+        count = neo.sync_from_findings(ws_id, finding_dicts, full=full)
+
+        # Record last sync timestamp
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        setting = (
+            db.query(models.WorkspaceSetting)
+            .filter(
+                models.WorkspaceSetting.workspace_id == ws_id,
+                models.WorkspaceSetting.key == "graph_last_sync",
+            )
+            .first()
+        )
+        if setting:
+            setting.value_json = json.dumps({"at": now_iso})
+        else:
+            db.add(models.WorkspaceSetting(
+                workspace_id=ws_id, key="graph_last_sync",
+                value_json=json.dumps({"at": now_iso}),
+            ))
+        db.commit()
+
+        # Sync asset groups from Asset model hierarchy
+        assets = (
+            db.query(models.Asset)
+            .filter(models.Asset.workspace_id == ws_id)
+            .all()
+        )
+        # Build parent groups: top-level assets with children
+        children_by_parent: dict[int, list[str]] = {}
+        asset_by_id = {a.id: a for a in assets}
+        for a in assets:
+            if a.parent_id and a.parent_id in asset_by_id:
+                children_by_parent.setdefault(a.parent_id, []).append(a.name)
+        for parent_id, targets in children_by_parent.items():
+            parent = asset_by_id[parent_id]
+            neo.upsert_asset_group(
+                workspace_id=ws_id,
+                group_id=f"asset:{parent_id}",
+                group_name=parent.name,
+                targets=targets,
+            )
+
         return {"ok": True, "nodes_synced": count, "findings_total": len(findings)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@router.get("/shared-vulns")
+def shared_vulns(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+):
+    """Vulnerabilities affecting the most assets — patch prioritisation."""
+    neo = _get_neo4j()
+    result = neo.query_shared_vulns(user["ws"]) if neo.available else None
+    return result or []
+
+
+@router.get("/blast-radius/{target:path}")
+def blast_radius(
+    target: str,
+    user=Depends(require_role("admin", "analyst", "viewer")),
+):
+    """From a target, show all shared vulns and co-affected assets."""
+    neo = _get_neo4j()
+    result = neo.query_blast_radius(user["ws"], target) if neo.available else None
+    return result or {"nodes": [], "links": [], "origin": target}
+
+
+@router.get("/stats")
+def graph_stats(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+):
+    """Aggregate graph statistics for dashboard widgets."""
+    neo = _get_neo4j()
+    result = neo.query_stats(user["ws"]) if neo.available else None
+    return result or {"assets": 0, "vulns": 0, "by_severity": {}}
+
+
+@router.get("/most-vulnerable")
+def most_vulnerable(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+):
+    """Assets ranked by vulnerability count and max risk."""
+    neo = _get_neo4j()
+    result = neo.query_most_vulnerable_assets(user["ws"]) if neo.available else None
+    return result or []

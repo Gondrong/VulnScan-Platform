@@ -160,7 +160,7 @@ def run_analysis(analysis_id: int) -> None:
         })
 
         # Call AI provider
-        provider = get_provider(analysis.provider)
+        provider = get_provider(analysis.provider, workspace_id=analysis.workspace_id)
         start_time = time.time()
         response = provider.generate(system_prompt, user_prompt)
         duration = time.time() - start_time
@@ -240,7 +240,7 @@ def generate_poc(analysis_id: int, finding_id: int) -> None:
         system_prompt, user_prompt = build_poc_prompt(finding_data, target)
 
         # Call provider
-        provider = get_provider(analysis.provider)
+        provider = get_provider(analysis.provider, workspace_id=analysis.workspace_id)
         response = provider.generate(system_prompt, user_prompt, max_tokens=4096)
 
         # Parse response

@@ -14,6 +14,30 @@ from app.db import models
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
+# Dataset kinds that feed the Threat Intel aggregator cache.
+_TI_FEEDER_KINDS = {"nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories"}
+
+# Canonical dataset file paths — these must NEVER be deleted via the UI
+# because they are the stable files the system writes during refresh.
+_CANONICAL_PATHS = {
+    "/data/cve/nvd_cpe_cve.json",
+    "/data/cve/cisa_kev.json",
+    "/data/cve/epss.json",
+    "/data/cve/vendor_advisories.json",
+    "/data/cve/cvedetails_cvss.json",
+    "/data/cve/cms_cve_map.json",
+    "/data/cve/compliance_map.json",
+}
+
+
+def _invalidate_ti_cache(ws_id: int) -> None:
+    """Best-effort invalidation of the Threat Intel in-memory cache."""
+    try:
+        from app.threat_intel import aggregator as _ti
+        _ti.invalidate(ws_id)
+    except Exception:
+        pass
+
 
 # ── Browse dataset contents ─────────────────────────────────────────────────
 
@@ -192,6 +216,8 @@ def update_dataset(
         if hasattr(d, k):
             setattr(d, k, v)
     db.commit()
+    if d.kind in _TI_FEEDER_KINDS and "enabled" in body:
+        _invalidate_ti_cache(ws)
     return {"ok": True}
 
 
@@ -211,6 +237,8 @@ def toggle_dataset(
         raise HTTPException(status_code=404, detail="Not found")
     d.enabled = not d.enabled
     db.commit()
+    if d.kind in _TI_FEEDER_KINDS:
+        _invalidate_ti_cache(ws)
     return {"ok": True, "enabled": d.enabled}
 
 
@@ -229,20 +257,36 @@ def delete_dataset(
     if not d:
         raise HTTPException(status_code=404, detail="Not found")
 
-    if d.path and os.path.isfile(d.path):
-        try:
-            os.remove(d.path)
-        except Exception:
-            pass
+    kind = d.kind
+
+    # Only delete the file if no other dataset record shares the same path
+    # and the file is NOT a canonical dataset file (those are managed by the
+    # refresh worker and must never be removed via the UI).
+    if d.path and os.path.isfile(d.path) and d.path not in _CANONICAL_PATHS:
+        other = (
+            db.query(models.CveDataset)
+            .filter(
+                models.CveDataset.id != d.id,
+                models.CveDataset.path == d.path,
+            )
+            .first()
+        )
+        if not other:
+            try:
+                os.remove(d.path)
+            except Exception:
+                pass
 
     db.delete(d)
     db.commit()
+    if kind in _TI_FEEDER_KINDS:
+        _invalidate_ti_cache(ws)
     return {"ok": True}
 
 
 # ── Dataset Refresh ─────────────────────────────────────────────────────────
 
-_VALID_KINDS = {"nvd_cpe_cve", "cisa_kev", "epss", "cvedetails_cvss", "cms_cve_map", "compliance_map"}
+_VALID_KINDS = {"nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories", "cvedetails_cvss", "cms_cve_map", "compliance_map"}
 
 
 def _redis_conn():
@@ -273,7 +317,7 @@ def refresh_datasets(
         raise HTTPException(409, "A dataset refresh is already running")
 
     q = Queue("datasets", connection=r)
-    q.enqueue(run_dataset_refresh, ws, kinds, job_timeout=1800)
+    q.enqueue(run_dataset_refresh, ws, kinds, job_timeout=3600)
     return {"status": "queued", "kinds": kinds or list(_VALID_KINDS)}
 
 
