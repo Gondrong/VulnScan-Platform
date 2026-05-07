@@ -183,6 +183,7 @@ def _build_merged(db: Session, ws_id: int) -> _CacheEntry:
                 "product": product,
                 "matches": matches[:50],
                 "refs": row.get("refs") or [],
+                "vendor_advisories": row.get("vendor_advisories") or {},
                 "epss": None,
                 "epss_percentile": None,
                 "kev": False,
@@ -244,6 +245,30 @@ def _build_merged(db: Session, ws_id: int) -> _CacheEntry:
             except (TypeError, ValueError):
                 pass
 
+    # Vendor advisories (external dataset) — overlays additional vendor references
+    va_path = _enabled_path(db, ws_id, "vendor_advisories")
+    va_raw = _load_dataset_file(va_path) if va_path else None
+
+    if va_raw and isinstance(va_raw, dict):
+        loaded.append("vendor_advisories")
+        for cve_id_raw, advisories in va_raw.items():
+            cve_id = cve_id_raw.strip().upper()
+            rec = merged.get(cve_id)
+            if rec is None:
+                continue
+            if not isinstance(advisories, list):
+                continue
+            existing_va = rec.get("vendor_advisories") or {}
+            for adv in advisories:
+                vendor = adv.get("vendor", "unknown")
+                if vendor not in existing_va:
+                    existing_va[vendor] = []
+                # Deduplicate by URL
+                existing_urls = {a.get("url") for a in existing_va[vendor]}
+                if adv.get("url") and adv["url"] not in existing_urls:
+                    existing_va[vendor].append(adv)
+            rec["vendor_advisories"] = existing_va
+
     # Final pass — compute threat scores
     for rec in merged.values():
         rec["threat_score"] = _compute_threat_score(rec)
@@ -257,6 +282,8 @@ def _build_merged(db: Session, ws_id: int) -> _CacheEntry:
     high_epss = 0
     critical_count = 0
     high_count = 0
+    vendor_adv_vendors: set[str] = set()
+    vendor_adv_cve_count = 0
 
     for rec in merged.values():
         if rec.get("kev"):
@@ -277,6 +304,10 @@ def _build_merged(db: Session, ws_id: int) -> _CacheEntry:
             critical_count += 1
         elif sev == "high":
             high_count += 1
+        va = rec.get("vendor_advisories")
+        if va:
+            vendor_adv_cve_count += 1
+            vendor_adv_vendors.update(va.keys())
 
     entry.merged = merged
     entry.stats = {
@@ -289,6 +320,8 @@ def _build_merged(db: Session, ws_id: int) -> _CacheEntry:
         "critical_count": critical_count,
         "high_count": high_count,
         "datasets_loaded": loaded,
+        "vendor_advisory_vendors": sorted(vendor_adv_vendors),
+        "vendor_advisory_cve_count": vendor_adv_cve_count,
     }
     entry.datasets_loaded = loaded
     entry.ts = time.time()

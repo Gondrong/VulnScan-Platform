@@ -19,6 +19,9 @@ from app.risk.sla_engine import assign_sla_days
 from app.scanner.engine import scan_target
 from app.cve.enricher import CveSeverityEnricher
 
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger("vulnscan.worker")
 
 
@@ -63,6 +66,77 @@ def _run_async(coro):
         return asyncio.run(coro)
 
 
+def _notify_scan_failed(db: Session, ws_id: int, job_id: int, target: str, error: str, error_type: str) -> None:
+    """Send scan_failed notifications to enabled integrations."""
+    try:
+        from app.scanner.notifier import (
+            send_slack_notification,
+            send_teams_notification,
+            send_webhook_notification,
+            send_email_notification,
+            should_notify,
+        )
+        from app.api.routes_settings import _get_setting, DEFAULT_NOTIFICATION_PREFS
+
+        integrations = (
+            db.query(models.Integration)
+            .filter(models.Integration.workspace_id == ws_id, models.Integration.enabled == True)
+            .all()
+        )
+        if not integrations:
+            return
+
+        notif_prefs = _get_setting(db, ws_id, "notification_preferences", DEFAULT_NOTIFICATION_PREFS)
+
+        msg = f"VulnScan Job #{job_id} on {target} FAILED. Type: {error_type}. Error: {error[:200]}"
+        payload = {
+            "event": "scan_failed",
+            "data": {
+                "job_id": job_id,
+                "target": target,
+                "status": "failed",
+                "error": error[:500],
+                "error_type": error_type,
+            },
+        }
+
+        for integ in integrations:
+            try:
+                if not should_notify(notif_prefs, ["scan_failed"], integ.provider):
+                    continue
+                cfg = json.loads(integ.config_json)
+                if integ.provider == "slack":
+                    send_slack_notification(cfg, {
+                        "text": msg,
+                        "blocks": [
+                            {"type": "header", "text": {"type": "plain_text", "text": "VulnScan Scan Failed"}},
+                            {"type": "section", "fields": [
+                                {"type": "mrkdwn", "text": f"*Target*\n`{target}`"},
+                                {"type": "mrkdwn", "text": f"*Job*\n#{job_id}"},
+                                {"type": "mrkdwn", "text": f"*Error type*\n{error_type}"},
+                            ]},
+                            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Error*\n```{error[:300]}```"}},
+                        ],
+                    })
+                elif integ.provider == "teams":
+                    send_teams_notification(cfg, {
+                        "title": "VulnScan Scan Failed",
+                        "text": msg,
+                        "Target": target,
+                        "Job": f"#{job_id}",
+                        "Error type": error_type,
+                        "Error": error[:300],
+                    })
+                elif integ.provider == "webhook":
+                    send_webhook_notification(cfg, payload)
+                elif integ.provider == "email":
+                    send_email_notification(cfg, f"Scan Failed: {target}", msg)
+            except Exception as e:
+                logger.warning("Failed to send scan_failed notification via %s: %s", integ.provider, e)
+    except Exception as e:
+        logger.warning("_notify_scan_failed error: %s", e)
+
+
 def run_scan_job(job_id: int) -> None:
     db: Session = SessionLocal()
     neo = None
@@ -100,6 +174,7 @@ def run_scan_job(job_id: int) -> None:
                 })
                 job.finished_at = datetime.now(timezone.utc)
                 db.commit()
+                _notify_scan_failed(db, ws_id, job_id, job.target, "Profile not found", "configuration")
                 return
 
             job.status = "running"
@@ -225,6 +300,7 @@ def run_scan_job(job_id: int) -> None:
             })
             job.finished_at = datetime.now(timezone.utc)
             db.commit()
+            _notify_scan_failed(db, ws_id, job_id, job.target, str(e), "scan_engine")
             return
 
         suppressed = {
@@ -493,11 +569,23 @@ def run_scan_job(job_id: int) -> None:
 
             if neo:
                 cve = getattr(f, "cve", None)
-                if cve and str(cve).startswith("CVE-"):
-                    try:
-                        neo.upsert_finding(ws_id, job.target, f.plugin_id, cve, risk)
-                    except Exception as e:
-                        logger.debug("Neo4j upsert failed: %s", e)
+                if cve and not str(cve).startswith("CVE-"):
+                    cve = None
+                compliance_ids = comp if comp else None
+                try:
+                    neo.upsert_finding(
+                        workspace_id=ws_id,
+                        target=job.target,
+                        plugin_id=f.plugin_id,
+                        cve=cve,
+                        risk_score=risk,
+                        fingerprint=getattr(f, "fingerprint", ""),
+                        title=getattr(f, "title", ""),
+                        severity=severity,
+                        compliance_ids=compliance_ids,
+                    )
+                except Exception as e:
+                    logger.debug("Neo4j upsert failed: %s", e)
 
         db.commit()
         logger.info(
@@ -523,7 +611,9 @@ def run_scan_job(job_id: int) -> None:
             send_teams_notification,
             send_webhook_notification,
             send_email_notification,
+            should_notify,
         )
+        from app.api.routes_settings import _get_setting, DEFAULT_NOTIFICATION_PREFS
         integrations = (
             db.query(models.Integration)
             .filter(models.Integration.workspace_id == ws_id, models.Integration.enabled == True)
@@ -580,9 +670,25 @@ def run_scan_job(job_id: int) -> None:
                 if getattr(f, "title", None)
             ) or "- No findings recorded"
 
+            # Determine which event types this scan result triggers
+            triggered_events = ["scan_completed"]
+            if crit > 0:
+                triggered_events.append("critical_finding")
+            has_kev = any(getattr(f, "is_kev", False) for f in top_findings)
+            if has_kev:
+                triggered_events.append("cisa_kev_match")
+
+            # Load notification preferences
+            notif_prefs = _get_setting(db, ws_id, "notification_preferences", DEFAULT_NOTIFICATION_PREFS)
+
             for integ in integrations:
                 try:
                     cfg = json.loads(integ.config_json)
+
+                    # Check preferences — skip if no triggered event is enabled for this provider
+                    if not should_notify(notif_prefs, triggered_events, integ.provider):
+                        logger.info("Notification skipped for %s (preferences)", integ.provider)
+                        continue
                     if integ.provider == "slack":
                         slack_payload = {
                             "text": (
@@ -682,6 +788,7 @@ def run_scan_job(job_id: int) -> None:
                 })
                 job.finished_at = datetime.now(timezone.utc)
                 db.commit()
+                _notify_scan_failed(db, job.workspace_id, job_id, job.target, str(e)[:500], "unhandled")
         except Exception as inner_e:
             logger.error("Failed to mark job #%d as failed: %s", job_id, inner_e)
             # Last resort - raw SQL update to unstick the job
@@ -771,16 +878,18 @@ import concurrent.futures
 import threading
 import time
 
-_DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "cvedetails_cvss", "cms_cve_map", "compliance_map"]
-_DS_KIND_DEPENDS = {"cms_cve_map": "nvd_cpe_cve", "cvedetails_cvss": "nvd_cpe_cve"}
+_DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories", "cvedetails_cvss", "cms_cve_map", "compliance_map"]
+_DS_KIND_DEPENDS = {"cms_cve_map": "nvd_cpe_cve", "cvedetails_cvss": "nvd_cpe_cve", "vendor_advisories": "nvd_cpe_cve"}
 _DS_KIND_NAMES = {
     "nvd_cpe_cve": "nvd_auto", "cisa_kev": "kev_auto", "epss": "epss_auto",
+    "vendor_advisories": "vendor_adv_auto",
     "cms_cve_map": "cms_auto", "compliance_map": "compliance_auto", "cvedetails_cvss": "cvedetails_auto",
 }
 _DS_CANONICAL = {
     "nvd_cpe_cve": "/data/cve/nvd_cpe_cve.json",
     "cisa_kev": "/data/cve/cisa_kev.json",
     "epss": "/data/cve/epss.json",
+    "vendor_advisories": "/data/cve/vendor_advisories.json",
     "cvedetails_cvss": "/data/cve/cvedetails_cvss.json",
     "cms_cve_map": "/data/cve/cms_cve_map.json",
     "compliance_map": "/data/cve/compliance_map.json",
@@ -928,7 +1037,9 @@ def _ds_refresh_cvedetails(nvd_path, on_progress=None):
     if cache_path.exists():
         try:
             with open(cache_path) as f:
-                existing = json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict):
+                existing = data
         except Exception:
             pass
 
@@ -992,37 +1103,41 @@ def _ds_refresh_cvedetails(nvd_path, on_progress=None):
                     sev = "critical" if best >= 9 else "high" if best >= 7 else "medium" if best >= 4 else "low" if best > 0 else "info"
                     return cve_id, {"cvss": best, "severity": sev, "cna_cvss": cna_score, "adp_cvss": adp_score}
                 return cve_id, None
-            except _requests.exceptions.RequestException:
+            except _requests.exceptions.RequestException as e:
+                logger.warning("  CVE.org %s attempt %d: %s", cve_id, attempt + 1, e)
                 if attempt < 2:
                     time.sleep(2 * (attempt + 1))
                     continue
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("  CVE.org %s unexpected error: %s", cve_id, e)
             break
         return cve_id, None
 
     if new_ids:
         done = 0
         total = len(new_ids)
+        batch_size = 500
         if on_progress:
             on_progress(0, total)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for f in concurrent.futures.as_completed({pool.submit(_fetch_one, c): c for c in new_ids}):
-                cve_id, r = f.result()
-                if r:
-                    existing[cve_id] = r
-                done += 1
-                if done % 100 == 0 or done == total:
-                    logger.info("  CVE.org: %d/%d", done, total)
-                    if on_progress:
-                        on_progress(done, total)
-                    # Checkpoint — save progress so crashes don't lose everything
-                    if done % 500 == 0:
-                        try:
-                            with open(cache_path, "w") as _cf:
-                                json.dump(existing, _cf)
-                        except Exception:
-                            pass
+            for batch_start in range(0, total, batch_size):
+                batch = new_ids[batch_start:batch_start + batch_size]
+                futures = {pool.submit(_fetch_one, c): c for c in batch}
+                for f in concurrent.futures.as_completed(futures):
+                    cve_id, r = f.result()
+                    if r:
+                        existing[cve_id] = r
+                    done += 1
+                    if done % 100 == 0 or done == total:
+                        logger.info("  CVE.org: %d/%d", done, total)
+                        if on_progress:
+                            on_progress(done, total)
+                # Checkpoint after each batch
+                try:
+                    with open(cache_path, "w") as _cf:
+                        json.dump(existing, _cf)
+                except Exception:
+                    pass
 
     session.close()
 
@@ -1056,6 +1171,17 @@ def _ds_refresh_compliance_map():
     return True, out_path, None
 
 
+def _ds_refresh_vendor_advisories(nvd_path):
+    from pathlib import Path
+    out_dir = Path("/data/cve")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = str(out_dir / f"vendor_advisories_{_ds_ts()}.json")
+    ok, err = _ds_run_script("vendor_advisories_fetch.py", ["--out", out_path])
+    if not ok:
+        return False, None, f"vendor_advisories_fetch.py: {err}"
+    return True, out_path, None
+
+
 def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> None:
     """Background task: fetch/convert/swap datasets from external sources."""
     import redis as _redis
@@ -1065,7 +1191,7 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
     lock_key = f"dataset_refresh_lock:{workspace_id}"
     status_key = f"dataset_refresh:{workspace_id}"
 
-    if not r.set(lock_key, "1", nx=True, ex=1800):
+    if not r.set(lock_key, "1", nx=True, ex=3600):
         logger.warning("Dataset refresh already running for workspace %d", workspace_id)
         return
 
@@ -1105,6 +1231,7 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
         "nvd_cpe_cve": lambda: _ds_refresh_nvd(api_key),
         "cisa_kev": lambda: _ds_refresh_cisa_kev(),
         "epss": lambda: _ds_refresh_epss(),
+        "vendor_advisories": lambda dep: _ds_refresh_vendor_advisories(dep),
         "cvedetails_cvss": lambda dep: _ds_refresh_cvedetails(dep, on_progress=_cveorg_progress),
         "cms_cve_map": lambda dep: _ds_refresh_cms_cve_map(dep),
         "compliance_map": lambda: _ds_refresh_compliance_map(),
@@ -1117,6 +1244,7 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
                 state["status"] = "cancelled"
                 break
 
+            r.expire(lock_key, 3600)
             state["current_kind"] = kind
             state["kinds"][kind]["status"] = "running"
             r.setex(status_key, 3600, json.dumps(state))
@@ -1158,9 +1286,9 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
 
             r.setex(status_key, 3600, json.dumps(state))
 
+        done_count = sum(1 for v in state["kinds"].values() if v["status"] == "done")
+        fail_count = sum(1 for v in state["kinds"].values() if v["status"] == "failed")
         if state["status"] != "cancelled":
-            done_count = sum(1 for v in state["kinds"].values() if v["status"] == "done")
-            fail_count = sum(1 for v in state["kinds"].values() if v["status"] == "failed")
             state["status"] = "done" if fail_count == 0 else "partial" if done_count > 0 else "failed"
 
         # Clean up old timestamped files — keep only canonical files
@@ -1192,12 +1320,13 @@ def _cleanup_old_dataset_files() -> None:
     Keeps canonical files and any file still referenced by an enabled DB record.
     """
     import glob
+    import re
 
     data_dir = "/data/cve"
     if not os.path.isdir(data_dir):
         return
 
-    # Canonical filenames to keep (without path)
+    # Canonical filenames — NEVER delete these
     canonical_names = set(os.path.basename(p) for p in _DS_CANONICAL.values())
 
     # Also protect any file still referenced by an enabled dataset record
@@ -1212,24 +1341,25 @@ def _cleanup_old_dataset_files() -> None:
         logger.warning("Cleanup: could not query DB for protected files, skipping: %s", e)
         return
 
+    # Only match timestamped files: kind_YYYYMMDD_HHMMSS.json
+    _TS_PATTERN = re.compile(r"^(.+)_\d{8}_\d{6}\.json$")
+
     removed = 0
     for filepath in glob.glob(os.path.join(data_dir, "*.json")):
         filename = os.path.basename(filepath)
+        # Never delete canonical or DB-protected files
         if filename in protected:
             continue
-        # Check if it's a timestamped variant of a known dataset kind
-        is_old = False
-        for kind_prefix in _DS_CANONICAL:
-            if filename.startswith(kind_prefix + "_") and filename != kind_prefix + ".json":
-                is_old = True
-                break
-        if is_old:
-            try:
-                os.remove(filepath)
-                removed += 1
-                logger.info("  Cleanup: removed old dataset file %s", filename)
-            except OSError as e:
-                logger.warning("  Cleanup: failed to remove %s: %s", filename, e)
+        # Only delete files matching the timestamped pattern
+        m = _TS_PATTERN.match(filename)
+        if not m or m.group(1) not in _DS_CANONICAL:
+            continue
+        try:
+            os.remove(filepath)
+            removed += 1
+            logger.info("  Cleanup: removed old dataset file %s", filename)
+        except OSError as e:
+            logger.warning("  Cleanup: failed to remove %s: %s", filename, e)
 
     if removed:
         logger.info("Dataset cleanup: removed %d old timestamped file(s)", removed)
@@ -1238,6 +1368,12 @@ def _cleanup_old_dataset_files() -> None:
 def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> None:
     """Atomically swap: create new dataset, disable old ones of same kind."""
     try:
+        # Verify the new file exists and is non-empty before disabling the old one
+        if not os.path.isfile(new_file_path):
+            raise FileNotFoundError(f"New dataset file not found: {new_file_path}")
+        if os.path.getsize(new_file_path) < 10:
+            raise ValueError(f"New dataset file is empty or too small: {new_file_path}")
+
         db.query(models.CveDataset).filter(
             models.CveDataset.workspace_id == ws_id,
             models.CveDataset.kind == kind,
@@ -1258,7 +1394,7 @@ def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> Non
 
         # Invalidate the Threat Intel cache for this workspace if a feeder
         # dataset was just rotated. Best-effort — never block the swap on it.
-        if kind in ("nvd_cpe_cve", "cisa_kev", "epss"):
+        if kind in ("nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories"):
             try:
                 from app.threat_intel import aggregator as _ti
                 _ti.invalidate(ws_id)

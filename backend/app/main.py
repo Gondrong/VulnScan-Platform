@@ -32,7 +32,7 @@ logger = logging.getLogger("vulnscan")
 
 app = FastAPI(
     title="VulnScan Platform",
-    version="3.0.0",
+    version="3.0.1",
     description="Enterprise Risk-Based Vulnerability Management Platform",
 )
 
@@ -108,6 +108,26 @@ def _run_migrations(db: Session) -> None:
             ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ,
             ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(45),
             ADD COLUMN IF NOT EXISTS last_login_location VARCHAR(100);
+        """,
+        # Track who launched each scan job
+        """
+        ALTER TABLE scan_jobs
+            ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+        """,
+        # AI provider configs managed via UI (API keys stored encrypted)
+        """
+        CREATE TABLE IF NOT EXISTS ai_provider_configs (
+            id SERIAL PRIMARY KEY,
+            workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+            provider_type VARCHAR(50) NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            model VARCHAR(100) NOT NULL,
+            api_key_enc TEXT,
+            endpoint VARCHAR(500),
+            extra_json TEXT DEFAULT '{}',
+            enabled BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
         """,
     ]
     for sql in migrations:
@@ -230,7 +250,7 @@ def startup() -> None:
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    return {"ok": True, "version": "3.0.0"}
+    return {"ok": True, "version": "3.0.1"}
 
 
 # ─── Schedule Runner (background) ─────────────────────────────────────────────
