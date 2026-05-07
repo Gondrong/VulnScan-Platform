@@ -654,6 +654,8 @@ function SystemPanel() {
   const [stats, setStats] = useState(null);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateLoading, setUpdateLoading] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(null);
+  const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
@@ -674,6 +676,35 @@ function SystemPanel() {
     finally { setUpdateLoading(false); }
   };
 
+  const triggerUpdate = async () => {
+    if (!window.confirm("This will update the platform and restart all services. Continue?")) return;
+    setTriggering(true);
+    try {
+      const res = await settingsApi.triggerUpdate();
+      setUpdateStatus({ status: res.status, message: res.message });
+    } catch (e) {
+      setUpdateStatus({ status: "failed", message: e.message });
+      setTriggering(false);
+      return;
+    }
+  };
+
+  useEffect(() => {
+    if (!triggering) return;
+    const poll = setInterval(async () => {
+      try {
+        const s = await settingsApi.updateStatus();
+        setUpdateStatus(s);
+        if (s.status === "success" || s.status === "failed" || s.status === "idle") {
+          setTriggering(false);
+          clearInterval(poll);
+          if (s.status === "success") setUpdateInfo(null);
+        }
+      } catch { /* server may be restarting */ }
+    }, 3000);
+    return () => clearInterval(poll);
+  }, [triggering]);
+
   return (
     <>
       <div className="card-head"><div><div className="card-title">System</div><div className="card-sub" style={{marginTop: 0}}>Workspace stats, environment, and software updates.</div></div></div>
@@ -689,6 +720,30 @@ function SystemPanel() {
           </div>
         )}
 
+        {updateStatus && updateStatus.status !== "idle" && (
+          <div style={{
+            padding: "12px 16px", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, fontSize: 13,
+            background: updateStatus.status === "failed" ? "var(--err-soft, rgba(239,68,68,.08))" : updateStatus.status === "success" ? "var(--ok-soft, rgba(34,197,94,.08))" : "var(--brand-soft)",
+            border: `1px solid ${updateStatus.status === "failed" ? "var(--err-line, rgba(239,68,68,.2))" : updateStatus.status === "success" ? "var(--ok-line, rgba(34,197,94,.2))" : "var(--brand-line)"}`,
+            color: updateStatus.status === "failed" ? "var(--err)" : updateStatus.status === "success" ? "var(--ok)" : "var(--text-1)"
+          }}>
+            {updateStatus.status === "failed"
+              ? <Icons.AlertTriangle size={15}/>
+              : updateStatus.status === "success"
+                ? <Icons.Check size={15}/>
+                : <Icons.Refresh size={15} className="spin"/>}
+            <div>
+              <div style={{fontWeight: 600}}>
+                {updateStatus.status === "triggered" && "Update triggered"}
+                {updateStatus.status === "updating" && "Updating platform…"}
+                {updateStatus.status === "success" && "Update complete"}
+                {updateStatus.status === "failed" && "Update failed"}
+              </div>
+              {updateStatus.message && <div style={{opacity: .8, marginTop: 2, fontSize: 12}}>{updateStatus.message}</div>}
+            </div>
+          </div>
+        )}
+
         {updateInfo && updateInfo.available && (
           <div style={{padding: "16px 18px", background: "var(--brand-soft)", border: "1px solid var(--brand-line)", borderRadius: 10}}>
             <div style={{display: "flex", alignItems: "flex-start", gap: 14}}>
@@ -701,10 +756,13 @@ function SystemPanel() {
                   {updateInfo.release_notes || "—"}
                 </div>
                 {updateInfo.repo && (
-                  <div style={{display: "flex", gap: 8, marginTop: 12}}>
+                  <div style={{display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap"}}>
                     <a className="btn" href={`https://github.com/${updateInfo.repo}/releases/tag/${updateInfo.tag}`} target="_blank" rel="noopener noreferrer">
                       <Icons.External size={12}/> View release
                     </a>
+                    <button className="btn btn-brand" onClick={triggerUpdate} disabled={triggering}>
+                      {triggering ? <><Icons.Refresh size={12} className="spin"/> Updating…</> : <><Icons.Download size={12}/> Update now</>}
+                    </button>
                   </div>
                 )}
               </div>
