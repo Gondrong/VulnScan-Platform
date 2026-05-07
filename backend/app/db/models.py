@@ -71,6 +71,7 @@ class ScanJob(Base):
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(50), default="queued")  # queued|running|done|failed|cancelled
     scan_type: Mapped[str] = mapped_column(String(20), default="internal")  # internal|external
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -195,6 +196,20 @@ class Integration(Base):
     provider: Mapped[str] = mapped_column(String(50))  # slack | email | webhook
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     config_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AiProviderConfig(Base):
+    __tablename__ = "ai_provider_configs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    provider_type: Mapped[str] = mapped_column(String(50))       # openai | claude_api | gemini | azure_openai | openai_compat
+    name: Mapped[str] = mapped_column(String(100))               # Display name
+    model: Mapped[str] = mapped_column(String(100))              # Model ID
+    api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted API key
+    endpoint: Mapped[str | None] = mapped_column(String(500), nullable=True)  # Custom endpoint URL
+    extra_json: Mapped[str] = mapped_column(Text, default="{}")  # Provider-specific config
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
