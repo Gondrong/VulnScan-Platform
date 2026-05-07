@@ -39,16 +39,38 @@ while true; do
         echo "[$(date)] Phase 1: git pull" >> "$LOG"
         cd "$PROJECT"
 
+        # Use -c safe.directory to bypass ownership check (systemd runs as root, repo owned by ubuntu)
+        GIT="git -c safe.directory=$PROJECT"
+
         # Backup .env before reset (user config must survive)
         cp -f "$PROJECT/.env" "$PROJECT/.env.bak" 2>/dev/null
 
-        # Hard reset: force-match remote exactly
-        # This handles tracked changes, untracked files, and __pycache__ conflicts
-        git fetch origin main >> "$LOG" 2>&1
-        git reset --hard origin/main >> "$LOG" 2>&1
-        git clean -fdx --exclude=.env --exclude=.env.bak --exclude=data/ >> "$LOG" 2>&1
-        GIT_RC=$?
-        echo "[$(date)] git reset --hard origin/main completed (rc=$GIT_RC)" >> "$LOG"
+        # Step 1: Fetch latest from remote
+        $GIT fetch origin main >> "$LOG" 2>&1
+        FETCH_RC=$?
+        echo "[$(date)] git fetch origin main (rc=$FETCH_RC)" >> "$LOG"
+        if [ $FETCH_RC -ne 0 ]; then
+            echo "[$(date)] ERROR: git fetch failed (rc=$FETCH_RC)" >> "$LOG"
+            [ -f "$PROJECT/.env.bak" ] && cp -f "$PROJECT/.env.bak" "$PROJECT/.env" && rm -f "$PROJECT/.env.bak"
+            write_status "failed" "Git fetch failed (rc=$FETCH_RC). Check credentials or network."
+            continue
+        fi
+
+        # Step 2: Hard reset to match remote exactly
+        $GIT reset --hard origin/main >> "$LOG" 2>&1
+        RESET_RC=$?
+        echo "[$(date)] git reset --hard origin/main (rc=$RESET_RC)" >> "$LOG"
+        if [ $RESET_RC -ne 0 ]; then
+            echo "[$(date)] ERROR: git reset failed (rc=$RESET_RC)" >> "$LOG"
+            [ -f "$PROJECT/.env.bak" ] && cp -f "$PROJECT/.env.bak" "$PROJECT/.env" && rm -f "$PROJECT/.env.bak"
+            write_status "failed" "Git reset failed (rc=$RESET_RC). Check $LOG for details."
+            continue
+        fi
+
+        # Step 3: Clean untracked files (preserve .env and data/)
+        $GIT clean -fdx --exclude=.env --exclude=.env.bak --exclude=data/ >> "$LOG" 2>&1
+        CLEAN_RC=$?
+        echo "[$(date)] git clean (rc=$CLEAN_RC)" >> "$LOG"
 
         # Restore user's .env (preserve their config)
         if [ -f "$PROJECT/.env.bak" ]; then
@@ -57,12 +79,10 @@ while true; do
             echo "[$(date)] Restored user .env config" >> "$LOG"
         fi
 
-        if [ $GIT_RC -ne 0 ]; then
-            echo "[$(date)] ERROR: git pull failed (rc=$GIT_RC)" >> "$LOG"
-            write_status "failed" "Git pull failed (rc=$GIT_RC). Check $LOG for details."
-            continue
+        if [ $CLEAN_RC -ne 0 ]; then
+            echo "[$(date)] WARNING: git clean failed (rc=$CLEAN_RC), continuing anyway" >> "$LOG"
         fi
-        echo "[$(date)] git pull succeeded" >> "$LOG"
+        echo "[$(date)] Git update succeeded" >> "$LOG"
 
         # Phase 2: Docker build
         write_status "updating" "Rebuilding Docker containers..."
