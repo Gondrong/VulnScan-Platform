@@ -3,6 +3,7 @@ name: vulnscan-platform
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -29,6 +31,7 @@ services:
 
   neo4j:
     image: neo4j:5
+    restart: unless-stopped
     environment:
       - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/password}
       - NEO4J_PLUGINS=["apoc"]
