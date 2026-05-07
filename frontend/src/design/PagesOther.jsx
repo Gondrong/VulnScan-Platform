@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Icons, Status } from "./icons.jsx";
-import { scanApi, credentialsApi, datasetsApi, settingsApi, integrationsApi, aiApi, slaApi, threatIntelApi } from "../api.js";
+import { scanApi, credentialsApi, datasetsApi, settingsApi, integrationsApi, aiApi, slaApi, threatIntelApi, notificationPrefsApi, canEdit, isAdmin } from "../api.js";
 
 function countPluginSelection(json) {
   try {
@@ -45,11 +45,13 @@ export function Profiles() {
     <>
       <div className="ph">
         <div><h1>Scan profiles</h1><div className="sub">Reusable plugin presets. Each profile defines which scanner plugins run + which credential to authenticate with.</div></div>
+        {canEdit() && (
         <div className="actions">
           <button className="btn btn-primary" onClick={() => setEditing("new")} disabled={plugins.length === 0}>
             <Icons.Plus size={14}/> New profile
           </button>
         </div>
+        )}
       </div>
       {error && <div style={{color: "var(--err)", marginBottom: 14, fontSize: 13}}><Icons.AlertTriangle size={13}/> {error}</div>}
       {loading && profiles.length === 0 ? (
@@ -77,6 +79,7 @@ export function Profiles() {
                   <div style={{display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "var(--text-3)"}}>
                     <div>created {p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}</div>
                   </div>
+                  {canEdit() && (
                   <div style={{display: "flex", gap: 6, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)"}}>
                     <button className="btn btn-sm" style={{flex: 1}} onClick={() => setEditing(p)}>
                       <Icons.Edit size={12}/> Edit
@@ -85,6 +88,7 @@ export function Profiles() {
                       <Icons.Trash size={12}/>
                     </button>
                   </div>
+                  )}
                 </div>
               </div>
             );
@@ -293,7 +297,7 @@ export function Credentials() {
     <>
       <div className="ph">
         <div><h1>Credentials</h1><div className="sub">Authenticated scans use these credentials. Secrets are stored encrypted at rest.</div></div>
-        <div className="actions"><button className="btn btn-primary" onClick={() => setShowNew(true)}><Icons.Plus size={14}/> Add credential</button></div>
+        {canEdit() && <div className="actions"><button className="btn btn-primary" onClick={() => setShowNew(true)}><Icons.Plus size={14}/> Add credential</button></div>}
       </div>
       {error && <div style={{color: "var(--err)", marginBottom: 14, fontSize: 13}}><Icons.AlertTriangle size={13}/> {error}</div>}
       <div className="card">
@@ -317,10 +321,12 @@ export function Credentials() {
                     <td><span className="tag">{c.kind}</span></td>
                     <td><span className="mono" style={{fontSize: 12.5}}>{c.username}</span></td>
                     <td><span className="tag">{c.secret_type}</span></td>
+                    {canEdit() && (
                     <td>
                       <button className="btn btn-icon btn-ghost btn-sm" title="Delete" style={{color: "var(--text-3)"}}
                               onClick={() => onDelete(c.id, c.name)}><Icons.Trash size={13}/></button>
                     </td>
+                    )}
                   </tr>
                 );
               })}
@@ -423,6 +429,7 @@ export function Datasets() {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState(null);
+  const handledFinishRef = useRef(null);
 
   const refresh = useCallback(async () => {
     try { setDatasets(await datasetsApi.list()); setError(""); }
@@ -436,12 +443,18 @@ export function Datasets() {
       setRefreshStatus(s);
       if (s && s.status === "running") {
         setRefreshing(true);
+        handledFinishRef.current = null;
       } else if (s && s.status && s.status !== "running" && s.status !== "idle") {
-        setRefreshing(false);
-        refresh(); // reload dataset list after refresh completes
-        // Invalidate the web server's threat intel cache so sidebar counts
-        // and the Threat Intel page pick up the newly refreshed datasets.
-        threatIntelApi.refresh().catch(() => {});
+        // Only handle completion once per refresh cycle
+        const finishKey = s.finished_at || s.status;
+        if (handledFinishRef.current !== finishKey) {
+          handledFinishRef.current = finishKey;
+          setRefreshing(false);
+          refresh(); // reload dataset list after refresh completes
+          // Invalidate the web server's threat intel cache so sidebar counts
+          // and the Threat Intel page pick up the newly refreshed datasets.
+          threatIntelApi.refresh().catch(() => {});
+        }
       }
     } catch {}
   }, [refresh]);
@@ -479,11 +492,13 @@ export function Datasets() {
           <h1>Threat intelligence datasets</h1>
           <div className="sub">Vulnerability feeds powering CVE matching, KEV prioritization, and risk scoring.</div>
         </div>
+        {isAdmin() && (
         <div className="actions">
           <button className="btn" onClick={onRefreshAll} disabled={refreshing}>
             {refreshing ? <><Icons.Refresh size={14} className="spin"/> Refreshing…</> : <><Icons.Refresh size={14}/> Refresh all</>}
           </button>
         </div>
+        )}
       </div>
       {error && <div style={{color: "var(--err)", marginBottom: 14, fontSize: 13}}><Icons.AlertTriangle size={13}/> {error}</div>}
       {refreshStatus && refreshStatus.status && refreshStatus.status !== "idle" && (() => {
@@ -554,10 +569,12 @@ export function Datasets() {
                   <span className="tag">{d.kind}</span>
                 </div>
                 <div style={{fontSize: 11.5, color: "var(--text-3)", marginTop: 10, fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{d.path}</div>
+                {canEdit() && (
                 <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)", gap: 6}}>
                   <button className="btn btn-ghost btn-sm" onClick={() => onToggle(d.id)}>{d.enabled ? "Disable" : "Enable"}</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => onDelete(d.id, d.name)} style={{color: "var(--err)"}}><Icons.Trash size={12}/></button>
                 </div>
+                )}
               </div>
             </div>
           ))}
@@ -567,17 +584,27 @@ export function Datasets() {
   );
 }
 
-export function Settings() {
-  const sections = [
+export function Settings({ initialTab }) {
+  const allSections = [
     { id: "general", label: "General", icon: Icons.Settings },
-    { id: "sla", label: "SLA policies", icon: Icons.Clock },
-    { id: "ai", label: "AI providers", icon: Icons.Brain },
-    { id: "integrations", label: "Integrations", icon: Icons.Layers },
-    { id: "notifications", label: "Notifications", icon: Icons.Bell },
-    { id: "users", label: "Users & RBAC", icon: Icons.Lock },
+    { id: "sla", label: "SLA policies", icon: Icons.Clock, minRole: "analyst" },
+    { id: "ai", label: "AI providers", icon: Icons.Brain, minRole: "admin" },
+    { id: "integrations", label: "Integrations", icon: Icons.Layers, minRole: "admin" },
+    { id: "notifications", label: "Notifications", icon: Icons.Bell, minRole: "analyst" },
+    { id: "users", label: "Users & RBAC", icon: Icons.Lock, minRole: "admin" },
     { id: "system", label: "System", icon: Icons.Server },
   ];
-  const [active, setActive] = useState("ai");
+  const sections = allSections.filter(s => {
+    if (!s.minRole) return true;
+    if (s.minRole === "admin") return isAdmin();
+    if (s.minRole === "analyst") return canEdit();
+    return true;
+  });
+  const [active, setActive] = useState(initialTab || "general");
+
+  useEffect(() => {
+    if (initialTab) setActive(initialTab);
+  }, [initialTab]);
 
   return (
     <>
@@ -613,33 +640,7 @@ export function Settings() {
           {active === "sla" && <SLAPolicies/>}
           {active === "ai" && <AIProvidersPanel/>}
           {active === "integrations" && <IntegrationsPanel/>}
-          {active === "notifications" && (
-            <>
-              <div className="card-head"><div><div className="card-title">Notifications</div><div className="card-sub" style={{marginTop: 0}}>Choose what triggers an alert and where it goes.</div></div></div>
-              <div className="card-body">
-                <table className="tbl">
-                  <thead><tr><th>Event</th><th style={{width: 80}}>Email</th><th style={{width: 80}}>Slack</th><th style={{width: 80}}>Webhook</th></tr></thead>
-                  <tbody>
-                    {[
-                      { event: "Critical finding detected", e: true, s: true, w: true },
-                      { event: "CISA KEV match", e: true, s: true, w: false },
-                      { event: "Scan completed", e: false, s: true, w: false },
-                      { event: "Scan failed", e: true, s: true, w: true },
-                      { event: "New asset discovered", e: false, s: false, w: true },
-                      { event: "Weekly digest", e: true, s: false, w: false },
-                    ].map(r => (
-                      <tr key={r.event}>
-                        <td style={{color: "var(--text-1)", fontSize: 13}}>{r.event}</td>
-                        <td><input type="checkbox" defaultChecked={r.e} style={{accentColor: "var(--brand)"}}/></td>
-                        <td><input type="checkbox" defaultChecked={r.s} style={{accentColor: "var(--brand)"}}/></td>
-                        <td><input type="checkbox" defaultChecked={r.w} style={{accentColor: "var(--brand)"}}/></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+          {active === "notifications" && <NotificationPrefsPanel/>}
           {active === "users" && <UsersPanel/>}
           {active === "system" && <SystemPanel/>}
         </div>
@@ -744,47 +745,193 @@ function SystemPanel() {
   );
 }
 
+const _AI_TYPE_META = {
+  openai:       { label: "OpenAI",              icon: Icons.Cloud,    models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3-mini"] },
+  claude_api:   { label: "Claude API",          icon: Icons.Brain,    models: ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"] },
+  gemini:       { label: "Gemini",              icon: Icons.Sparkles, models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"] },
+  azure_openai: { label: "Azure OpenAI",        icon: Icons.Cloud,    models: [] },
+  openai_compat:{ label: "OpenAI-Compatible",   icon: Icons.Server,   models: [] },
+};
+
+const _SOURCE_BADGE = {
+  db:  { label: "API Key",  bg: "var(--brand-soft)", color: "var(--brand-text)" },
+  env: { label: "Server",   bg: "var(--surface-2)",  color: "var(--text-2)" },
+  cli: { label: "CLI",      bg: "#2d4a3e",           color: "var(--ok)" },
+};
+
 function AIProvidersPanel() {
   const [providers, setProviders] = useState(null);
   const [error, setError] = useState("");
-  useEffect(() => {
+  const [showAdd, setShowAdd] = useState(false);
+  const [testing, setTesting] = useState(null);
+  const [testMsg, setTestMsg] = useState({});
+
+  const load = useCallback(() => {
     aiApi.providers().then(r => setProviders(r.providers || [])).catch(e => setError(e.message));
   }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const onDelete = async (id) => {
+    if (!confirm("Delete this AI provider?")) return;
+    try { await aiApi.deleteProvider(id); load(); } catch (e) { alert(e.message); }
+  };
+
+  const onToggle = async (id, enabled) => {
+    try { await aiApi.updateProvider(id, { enabled: !enabled }); load(); } catch (e) { alert(e.message); }
+  };
+
+  const onTest = async (id) => {
+    setTesting(id);
+    setTestMsg(prev => ({ ...prev, [id]: null }));
+    try {
+      const r = await aiApi.testProvider(id);
+      setTestMsg(prev => ({ ...prev, [id]: r.ok ? "OK" : r.error }));
+    } catch (e) { setTestMsg(prev => ({ ...prev, [id]: e.message })); }
+    finally { setTesting(null); }
+  };
+
+  const providerIcon = (p) => {
+    const pt = p.provider_type || "";
+    if (pt in _AI_TYPE_META) return _AI_TYPE_META[pt].icon;
+    if (pt.includes("claude")) return Icons.Brain;
+    if (pt.includes("openai")) return Icons.Cloud;
+    if (pt.includes("gemini")) return Icons.Sparkles;
+    return Icons.Brain;
+  };
+
   return (
     <>
-      <div className="card-head"><div><div className="card-title">AI Providers</div><div className="card-sub" style={{marginTop: 0}}>LLM backends used for finding validation and PoC generation. Configured via .env on the backend.</div></div></div>
-      <div className="card-body" style={{display: "flex", flexDirection: "column", gap: 12}}>
+      <div className="card-head">
+        <div><div className="card-title">AI Providers</div><div className="card-sub" style={{marginTop: 0}}>LLM backends for finding validation and PoC generation.</div></div>
+        {isAdmin() && (
+          <div className="actions">
+            <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}><Icons.Plus size={12}/> Add provider</button>
+          </div>
+        )}
+      </div>
+      <div className="card-body" style={{display: "flex", flexDirection: "column", gap: 10}}>
         {error && <div style={{color: "var(--err)", fontSize: 13}}><Icons.AlertTriangle size={13}/> {error}</div>}
         {providers === null ? (
-          <div style={{color: "var(--text-3)", fontSize: 13}}>Loading…</div>
+          <div style={{color: "var(--text-3)", fontSize: 13}}>Loading...</div>
         ) : providers.length === 0 ? (
-          <div style={{padding: 24, color: "var(--text-3)", fontSize: 13, border: "1px dashed var(--line)", borderRadius: 8, lineHeight: 1.65}}>
-            <div style={{color: "var(--text-1)", fontWeight: 500, marginBottom: 8}}>No AI providers detected.</div>
-            Configure at least one provider on the backend host, then restart the <span className="mono">backend</span> + <span className="mono">worker</span> containers:
-            <ul style={{margin: "10px 0 0 18px", padding: 0, display: "flex", flexDirection: "column", gap: 6}}>
-              <li><strong style={{color: "var(--text-1)"}}>Claude CLI</strong> — install <span className="mono">@anthropic-ai/claude-code</span> on the host (already in the backend Dockerfile), then run <span className="mono">claude login</span> once. The CLI handles its own auth — no API key in <span className="mono">.env</span>.</li>
-              <li><strong style={{color: "var(--text-1)"}}>Azure OpenAI</strong> — set <span className="mono">AZURE_OPENAI_ENDPOINT</span> + <span className="mono">AZURE_OPENAI_API_KEY</span> in <span className="mono">.env</span>.</li>
-              <li><strong style={{color: "var(--text-1)"}}>Gemini</strong> — set <span className="mono">GEMINI_API_KEY</span> in <span className="mono">.env</span>.</li>
-            </ul>
+          <div style={{padding: 24, color: "var(--text-3)", fontSize: 13, border: "1px dashed var(--line)", borderRadius: 8}}>
+            No AI providers configured. Click "Add provider" to add an API key, or install a CLI tool (Claude CLI, Codex) on the server.
           </div>
         ) : (
           providers.map(p => {
-            const I = p.id?.includes("claude") || p.id?.includes("anthropic") ? Icons.Brain
-                    : p.id?.includes("openai") ? Icons.Cloud
-                    : p.id?.includes("gemini") || p.id?.includes("google") ? Icons.Sparkles
-                    : Icons.Brain;
+            const I = providerIcon(p);
+            const badge = _SOURCE_BADGE[p.source] || _SOURCE_BADGE.env;
+            const isDb = p.source === "db";
+            const tm = testMsg[p.id];
             return (
-              <div key={p.id} style={{display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 8}}>
+              <div key={p.id} style={{display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 8, opacity: p.enabled === false ? 0.5 : 1}}>
                 <div style={{width: 36, height: 36, borderRadius: 8, background: "var(--surface-2)", display: "grid", placeItems: "center", color: "var(--text-1)"}}><I size={16}/></div>
-                <div style={{flex: 1}}>
-                  <div style={{fontSize: 13.5, color: "var(--text-0)", fontWeight: 500}}>{p.name || p.id}</div>
-                  <div style={{fontSize: 12, color: "var(--text-3)"}}>{p.model || p.id}</div>
+                <div style={{flex: 1, minWidth: 0}}>
+                  <div style={{display: "flex", alignItems: "center", gap: 8}}>
+                    <span style={{fontSize: 13.5, color: "var(--text-0)", fontWeight: 500}}>{p.name}</span>
+                    <span style={{fontSize: 10, padding: "1px 6px", borderRadius: 4, background: badge.bg, color: badge.color, fontWeight: 600}}>{badge.label}</span>
+                  </div>
+                  <div style={{fontSize: 12, color: "var(--text-3)", fontFamily: "var(--font-mono)"}}>{p.model}{p.endpoint ? ` @ ${p.endpoint}` : ""}</div>
+                  {tm && <div style={{fontSize: 11, marginTop: 2, color: tm === "OK" ? "var(--ok)" : "var(--err)"}}>{tm === "OK" ? "Test passed" : tm}</div>}
                 </div>
-                <Status s="done"/>
+                <div style={{display: "flex", gap: 6, alignItems: "center"}}>
+                  {isDb && isAdmin() && (
+                    <>
+                      <button className="btn btn-ghost btn-sm" onClick={() => onTest(p.id)} disabled={testing === p.id}>
+                        {testing === p.id ? <Icons.Refresh size={11} className="spin"/> : <Icons.Check size={11}/>} Test
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => onToggle(p.id, p.enabled)}>
+                        {p.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" style={{color: "var(--err)"}} onClick={() => onDelete(p.id)}>
+                        <Icons.Trash size={12}/>
+                      </button>
+                    </>
+                  )}
+                  {!isDb && <Status s="done"/>}
+                </div>
               </div>
             );
           })
         )}
+      </div>
+      {showAdd && <AddAIProviderModal close={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); }}/>}
+    </>
+  );
+}
+
+function AddAIProviderModal({ close, onSaved }) {
+  const [providerType, setProviderType] = useState("openai");
+  const [name, setName] = useState("");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const meta = _AI_TYPE_META[providerType] || {};
+  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat";
+
+  useEffect(() => {
+    setName(meta.label || providerType);
+    setModel(meta.models?.[0] || "");
+    setEndpoint("");
+  }, [providerType]);
+
+  const submit = async () => {
+    setError("");
+    setSubmitting(true);
+    try {
+      await aiApi.saveProvider({ provider_type: providerType, name, model, api_key: apiKey, endpoint: endpoint || undefined });
+      onSaved();
+    } catch (e) { setError(e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <>
+      <div className="drawer-backdrop" onClick={close}/>
+      <div className="modal" style={{maxWidth: 500}}>
+        <div className="drawer-head">
+          <Icons.Brain size={16} color="var(--brand)"/>
+          <span style={{fontSize: 14, fontWeight: 600, color: "var(--text-0)"}}>Add AI provider</span>
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={close} style={{marginLeft: "auto"}}><Icons.X size={14}/></button>
+        </div>
+        <div style={{padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14}}>
+          <div>
+            <label className="form-label">Provider type</label>
+            <select className="form-input" value={providerType} onChange={e => setProviderType(e.target.value)}>
+              {Object.entries(_AI_TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Display name</label>
+            <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="My OpenAI"/>
+          </div>
+          <div>
+            <label className="form-label">Model</label>
+            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
+            {meta.models?.length > 0 && (
+              <datalist id="ai-model-list">
+                {meta.models.map(m => <option key={m} value={m}/>)}
+              </datalist>
+            )}
+          </div>
+          <div>
+            <label className="form-label">API key</label>
+            <input className="form-input" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..."/>
+          </div>
+          {needsEndpoint && (
+            <div>
+              <label className="form-label">Endpoint URL</label>
+              <input className="form-input" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder={providerType === "azure_openai" ? "https://your-resource.openai.azure.com" : "https://api.example.com/v1"}/>
+            </div>
+          )}
+          {error && <div style={{color: "var(--err)", fontSize: 13}}><Icons.AlertTriangle size={12}/> {error}</div>}
+          <button className="btn btn-primary" onClick={submit} disabled={submitting || !name || !model || !apiKey}>
+            {submitting ? "Adding..." : "Add provider"}
+          </button>
+        </div>
       </div>
     </>
   );
@@ -1033,6 +1180,107 @@ const INTEGRATION_PROVIDERS = [
   { provider: "email",   name: "Email (SMTP)",     cat: "Email",  desc: "Forward findings via SMTP", icon: Icons.Mail },
   { provider: "webhook", name: "Webhook",          cat: "Custom", desc: "POST events to your own HTTP endpoint", icon: Icons.Globe },
 ];
+
+const NOTIF_EVENTS = [
+  { key: "critical_finding",     label: "Critical finding detected" },
+  { key: "cisa_kev_match",       label: "CISA KEV match" },
+  { key: "scan_completed",       label: "Scan completed" },
+  { key: "scan_failed",          label: "Scan failed" },
+  { key: "new_asset_discovered", label: "New asset discovered" },
+  { key: "weekly_digest",        label: "Weekly digest" },
+];
+const NOTIF_CHANNELS = ["email", "slack", "webhook"];
+
+function NotificationPrefsPanel() {
+  const [prefs, setPrefs] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    notificationPrefsApi.get()
+      .then(r => { setPrefs(r); })
+      .catch(() => setMsg("Failed to load preferences"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (eventKey, channel) => {
+    setPrefs(prev => {
+      const updated = {
+        ...prev,
+        [eventKey]: { ...prev[eventKey], [channel]: !prev[eventKey][channel] },
+      };
+      // Auto-save on every toggle
+      setSaving(true);
+      setMsg("");
+      notificationPrefsApi.save(updated)
+        .then(r => { setPrefs(r); setMsg("Saved"); })
+        .catch(() => setMsg("Failed to save"))
+        .finally(() => setSaving(false));
+      return updated;
+    });
+  };
+
+  const reset = () => {
+    setSaving(true);
+    setMsg("");
+    notificationPrefsApi.reset()
+      .then(r => { setPrefs(r); setMsg("Reset to defaults"); })
+      .catch(() => setMsg("Failed to reset"))
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Notifications</div>
+          <div className="card-sub" style={{marginTop: 0}}>Choose what triggers an alert and where it goes. Changes save automatically.</div>
+        </div>
+        <div style={{display: "flex", gap: 8, alignItems: "center"}}>
+          {msg && <span style={{fontSize: 12, color: msg.startsWith("Failed") ? "var(--err)" : "var(--ok)"}}>{msg}</span>}
+          {saving && <span style={{fontSize: 12, color: "var(--text-3)"}}>Saving...</span>}
+          <button className="btn btn-ghost btn-sm" onClick={reset} disabled={saving}>Reset defaults</button>
+        </div>
+      </div>
+      <div className="card-body">
+        {loading && <div style={{textAlign: "center", padding: 20, color: "var(--text-3)"}}>Loading...</div>}
+        {!loading && prefs && (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Event</th>
+                {NOTIF_CHANNELS.map(ch => (
+                  <th key={ch} style={{width: 80, textTransform: "capitalize"}}>{ch}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {NOTIF_EVENTS.map(({ key, label }) => (
+                <tr key={key}>
+                  <td style={{color: "var(--text-1)", fontSize: 13}}>{label}</td>
+                  {NOTIF_CHANNELS.map(ch => (
+                    <td key={ch}>
+                      <input
+                        type="checkbox"
+                        checked={!!(prefs[key] && prefs[key][ch])}
+                        onChange={() => toggle(key, ch)}
+                        style={{accentColor: "var(--brand)"}}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
 
 function IntegrationsPanel() {
   const [installed, setInstalled] = useState([]);
@@ -1301,6 +1549,11 @@ function IntegrationConfigModal({ app, close, onSaved }) {
   );
 }
 
+const NOTIFY_CHANNEL_OPTIONS = [
+  "@security-leads", "@asset-owner", "@soc-team", "@devops",
+  "#security-alerts", "#incidents", "email:security@company.com", "webhook",
+];
+
 function SLAPolicies() {
   const [policies, setPolicies] = useState([]);
   const [breachAction, setBreachAction] = useState("notify");
@@ -1311,6 +1564,8 @@ function SLAPolicies() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState(null);
+  const [addNotifyFor, setAddNotifyFor] = useState(null);
+  const [customChannel, setCustomChannel] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -1327,8 +1582,33 @@ function SLAPolicies() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!addNotifyFor) return;
+    const close = () => setAddNotifyFor(null);
+    const timer = setTimeout(() => document.addEventListener("click", close), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("click", close); };
+  }, [addNotifyFor]);
+
   const update = (sev, key, value) => {
     setPolicies(p => p.map(x => x.sev === sev ? { ...x, [key]: value } : x));
+  };
+
+  const addNotifyChannel = (sev, channel) => {
+    if (!channel) return;
+    setPolicies(p => p.map(x => {
+      if (x.sev !== sev) return x;
+      if (x.notify.includes(channel)) return x;
+      return { ...x, notify: [...x.notify, channel] };
+    }));
+    setAddNotifyFor(null);
+    setCustomChannel("");
+  };
+
+  const removeNotifyChannel = (sev, channel) => {
+    setPolicies(p => p.map(x => {
+      if (x.sev !== sev) return x;
+      return { ...x, notify: x.notify.filter(n => n !== channel) };
+    }));
   };
 
   const save = async () => {
@@ -1420,11 +1700,47 @@ function SLAPolicies() {
                   </label>
                 </td>
                 <td>
-                  <div style={{display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center"}}>
+                  <div style={{display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", position: "relative"}}>
                     {p.notify.map(n => (
-                      <span key={n} className="tag" style={{fontSize: 11}}>{n}</span>
+                      <span key={n} className="tag" style={{fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4}}>
+                        {n}
+                        <span onClick={() => removeNotifyChannel(p.sev, n)}
+                              style={{cursor: "pointer", opacity: 0.5, fontSize: 13, lineHeight: 1}}
+                              title="Remove">&times;</span>
+                      </span>
                     ))}
-                    <button className="btn btn-ghost btn-sm" style={{height: 22, padding: "0 8px", fontSize: 11, color: "var(--text-3)"}}>+ Add</button>
+                    <button className="btn btn-ghost btn-sm"
+                            onClick={() => setAddNotifyFor(addNotifyFor === p.sev ? null : p.sev)}
+                            style={{height: 22, padding: "0 8px", fontSize: 11, color: "var(--text-3)"}}>+ Add</button>
+                    {addNotifyFor === p.sev && (
+                      <div onClick={e => e.stopPropagation()} style={{
+                        position: "absolute", top: "100%", left: 0, zIndex: 50, marginTop: 4,
+                        background: "var(--surface-0)", border: "1px solid var(--line-strong)",
+                        borderRadius: 8, boxShadow: "var(--shadow-3)", padding: 6, minWidth: 220,
+                      }}>
+                        <div style={{padding: "4px 8px", fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase"}}>Add channel</div>
+                        {NOTIFY_CHANNEL_OPTIONS.filter(c => !p.notify.includes(c)).map(ch => (
+                          <button key={ch} onClick={() => addNotifyChannel(p.sev, ch)} style={{
+                            display: "block", width: "100%", textAlign: "left",
+                            padding: "6px 10px", fontSize: 12.5, color: "var(--text-1)",
+                            background: "transparent", border: "none", borderRadius: 4, cursor: "pointer",
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = "var(--surface-1)"}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                            {ch}
+                          </button>
+                        ))}
+                        <div style={{borderTop: "1px solid var(--line)", marginTop: 4, paddingTop: 6, display: "flex", gap: 4}}>
+                          <input className="form-input" placeholder="Custom channel..."
+                                 value={customChannel} onChange={e => setCustomChannel(e.target.value)}
+                                 onKeyDown={e => { if (e.key === "Enter") { addNotifyChannel(p.sev, customChannel.trim()); } }}
+                                 style={{flex: 1, height: 28, fontSize: 12, padding: "0 8px"}}/>
+                          <button className="btn btn-sm btn-primary" style={{height: 28, padding: "0 10px", fontSize: 11}}
+                                  onClick={() => addNotifyChannel(p.sev, customChannel.trim())}
+                                  disabled={!customChannel.trim()}>Add</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>

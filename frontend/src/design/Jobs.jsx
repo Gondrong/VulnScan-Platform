@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Icons, Status, Empty } from "./icons.jsx";
-import { scanApi } from "../api.js";
+import { scanApi, canEdit } from "../api.js";
 import { NewScanModal } from "./Assets.jsx";
 
 function durationOf(j) {
@@ -85,8 +85,8 @@ export function Jobs({ openJob }) {
           <div className="sub">All vulnerability scans across your environments. Click any job to inspect findings.</div>
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => setShowSchedules(true)}><Icons.Clock size={14}/> Schedule</button>
-          <button className="btn btn-primary" onClick={() => setShowNewScan(true)}><Icons.Plus size={14}/> New scan</button>
+          {canEdit() && <button className="btn" onClick={() => setShowSchedules(true)}><Icons.Clock size={14}/> Schedule</button>}
+          {canEdit() && <button className="btn btn-primary" onClick={() => setShowNewScan(true)}><Icons.Plus size={14}/> New scan</button>}
         </div>
       </div>
 
@@ -134,6 +134,7 @@ export function Jobs({ openJob }) {
                   <th style={{width: 100}}>Profile</th>
                   <th style={{width: 130}}>Status</th>
                   <th style={{width: 90}}>Duration</th>
+                  <th style={{width: 100}}>Started by</th>
                   <th style={{width: 140}}>Started</th>
                   <th style={{width: 80}}/>
                 </tr>
@@ -178,17 +179,18 @@ export function Jobs({ openJob }) {
                       ) : <Status s={j.status}/>}
                     </td>
                     <td className="num muted">{durationOf(j)}</td>
+                    <td className="muted" style={{fontSize: 12}}>{j.created_by || "—"}</td>
                     <td className="muted" style={{fontSize: 12}}>
                       {j.created_at ? new Date(j.created_at).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "—"}
                     </td>
                     <td>
-                      {(j.status === "running" || j.status === "queued") ? (
+                      {canEdit() && (j.status === "running" || j.status === "queued") ? (
                         <button className="btn btn-icon btn-sm" title="Cancel scan"
                                 onClick={e => { e.stopPropagation(); setCancelTarget(j); }}
                                 style={{color: "var(--err)", borderColor: "var(--line)"}}>
                           <Icons.Stop size={12}/>
                         </button>
-                      ) : (
+                      ) : canEdit() ? (
                         <div style={{display: "flex", gap: 4}}>
                           <button className="btn btn-icon btn-ghost btn-sm" title="Re-scan"
                                   onClick={async e => {
@@ -204,7 +206,7 @@ export function Jobs({ openJob }) {
                             <Icons.Trash size={13}/>
                           </button>
                         </div>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -386,16 +388,20 @@ function SchedulesModal({ close }) {
                       <td><span className="tag">{freq}</span></td>
                       <td className="muted" style={{fontSize: 12}}>{s.next_run_at ? new Date(s.next_run_at).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "—"}</td>
                       <td>
-                        <button onClick={() => onToggle(s.id)} className="btn btn-sm" style={{background: s.enabled ? "var(--brand-soft)" : "var(--surface-1)", color: s.enabled ? "var(--brand-text)" : "var(--text-3)", borderColor: s.enabled ? "var(--brand-line)" : "var(--line)"}}>
-                          {s.enabled ? "On" : "Off"}
-                        </button>
+                        {canEdit() ? (
+                          <button onClick={() => onToggle(s.id)} className="btn btn-sm" style={{background: s.enabled ? "var(--brand-soft)" : "var(--surface-1)", color: s.enabled ? "var(--brand-text)" : "var(--text-3)", borderColor: s.enabled ? "var(--brand-line)" : "var(--line)"}}>
+                            {s.enabled ? "On" : "Off"}
+                          </button>
+                        ) : <span className="tag">{s.enabled ? "On" : "Off"}</span>}
                       </td>
+                      {canEdit() && (
                       <td>
                         <button className="btn btn-icon btn-ghost btn-sm" title="Delete schedule"
                                 onClick={() => onDelete(s.id, s.name)} style={{color: "var(--text-3)"}}>
                           <Icons.Trash size={13}/>
                         </button>
                       </td>
+                      )}
                     </tr>
                   );
                 })}

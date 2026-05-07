@@ -472,6 +472,44 @@ function CVEDrawer({ cveId, close }) {
                 </Section>
               )}
 
+              {/* Vendor Security Advisories */}
+              {rec.vendor_advisories && Object.keys(rec.vendor_advisories).length > 0 && (
+                <Section title={`Vendor Security Advisories (${Object.values(rec.vendor_advisories).reduce((s, a) => s + a.length, 0)})`}>
+                  <div style={{display: "flex", flexDirection: "column", gap: 10}}>
+                    {Object.entries(rec.vendor_advisories).sort((a, b) => b[1].length - a[1].length).map(([vendor, advisories]) => (
+                      <div key={vendor}>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                          color: "#fff",
+                          background: _vendorColor(vendor),
+                          marginBottom: 4,
+                        }}>{_vendorLabel(vendor)}</span>
+                        <div style={{display: "flex", flexDirection: "column", gap: 3, marginTop: 4}}>
+                          {advisories.slice(0, 15).map((adv, i) => (
+                            <a key={i} href={adv.url} target="_blank" rel="noopener noreferrer"
+                               className="mono" style={{fontSize: 11.5, color: "var(--brand)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>
+                              {adv.advisory_id || adv.url}
+                              {adv.tags && adv.tags.length > 0 && (
+                                <span style={{color: "var(--text-3)", fontSize: 10, marginLeft: 6}}>{adv.tags[0]}</span>
+                              )}
+                            </a>
+                          ))}
+                          {advisories.length > 15 && (
+                            <span style={{fontSize: 11, color: "var(--text-3)"}}>+ {advisories.length - 15} more</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
               {/* References */}
               {Array.isArray(rec.refs) && rec.refs.length > 0 && (
                 <Section title={`References (${rec.refs.length})`}>
@@ -552,3 +590,22 @@ function scoreColor(s) {
   if (s >= 40) return "#f5d142";
   return "var(--text-1)";
 }
+
+const _VENDOR_COLORS = {
+  redhat: "#cc0000", ubuntu: "#e95420", debian: "#a80030",
+  aws: "#ff9900", gcp: "#4285f4", microsoft: "#00a4ef",
+  oracle: "#f80000", mozilla: "#ff7139", suse: "#73ba25",
+  fedora: "#51a2da", alpine: "#0d597f", gentoo: "#54487a",
+  archlinux: "#1793d1",
+};
+
+const _VENDOR_LABELS = {
+  redhat: "Red Hat", ubuntu: "Ubuntu", debian: "Debian",
+  aws: "AWS", gcp: "GCP", microsoft: "Microsoft",
+  oracle: "Oracle", mozilla: "Mozilla", suse: "SUSE",
+  fedora: "Fedora", alpine: "Alpine", gentoo: "Gentoo",
+  archlinux: "Arch Linux",
+};
+
+function _vendorColor(v) { return _VENDOR_COLORS[v] || "var(--text-3)"; }
+function _vendorLabel(v) { return _VENDOR_LABELS[v] || v; }

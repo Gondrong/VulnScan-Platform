@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons, Sev, Risk, Status } from "./icons.jsx";
-import { scanApi, aiApi } from "../api.js";
+import { scanApi, aiApi, canEdit } from "../api.js";
 import { parseProgress } from "./Jobs.jsx";
 import { ReportPreviewModal } from "./Assets.jsx";
 
@@ -81,6 +81,7 @@ export function JobDetail({ job: jobProp, back, openDrawer }) {
           <h1>{job.target}</h1>
           <div className="sub">
             {job.scan_type} scan
+            {job.created_by && <> · by {job.created_by}</>}
             {job.created_at && <> · started {new Date(job.created_at).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})}</>}
             {job.finished_at && <> · finished {new Date(job.finished_at).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})}</>}
           </div>
@@ -88,10 +89,10 @@ export function JobDetail({ job: jobProp, back, openDrawer }) {
         </div>
         <div className="actions">
           <button className="btn" onClick={() => setShowReport(true)} disabled={findings.length === 0}><Icons.Download size={14}/> Download report</button>
-          <button className="btn" onClick={async () => {
+          {canEdit() && <button className="btn" onClick={async () => {
             try { const r = await scanApi.rescanJob(job.id); alert(`Re-scan queued as #${r.id}`); }
             catch (e) { alert(e.message); }
-          }}><Icons.Refresh size={14}/> Re-scan</button>
+          }}><Icons.Refresh size={14}/> Re-scan</button>}
         </div>
       </div>
       {showReport && <ReportPreviewModal report={{

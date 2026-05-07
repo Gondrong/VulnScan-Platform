@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons, Pip, Risk, Status } from "./icons.jsx";
-import { scanApi, assetsApi, reportsApi, apiScannerApi, credentialsApi, webAuthApi } from "../api.js";
+import { scanApi, assetsApi, reportsApi, apiScannerApi, credentialsApi, webAuthApi, canEdit } from "../api.js";
 
 export function Assets({ openAsset }) {
   const [view, setView] = useState("grid");
@@ -35,8 +35,8 @@ export function Assets({ openAsset }) {
             <button className={`btn btn-sm ${view === "grid" ? "" : "btn-ghost"}`} style={{border: "none", background: view === "grid" ? "var(--surface-2)" : "transparent"}} onClick={() => setView("grid")}><Icons.Dashboard size={12}/> Grid</button>
             <button className={`btn btn-sm ${view === "tree" ? "" : "btn-ghost"}`} style={{border: "none", background: view === "tree" ? "var(--surface-2)" : "transparent"}} onClick={() => setView("tree")}><Icons.Layers size={12}/> Tree</button>
           </div>
-          <button className="btn" onClick={() => setShowFolder(true)}><Icons.FolderOpen size={14}/> New folder</button>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icons.Plus size={14}/> New scan</button>
+          {canEdit() && <button className="btn" onClick={() => setShowFolder(true)}><Icons.FolderOpen size={14}/> New folder</button>}
+          {canEdit() && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icons.Plus size={14}/> New scan</button>}
         </div>
       </div>
 
@@ -233,9 +233,9 @@ export function AssetDetail({ asset: initialAsset, back }) {
           <div className="sub">{asset.desc}</div>
         </div>
         <div className="actions">
-          <button className="btn"><Icons.Edit size={14}/> Edit</button>
+          {canEdit() && <button className="btn"><Icons.Edit size={14}/> Edit</button>}
           <button className="btn"><Icons.Download size={14}/> Export report</button>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icons.Plus size={14}/> Add target & scan</button>
+          {canEdit() && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icons.Plus size={14}/> Add target & scan</button>}
         </div>
       </div>
 
@@ -419,6 +419,12 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [apiChecks, setApiChecks] = useState([]);
   const [selectedApiChecks, setSelectedApiChecks] = useState(new Set());
+  const [apiAuthType, setApiAuthType]   = useState("none");
+  const [apiBearerToken, setApiBearerToken] = useState("");
+  const [apiKeyName, setApiKeyName]     = useState("X-API-Key");
+  const [apiKeyValue, setApiKeyValue]   = useState("");
+  const [apiBasicUser, setApiBasicUser] = useState("");
+  const [apiBasicPass, setApiBasicPass] = useState("");
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduleConfig, setScheduleConfig] = useState({
     interval_hours: 24,
@@ -673,6 +679,13 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
       setSubmitting(true);
       try {
         const config = { base_url: base, checks: [...selectedApiChecks] };
+        if (apiAuthType === "bearer" && apiBearerToken.trim()) {
+          config.auth = { type: "bearer", token: apiBearerToken.trim() };
+        } else if (apiAuthType === "basic" && apiBasicUser) {
+          config.auth = { type: "basic", username: apiBasicUser, password: apiBasicPass };
+        } else if (apiAuthType === "apikey" && apiKeyValue.trim()) {
+          config.auth = { type: "apikey", key_name: apiKeyName || "X-API-Key", key_value: apiKeyValue.trim(), key_in: "header" };
+        }
         if (apiSource === "url" && apiUrl.trim()) config.spec_url = apiUrl.trim();
         const fd = new FormData();
         fd.append("config_json", JSON.stringify(config));
@@ -887,13 +900,51 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
               {/* Authentication */}
               <div>
                 <label className="form-label">Authentication</label>
-                <select className="form-input">
-                  <option>None</option>
-                  <option>Bearer token (credential)</option>
-                  <option>Basic auth</option>
-                  <option>API key (header)</option>
-                  <option>OAuth 2.0</option>
+                <select className="form-input" value={apiAuthType} onChange={e => setApiAuthType(e.target.value)}>
+                  <option value="none">None</option>
+                  <option value="bearer">Bearer token</option>
+                  <option value="basic">Basic auth</option>
+                  <option value="apikey">API key (header)</option>
                 </select>
+
+                {apiAuthType === "bearer" && (
+                  <div style={{marginTop: 8}}>
+                    <label className="form-label">Token</label>
+                    <input className="form-input mono" type="password" placeholder="Paste your Bearer token"
+                           value={apiBearerToken} onChange={e => setApiBearerToken(e.target.value)}/>
+                    <div className="form-help">Sent as <span className="mono">Authorization: Bearer &lt;token&gt;</span></div>
+                  </div>
+                )}
+
+                {apiAuthType === "basic" && (
+                  <div style={{marginTop: 8, display: "flex", flexDirection: "column", gap: 8}}>
+                    <div>
+                      <label className="form-label">Username</label>
+                      <input className="form-input" placeholder="Username"
+                             value={apiBasicUser} onChange={e => setApiBasicUser(e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="form-label">Password</label>
+                      <input className="form-input" type="password" placeholder="Password"
+                             value={apiBasicPass} onChange={e => setApiBasicPass(e.target.value)}/>
+                    </div>
+                  </div>
+                )}
+
+                {apiAuthType === "apikey" && (
+                  <div style={{marginTop: 8, display: "flex", flexDirection: "column", gap: 8}}>
+                    <div>
+                      <label className="form-label">Header name</label>
+                      <input className="form-input mono" placeholder="X-API-Key"
+                             value={apiKeyName} onChange={e => setApiKeyName(e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="form-label">Key value</label>
+                      <input className="form-input mono" type="password" placeholder="Paste your API key"
+                             value={apiKeyValue} onChange={e => setApiKeyValue(e.target.value)}/>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Security checks (replaces static Test depth) */}

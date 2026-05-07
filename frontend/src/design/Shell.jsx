@@ -15,6 +15,7 @@ export function Nav({ page, setPage, onSignOut, counts = {} }) {
     ]},
     { section: "Intelligence", items: [
       { id: "threat-intel", label: "Threat Intel", icon: Icons.Target, count: counts.threat_kev },
+      { id: "attack-graph", label: "Attack Graph", icon: Icons.Graph },
     ]},
     { section: "Configuration", items: [
       { id: "credentials", label: "Credentials", icon: Icons.Key, count: counts.credentials },
@@ -27,7 +28,7 @@ export function Nav({ page, setPage, onSignOut, counts = {} }) {
     <aside className="nav">
       <div className="nav-brand">
         <div className="nav-logo">V</div>
-        <div className="nav-name">VulnScan<span className="ver">v3.0</span></div>
+        <div className="nav-name">VulnScan<span className="ver">v3.0.1</span></div>
       </div>
       <div className="nav-search">
         <span className="icon"><Icons.Search size={14}/></span>
@@ -90,10 +91,10 @@ function NavUser({ onSignOut, setPage }) {
             <div className="nav-user-name">{email.split("@")[0]}</div>
             <div style={{fontSize: 11.5, color: "var(--text-3)", marginTop: 2}}>{email}</div>
           </div>
-          <button className="nav-user-menu-item" onClick={() => { setOpen(false); setPage && setPage("settings"); }}>
+          <button className="nav-user-menu-item" onClick={() => { setOpen(false); setPage && setPage("settings", "users"); }}>
             <Icons.User size={13}/> My profile
           </button>
-          <button className="nav-user-menu-item" onClick={() => { setOpen(false); setPage && setPage("settings"); }}>
+          <button className="nav-user-menu-item" onClick={() => { setOpen(false); setPage && setPage("settings", "general"); }}>
             <Icons.Settings size={13}/> Settings
           </button>
           <div className="nav-user-menu-sep"/>
