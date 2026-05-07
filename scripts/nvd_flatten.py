@@ -6,8 +6,8 @@ Supports BOTH:
   - Old NVD JSON feeds (retired Dec 2023): {"CVE_Items": [...]}
   - NVD API 2.0 responses: {"vulnerabilities": [{"cve": {...}}, ...]}
 """
-import argparse, json, sys
-from typing import Any, Dict, List, Optional
+import argparse, json, re, sys
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def pick_cvss(metrics: Dict[str, Any]) -> tuple:
@@ -56,13 +56,66 @@ def first_desc(cve: Dict[str, Any]) -> str:
     return ""
 
 
-def refs(cve: Dict[str, Any]) -> List[str]:
-    rs = []
+_VENDOR_PATTERNS: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"access\.redhat\.com/errata/(RH[A-Z]{2}-\d{4}:\d+)"), "redhat"),
+    (re.compile(r"access\.redhat\.com/security/cve/"), "redhat"),
+    (re.compile(r"bugzilla\.redhat\.com/"), "redhat"),
+    (re.compile(r"ubuntu\.com/security/notices/(USN-[\d]+-[\d]+)"), "ubuntu"),
+    (re.compile(r"ubuntu\.com/security/CVE"), "ubuntu"),
+    (re.compile(r"launchpad\.net/bugs/"), "ubuntu"),
+    (re.compile(r"security-tracker\.debian\.org"), "debian"),
+    (re.compile(r"debian\.org/security/\d+/(dsa-\d+)"), "debian"),
+    (re.compile(r"lists\.debian\.org/debian-"), "debian"),
+    (re.compile(r"aws\.amazon\.com/security"), "aws"),
+    (re.compile(r"cloud\.google\.com.*security"), "gcp"),
+    (re.compile(r"cloud\.google\.com/support/bulletins"), "gcp"),
+    (re.compile(r"msrc\.microsoft\.com"), "microsoft"),
+    (re.compile(r"portal\.msrc\.microsoft\.com"), "microsoft"),
+    (re.compile(r"oracle\.com/security-alerts"), "oracle"),
+    (re.compile(r"oracle\.com/technetwork/security"), "oracle"),
+    (re.compile(r"mozilla\.org/.*/security.*/mfsa"), "mozilla"),
+    (re.compile(r"suse\.com/.*security"), "suse"),
+    (re.compile(r"lists\.suse\.com/pipermail/sle-security"), "suse"),
+    (re.compile(r"lists\.opensuse\.org/.*security"), "suse"),
+    (re.compile(r"lists\.fedoraproject\.org/"), "fedora"),
+    (re.compile(r"bodhi\.fedoraproject\.org/"), "fedora"),
+    (re.compile(r"alpine\.secdb"), "alpine"),
+    (re.compile(r"security\.gentoo\.org/glsa/"), "gentoo"),
+    (re.compile(r"security\.archlinux\.org/"), "archlinux"),
+]
+
+
+def classify_ref(url: str, tags: List[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Classify a reference URL by vendor and extract advisory ID if possible."""
+    for pattern, vendor in _VENDOR_PATTERNS:
+        m = pattern.search(url)
+        if m:
+            advisory_id = m.group(1) if m.lastindex and m.lastindex >= 1 else None
+            return vendor, advisory_id
+    return None, None
+
+
+def refs_and_advisories(cve: Dict[str, Any]) -> Tuple[List[str], Dict[str, list]]:
+    """Extract plain URL list and vendor-grouped advisories from NVD references."""
+    urls: List[str] = []
+    advisories: Dict[str, list] = {}
+
     for r in (cve.get("references") or []):
         url = r.get("url")
-        if url:
-            rs.append(url)
-    return rs[:10]
+        if not url:
+            continue
+        urls.append(url)
+        tags = r.get("tags") or []
+        vendor, advisory_id = classify_ref(url, tags)
+        if vendor:
+            entry: Dict[str, Any] = {"url": url}
+            if advisory_id:
+                entry["advisory_id"] = advisory_id
+            if tags:
+                entry["tags"] = tags
+            advisories.setdefault(vendor, []).append(entry)
+
+    return urls[:25], advisories
 
 
 def extract_cpe_matches(configurations: Any) -> List[Dict[str, Any]]:
@@ -201,14 +254,18 @@ def main():
             configs = cve.get("configurations") or v.get("configurations") or {}
             matches = extract_cpe_matches(configs)
 
+            url_list, vendor_adv = refs_and_advisories(cve)
+
             flattened[cve_id] = {
                 "cve": cve_id,
                 "summary": summary,
                 "severity": sev,
                 "cvss": score,
-                "refs": refs(cve),
+                "refs": url_list,
                 "matches": matches,
             }
+            if vendor_adv:
+                flattened[cve_id]["vendor_advisories"] = vendor_adv
 
             count += 1
             if args.max and count >= args.max:
@@ -216,8 +273,8 @@ def main():
         if args.max and count >= args.max:
             break
 
-    # Convert dict -> list, keep only entries with CPE matches
-    out_list = [x for x in flattened.values() if x.get("matches")]
+    # Convert dict -> list, include all CVEs (with and without CPE matches)
+    out_list = list(flattened.values())
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out_list, f, ensure_ascii=False)
