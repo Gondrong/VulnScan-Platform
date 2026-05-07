@@ -20,6 +20,14 @@ export function setUser(u)  { localStorage.setItem("vs_user", JSON.stringify(u))
 export function getUser() {
   try { return JSON.parse(localStorage.getItem("vs_user") || "null"); } catch { return null; }
 }
+export function canEdit() {
+  const u = getUser();
+  return u && (u.role === "admin" || u.role === "analyst");
+}
+export function isAdmin() {
+  const u = getUser();
+  return u && u.role === "admin";
+}
 
 export async function api(path, opts = {}) {
   const token = getToken();
@@ -135,10 +143,14 @@ export const integrationsApi = {
 
 // ── AI ───────────────────────────────────────────────────────────────
 export const aiApi = {
-  providers:   ()      => api("/ai/providers"),
-  analyze:     (body)  => api("/ai/analyze", { method: "POST", body }),
-  status:      (id)    => api(`/ai/status/${id}`),
-  jobResults:  (jobId) => api(`/ai/results/${jobId}`),
+  providers:      ()          => api("/ai/providers"),
+  analyze:        (body)      => api("/ai/analyze", { method: "POST", body }),
+  status:         (id)        => api(`/ai/status/${id}`),
+  jobResults:     (jobId)     => api(`/ai/results/${jobId}`),
+  saveProvider:   (body)      => api("/ai/providers", { method: "POST", body }),
+  updateProvider: (id, body)  => api(`/ai/providers/${id}`, { method: "PUT", body }),
+  deleteProvider: (id)        => api(`/ai/providers/${id}`, { method: "DELETE" }),
+  testProvider:   (id)        => api(`/ai/providers/${id}/test`, { method: "POST" }),
 };
 
 // ── Assets ───────────────────────────────────────────────────────────
@@ -194,6 +206,13 @@ export const slaApi = {
   reset:   ()     => api("/settings/sla/reset", { method: "POST" }),
 };
 
+// ── Notification Preferences ────────────────────────────────────────
+export const notificationPrefsApi = {
+  get:   ()     => api("/settings/notifications"),
+  save:  (body) => api("/settings/notifications", { method: "PUT", body }),
+  reset: ()     => api("/settings/notifications/reset", { method: "POST" }),
+};
+
 // ── Events (live activity) ───────────────────────────────────────────
 export const eventsApi = {
   recent:  (limit = 20) => api(`/events/recent?limit=${limit}`),
@@ -226,6 +245,16 @@ export const apiScannerApi = {
   checks:    ()                    => api("/scan/api-scanner/checks"),
   parse:     (formData)            => api("/scan/api-scanner/parse", { method: "POST", body: formData }),
   createJob: (formData)            => api("/scan/api-scanner/jobs",  { method: "POST", body: formData }),
+};
+
+// ── Graph ────────────────────────────────────────────────────────────
+export const graphApi = {
+  attackMap:       ()       => api("/graph/attack-map"),
+  sync:            (full = true) => api(`/graph/sync?full=${full}`, { method: "POST" }),
+  sharedVulns:     ()       => api("/graph/shared-vulns"),
+  blastRadius:     (target) => api(`/graph/blast-radius/${encodeURIComponent(target)}`),
+  stats:           ()       => api("/graph/stats"),
+  mostVulnerable:  ()       => api("/graph/most-vulnerable"),
 };
 
 // ── Scan ─────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import { JobDetail, FindingDrawer } from "./design/JobDetail.jsx";
 import { Assets, AssetDetail, Reports } from "./design/Assets.jsx";
 import { Profiles, Credentials, Datasets, Settings } from "./design/PagesOther.jsx";
 import { ThreatIntel } from "./design/ThreatIntel.jsx";
+import { AttackGraph } from "./design/AttackGraph.jsx";
 import { LoginPage } from "./design/Login.jsx";
 import {
   getToken, logout as apiLogout,
@@ -15,6 +16,7 @@ import {
 export default function App() {
   const [authed, setAuthed] = useState(() => !!getToken());
   const [page, setPage] = useState("dashboard");
+  const [settingsTab, setSettingsTab] = useState(null);
   const [openedJob, setOpenedJob] = useState(null);
   const [openedAsset, setOpenedAsset] = useState(null);
   const [drawerFinding, setDrawerFinding] = useState(null);
@@ -64,11 +66,12 @@ export default function App() {
     if (p === "credentials")  return ["VulnScan", "Credentials"];
     if (p === "datasets")     return ["VulnScan", "Datasets"];
     if (p === "threat-intel") return ["VulnScan", "Threat Intel"];
+    if (p === "attack-graph") return ["VulnScan", "Attack Graph"];
     if (p === "settings")     return ["VulnScan", "Settings"];
     return ["VulnScan"];
   })(page);
 
-  function setPageWrap(p) { setOpenedJob(null); setOpenedAsset(null); setPage(p); }
+  function setPageWrap(p, tab) { setOpenedJob(null); setOpenedAsset(null); setSettingsTab(p === "settings" ? (tab || null) : null); setPage(p); }
 
   return (
     <div className="shell" data-screen-label={page}>
@@ -90,7 +93,8 @@ export default function App() {
           {page === "credentials" && <Credentials/>}
           {page === "datasets"    && <Datasets/>}
           {page === "threat-intel"&& <ThreatIntel/>}
-          {page === "settings"    && <Settings/>}
+          {page === "attack-graph"&& <AttackGraph/>}
+          {page === "settings"    && <Settings initialTab={settingsTab}/>}
         </div>
       </div>
       {drawerFinding && <FindingDrawer finding={drawerFinding} close={() => setDrawerFinding(null)}/>}
