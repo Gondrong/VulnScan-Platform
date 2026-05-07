@@ -35,7 +35,7 @@ class Settings(BaseModel):
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
-    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.0.0")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.0.1")
 
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
