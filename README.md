@@ -31,6 +31,7 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
 | 🤖 **AI prompts overhaul** | Shared scanner-context block, 6-step validation methodology, kill-chain attack chain guidance, three-phase PoC structure (recon → exploit → verify), vulnerability-specific evidence parsing instructions per plugin class |
 | 🔑 **Credential editing** | New Edit button per credential with inline modal; backend `PUT /credentials/{id}` updates individual fields without requiring secret re-entry |
 | 🔧 **Claude CLI fix** | `--max-turns 1→5` fixes "Reached max turns" error on full+exploit analysis; CLI error detection on stdout prevents silent JSON parse failures |
+| 🚀 **Auto updater install** | `bootstrap.sh` now installs the `vulnscan-updater` systemd service automatically — one-click updates from Settings work out of the box |
 | 👤 **Scan attribution** | Every scan job records the user who launched it; creator shown in job listings and details |
 | ♻️ **Dataset refresh hardening** | New `vendor_advisories` dataset kind, lock timeout 30→60 min, file-existence verification, fixed double-fire bug, cache auto-invalidation on dataset modify/delete |
 
@@ -507,7 +508,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
-- **v3.0.2 — 2026-05-14** — Scanner false-positive prevention (14 plugins), AI prompts overhaul, credential editing, Claude CLI max-turns fix
+- **v3.0.2 — 2026-05-14** — Scanner false-positive prevention (14 plugins), AI prompts overhaul, credential editing, auto updater install, Claude CLI max-turns fix
 - **v3.0.1 — 2026-05-07** — Neo4j attack graph overhaul (5 analytical queries, incremental sync, Plugin/Compliance/AssetGroup nodes), notification preferences
  system, AI provider management UI, RBAC on credentials, scan creator tracking, dataset refresh hardening, Attack Graph page
 - **v3.0.0 — 2026-05-03** — Authenticated web scanning, login form inspector, Threat Intel page, IaC scanner, UDP scanner, ephemeral credentials, integrations rewrite, password management
