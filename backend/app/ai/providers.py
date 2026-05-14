@@ -1,10 +1,12 @@
 """
-AI Provider implementations — Azure OpenAI, Claude CLI, Claude API, Gemini.
+AI Provider implementations — Azure OpenAI, Claude CLI, Claude API, Gemini,
+and generic CLI/local-LLM providers auto-detected from the system PATH.
 Each provider wraps its respective API/CLI to provide a uniform generate() interface.
 """
 import json
 import logging
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -79,7 +81,7 @@ class ClaudeCLIProvider(AiProvider):
             self.cli_path,
             "--print",
             "--model", self.model,
-            "--max-turns", "1",
+            "--max-turns", "5",
         ]
 
         try:
@@ -100,6 +102,10 @@ class ClaudeCLIProvider(AiProvider):
         content = proc.stdout.strip()
         if not content:
             raise RuntimeError("Claude CLI returned empty response")
+
+        # Detect CLI error messages that arrive on stdout with rc=0
+        if content.startswith("Error:") and len(content) < 200:
+            raise RuntimeError(f"Claude CLI error: {content}")
 
         # Estimate tokens (Claude CLI doesn't always report usage)
         estimated_tokens = len(combined.split()) + len(content.split())
@@ -226,28 +232,164 @@ class OpenAIProvider(AiProvider):
 
 # ── CLI auto-detection ─────────────────────────────────────────────────────
 
+# Each entry describes how to invoke a CLI tool for text generation.
+# "style" controls how prompts are passed and output is read:
+#   - "claude"  : claude --print --model M --max-turns 1, input via stdin
+#   - "ollama"  : ollama run <model>, input via stdin
+#   - "stdin"   : generic binary that reads stdin, writes stdout (codex, qwen, aichat, mods, fabric, llm)
+#   - "openai_compat" : tool exposes an OpenAI-compatible local server (lmstudio, localai, jan)
+
 _CLI_BINARIES = [
-    {"binary": "claude", "id": "claude_cli", "name": "Claude CLI", "default_model": "claude-opus-4-6"},
-    {"binary": "codex",  "id": "codex_cli",  "name": "Codex CLI",  "default_model": "codex"},
-    {"binary": "qwen",   "id": "qwen_cli",   "name": "Qwen CLI",   "default_model": "qwen"},
+    # ── Cloud / proprietary CLIs ──────────────────────────────
+    {"binary": "claude",    "id": "claude_cli",    "name": "Claude CLI",        "default_model": "claude-opus-4-6",        "style": "claude"},
+    {"binary": "codex",     "id": "codex_cli",     "name": "Codex CLI",         "default_model": "codex",                  "style": "stdin"},
+    {"binary": "gemini",    "id": "gemini_cli",    "name": "Gemini CLI",        "default_model": "gemini-2.5-flash",       "style": "stdin"},
+    {"binary": "copilot",   "id": "copilot_cli",   "name": "GitHub Copilot CLI","default_model": "copilot",                "style": "stdin"},
+
+    # ── Local LLM runners ────────────────────────────────────
+    {"binary": "ollama",    "id": "ollama",        "name": "Ollama",            "default_model": "llama3.1",               "style": "ollama"},
+    {"binary": "llama-cli", "id": "llamacpp",      "name": "llama.cpp",         "default_model": "default",                "style": "stdin"},
+    {"binary": "lmstudio",  "id": "lmstudio",      "name": "LM Studio",         "default_model": "default",                "style": "openai_compat", "endpoint": "http://localhost:1234/v1"},
+    {"binary": "localai",   "id": "localai",       "name": "LocalAI",           "default_model": "default",                "style": "openai_compat", "endpoint": "http://localhost:8080/v1"},
+    {"binary": "jan",       "id": "jan",           "name": "Jan",               "default_model": "default",                "style": "openai_compat", "endpoint": "http://localhost:1337/v1"},
+
+    # ── Multi-provider CLI wrappers ──────────────────────────
+    {"binary": "aichat",    "id": "aichat",        "name": "aichat",            "default_model": "default",                "style": "stdin"},
+    {"binary": "mods",      "id": "mods",          "name": "Mods (charmbracelet)","default_model": "default",              "style": "stdin"},
+    {"binary": "fabric",    "id": "fabric",        "name": "Fabric",            "default_model": "default",                "style": "stdin"},
+    {"binary": "llm",       "id": "llm",           "name": "llm (Simon Willison)","default_model": "default",              "style": "stdin"},
+    {"binary": "qwen",      "id": "qwen_cli",      "name": "Qwen CLI",          "default_model": "qwen",                  "style": "stdin"},
 ]
+
+# Detection cache: (timestamp, results).  Avoids shutil.which() on every request.
+_cli_cache: tuple[float, list[dict]] = (0.0, [])
+_CLI_CACHE_TTL = 30  # seconds
 
 
 def detect_cli_providers() -> list[dict]:
-    """Scan for installed CLI tools and return available ones."""
+    """Scan for installed CLI tools and return available ones (cached)."""
     import shutil
+    global _cli_cache
+    now = time.time()
+    if now - _cli_cache[0] < _CLI_CACHE_TTL and _cli_cache[1] is not None:
+        return _cli_cache[1]
+
     found = []
     for cli in _CLI_BINARIES:
         path = shutil.which(cli["binary"])
         if path:
-            found.append({
+            entry = {
                 "id": cli["id"],
                 "name": cli["name"],
                 "model": cli["default_model"],
                 "source": "cli",
                 "cli_path": path,
-            })
+                "style": cli["style"],
+            }
+            if cli.get("endpoint"):
+                entry["endpoint"] = cli["endpoint"]
+            found.append(entry)
+
+    _cli_cache = (now, found)
     return found
+
+
+def _find_cli_entry(provider_id: str) -> dict | None:
+    """Look up a CLI entry from the detected list by id."""
+    for cli in detect_cli_providers():
+        if cli["id"] == provider_id:
+            return cli
+    return None
+
+
+# ── Generic CLI provider ──────────────────────────────────────────────────
+
+class GenericCLIProvider(AiProvider):
+    """Invokes any stdin/stdout CLI tool for text generation."""
+    name = "generic_cli"
+
+    def __init__(self, cli_path: str, model: str, style: str = "stdin",
+                 endpoint: str | None = None):
+        self.cli_path = cli_path
+        self.model = model
+        self.style = style
+        self.endpoint = endpoint
+
+    def _build_cmd(self) -> list[str]:
+        if self.style == "claude":
+            return [self.cli_path, "--print", "--model", self.model, "--max-turns", "5"]
+        if self.style == "ollama":
+            return [self.cli_path, "run", self.model]
+        # stdin-style: just invoke the binary (aichat, mods, fabric, llm, codex, qwen …)
+        return [self.cli_path]
+
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: int = 8192) -> AiResponse:
+        # OpenAI-compatible local servers (LM Studio, LocalAI, Jan)
+        if self.style == "openai_compat" and self.endpoint:
+            return self._generate_openai_compat(system_prompt, user_prompt, max_tokens)
+
+        logger.info("CLI [%s]: sending request via subprocess (model=%s)", self.style, self.model)
+        combined = f"{system_prompt}\n\n---\n\n{user_prompt}"
+        cmd = self._build_cmd()
+
+        try:
+            proc = subprocess.run(
+                cmd, input=combined, capture_output=True, text=True, timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"{self.cli_path} timed out after 600s")
+
+        if proc.returncode != 0:
+            stderr = proc.stderr[:500] if proc.stderr else "no stderr"
+            raise RuntimeError(f"{self.cli_path} failed (rc={proc.returncode}): {stderr}")
+
+        content = proc.stdout.strip()
+        if not content:
+            raise RuntimeError(f"{self.cli_path} returned empty response")
+
+        # Detect CLI error messages that arrive on stdout with rc=0
+        if content.startswith("Error:") and len(content) < 200:
+            raise RuntimeError(f"CLI error ({self.style}): {content}")
+
+        estimated_tokens = len(combined.split()) + len(content.split())
+        logger.info("CLI [%s]: received ~%d estimated tokens", self.style, estimated_tokens)
+        return AiResponse(content=content, tokens_used=estimated_tokens, model=self.model)
+
+    def _generate_openai_compat(self, system_prompt: str, user_prompt: str,
+                                max_tokens: int) -> AiResponse:
+        """Call a local OpenAI-compatible server (LM Studio, LocalAI, Jan)."""
+        import urllib.request
+        import urllib.error
+
+        logger.info("CLI/OpenAI-compat [%s]: sending request (model=%s)", self.cli_path, self.model)
+        url = f"{self.endpoint.rstrip('/')}/chat/completions"
+        payload = json.dumps({
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.2,
+        }).encode()
+
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=600) as resp:
+                data = json.loads(resp.read())
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise RuntimeError(f"Local server {url} unreachable: {e}")
+
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        tokens = data.get("usage", {}).get("total_tokens", 0)
+        if not tokens:
+            tokens = len(system_prompt.split()) + len(user_prompt.split()) + len(content.split())
+        logger.info("CLI/OpenAI-compat: received %d tokens", tokens)
+        return AiResponse(content=content, tokens_used=tokens, model=self.model)
 
 
 # ── Provider factory ───────────────────────────────────────────────────────
@@ -260,9 +402,8 @@ def get_provider_from_db_config(cfg) -> AiProvider:
     pt = cfg.provider_type
 
     if pt == "openai" or pt == "openai_compat":
-        if not api_key:
-            raise ValueError(f"Provider '{cfg.name}' has no API key")
-        return OpenAIProvider(api_key=api_key, model=cfg.model, base_url=cfg.endpoint or None)
+        # openai_compat with a local endpoint (Ollama, LM Studio) may not need a real key
+        return OpenAIProvider(api_key=api_key or "local", model=cfg.model, base_url=cfg.endpoint or None)
 
     elif pt == "azure_openai":
         if not api_key or not cfg.endpoint:
@@ -291,11 +432,14 @@ def get_provider_from_db_config(cfg) -> AiProvider:
 def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvider:
     """Factory — returns an AI provider instance.
 
-    Checks DB first (per-workspace config), then falls back to env vars.
+    Resolution order:
+      1. DB (per-workspace config added via Settings UI)
+      2. Env vars (.env / docker-compose)
+      3. Auto-detected CLI tools on the system PATH
     """
     from app.core.config import settings
 
-    # Check DB for workspace-specific provider config
+    # 1. Check DB for workspace-specific provider config
     if workspace_id is not None:
         try:
             from app.db.session import SessionLocal
@@ -319,7 +463,7 @@ def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvi
         except Exception as e:
             logger.debug("DB provider lookup failed for %s: %s", provider_name, e)
 
-    # Fall back to env-configured providers
+    # 2. Fall back to env-configured providers
     if provider_name == "azure_openai":
         if not settings.AZURE_OPENAI_ENDPOINT or not settings.AZURE_OPENAI_API_KEY:
             raise ValueError("Azure OpenAI not configured: set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY")
@@ -356,7 +500,17 @@ def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvi
         )
 
     elif provider_name in ("openai", "openai_compat"):
-        raise ValueError(f"OpenAI provider not configured: add via Settings > AI Providers")
+        raise ValueError("OpenAI provider not configured: add via Settings > AI Providers")
+
+    # 3. Fall back to auto-detected CLI tools
+    cli = _find_cli_entry(provider_name)
+    if cli:
+        return GenericCLIProvider(
+            cli_path=cli["cli_path"],
+            model=cli["model"],
+            style=cli["style"],
+            endpoint=cli.get("endpoint"),
+        )
 
     raise ValueError(f"Unknown AI provider: {provider_name}")
 
