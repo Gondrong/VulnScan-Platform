@@ -23,6 +23,15 @@ class CredCreate(BaseModel):
     passphrase: str | None = None
 
 
+class CredUpdate(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    username: str | None = None
+    secret: str | None = None
+    secret_type: str | None = None
+    passphrase: str | None = None
+
+
 @router.get("")
 def list_creds(claims=Depends(require_role("admin", "analyst", "viewer")), db: Session = Depends(get_db)):
     ws = claims["ws"]
@@ -65,6 +74,40 @@ def create_cred(
     db.commit()
     db.refresh(c)
     return {"id": c.id}
+
+
+@router.put("/{cred_id}")
+def update_cred(
+    cred_id: int, body: CredUpdate,
+    claims=Depends(require_role("admin", "analyst")), db: Session = Depends(get_db),
+):
+    ws = claims["ws"]
+    c = (
+        db.query(models.Credential)
+        .filter(
+            models.Credential.id == cred_id,
+            models.Credential.workspace_id == ws,
+        )
+        .first()
+    )
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if body.name is not None:
+        c.name = body.name
+    if body.kind is not None:
+        c.kind = body.kind
+    if body.username is not None:
+        c.username = body.username
+    if body.secret_type is not None:
+        c.secret_type = body.secret_type
+    if body.secret is not None and body.secret.strip():
+        c.secret_enc = encrypt_str(body.secret)
+    if body.passphrase is not None:
+        c.passphrase_enc = encrypt_str(body.passphrase) if body.passphrase else None
+
+    db.commit()
+    return {"ok": True}
 
 
 @router.delete("/{cred_id}")
