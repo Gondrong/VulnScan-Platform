@@ -68,7 +68,7 @@ def list_providers(
         if ep["id"] not in seen_types:
             seen_types.add(ep["id"])
             providers.append({
-                "id": f"env_{ep['id']}",
+                "id": ep["id"],
                 "provider_type": ep["id"],
                 "name": ep["name"],
                 "model": ep["model"],
@@ -80,8 +80,9 @@ def list_providers(
     # 3. CLI-detected providers
     for cli in detect_cli_providers():
         if cli["id"] not in seen_types:
+            seen_types.add(cli["id"])
             providers.append({
-                "id": f"cli_{cli['id']}",
+                "id": cli["id"],
                 "provider_type": cli["id"],
                 "name": cli["name"],
                 "model": cli["model"],
@@ -116,7 +117,8 @@ def create_provider(
         raise HTTPException(400, "Name is required")
     if not model:
         raise HTTPException(400, "Model is required")
-    if not api_key:
+    # API key is optional for openai_compat (local LLMs like Ollama, LM Studio)
+    if not api_key and provider_type not in ("openai_compat",):
         raise HTTPException(400, "API key is required")
 
     row = models.AiProviderConfig(
@@ -124,7 +126,7 @@ def create_provider(
         provider_type=provider_type,
         name=name,
         model=model,
-        api_key_enc=encrypt_str(api_key),
+        api_key_enc=encrypt_str(api_key) if api_key else None,
         endpoint=endpoint,
         extra_json=json.dumps(extra) if extra else "{}",
         enabled=True,

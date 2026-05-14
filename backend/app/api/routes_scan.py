@@ -27,6 +27,18 @@ def _redis() -> Redis:
     return Redis.from_url(settings.REDIS_URL)
 
 
+def _resolve_user_id(db: Session, claims: dict) -> int | None:
+    """Resolve JWT claims to the user's integer ID."""
+    email = claims.get("sub")
+    if not email:
+        return None
+    user = db.query(models.User.id).filter(
+        models.User.workspace_id == claims.get("ws"),
+        models.User.email == email,
+    ).first()
+    return user.id if user else None
+
+
 # ─── Available Plugins ────────────────────────────────────────────────────────
 
 @router.get("/plugins")
@@ -288,7 +300,7 @@ def create_job(
         status="queued",
         scan_type=scan_type,
         meta_json=job_meta,
-        created_by_user_id=user.get("sub"),
+        created_by_user_id=_resolve_user_id(db, user),
     )
     db.add(job)
     db.commit()
