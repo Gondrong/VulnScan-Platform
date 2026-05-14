@@ -308,11 +308,15 @@ def check_for_update(user=Depends(require_role("admin", "analyst", "viewer"))):
     r = _redis_conn()
     cache_key = "update_check_cache"
 
-    # Return cached result if available
+    # Return cached result if available — but invalidate if the running
+    # version has changed (e.g. after an update + restart)
     cached = r.get(cache_key)
     if cached:
         try:
-            return json.loads(cached)
+            cached_data = json.loads(cached)
+            if cached_data.get("current") == settings.PLATFORM_VERSION:
+                return cached_data
+            # Version changed since cache was written — re-check
         except Exception:
             pass
 
