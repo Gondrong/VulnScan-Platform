@@ -14,6 +14,10 @@ Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 - Frontend Edit button (pencil icon) on each credential row in the Credentials table.
 - The existing New Credential modal now supports edit mode: fields pre-filled, secret field shows "(leave blank to keep current)" and is optional, title and button text adapt automatically.
 
+**Automatic Updater Service Installation**
+- `bootstrap.sh` now automatically installs the `vulnscan-updater.service` systemd unit during first-time setup, enabling one-click platform updates from Settings → System without a separate manual step.
+- Skips gracefully if the service is already active, if not running as root/sudo, or if systemd is not available.
+
 ### Changed
 
 **Scanner False-Positive Prevention — Dynamic Parameter Pre-Checks**
