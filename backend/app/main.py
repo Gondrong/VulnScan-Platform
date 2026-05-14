@@ -32,7 +32,7 @@ logger = logging.getLogger("vulnscan")
 
 app = FastAPI(
     title="VulnScan Platform",
-    version="3.0.2",
+    version=settings.PLATFORM_VERSION,
     description="Enterprise Risk-Based Vulnerability Management Platform",
 )
 
@@ -250,7 +250,7 @@ def startup() -> None:
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    return {"ok": True, "version": "3.0.2"}
+    return {"ok": True, "version": settings.PLATFORM_VERSION}
 
 
 # ─── Schedule Runner (background) ─────────────────────────────────────────────
