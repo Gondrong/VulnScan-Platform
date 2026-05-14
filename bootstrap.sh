@@ -313,3 +313,28 @@ if grep -q "^GEMINI_API_KEY=." "$ENV_FILE"; then
   green "   ✓ Gemini configured"
 fi
 
+# ── Install one-click updater service ────────────────────────────────────────
+UPDATER_SCRIPT="${ROOT_DIR}/scripts/install-updater.sh"
+if [[ -f "$UPDATER_SCRIPT" ]] && command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active vulnscan-updater >/dev/null 2>&1; then
+    green " Updater: ✓ vulnscan-updater.service already active"
+  else
+    echo ""
+    green "Installing one-click updater service..."
+    if [[ "$(id -u)" -eq 0 ]]; then
+      bash "$UPDATER_SCRIPT"
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo bash "$UPDATER_SCRIPT"
+    else
+      yellow " ⚠ Updater service not installed (needs root). Run manually:"
+      yellow "   sudo bash scripts/install-updater.sh"
+    fi
+  fi
+else
+  if [[ ! -f "$UPDATER_SCRIPT" ]]; then
+    yellow " ⚠ Updater script not found at scripts/install-updater.sh"
+  elif ! command -v systemctl >/dev/null 2>&1; then
+    yellow " ⚠ systemd not available — one-click updater requires Linux with systemd"
+  fi
+fi
+
