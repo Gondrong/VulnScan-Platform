@@ -37,7 +37,7 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user.last_login_ip = client_ip
     user.last_login_location = geoip_resolve(client_ip)
     db.commit()
-    token = create_token({"sub": user.email, "role": user.role, "ws": user.workspace_id})
+    token = create_token({"sub": user.email, "uid": user.id, "role": user.role, "ws": user.workspace_id})
     return {"token": token, "role": user.role, "workspace_id": user.workspace_id}
 
 

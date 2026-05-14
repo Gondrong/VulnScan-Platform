@@ -28,15 +28,12 @@ def _redis() -> Redis:
 
 
 def _resolve_user_id(db: Session, claims: dict) -> int | None:
-    """Resolve JWT claims to the user's integer ID."""
+    """Fallback for old JWT tokens missing the 'uid' claim."""
     email = claims.get("sub")
     if not email:
         return None
-    user = db.query(models.User.id).filter(
-        models.User.workspace_id == claims.get("ws"),
-        models.User.email == email,
-    ).first()
-    return user.id if user else None
+    u = db.query(models.User.id).filter(models.User.email == email).first()
+    return u.id if u else None
 
 
 # ─── Available Plugins ────────────────────────────────────────────────────────
@@ -300,7 +297,7 @@ def create_job(
         status="queued",
         scan_type=scan_type,
         meta_json=job_meta,
-        created_by_user_id=_resolve_user_id(db, user),
+        created_by_user_id=user.get("uid") or _resolve_user_id(db, user),
     )
     db.add(job)
     db.commit()
