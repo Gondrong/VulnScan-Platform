@@ -250,7 +250,7 @@ def startup() -> None:
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    return {"ok": True, "version": "3.0.1"}
+    return {"ok": True, "version": "3.0.2"}
 
 
 # ─── Schedule Runner (background) ─────────────────────────────────────────────
