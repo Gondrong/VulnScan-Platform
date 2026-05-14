@@ -5,6 +5,59 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.0.2 — 2026-05-14
+
+### Added
+
+**Credential Editing**
+- New `PUT /credentials/{cred_id}` backend endpoint — updates name, kind, username, secret type, secret, and passphrase individually (all fields optional; secret left unchanged if omitted).
+- Frontend Edit button (pencil icon) on each credential row in the Credentials table.
+- The existing New Credential modal now supports edit mode: fields pre-filled, secret field shows "(leave blank to keep current)" and is optional, title and button text adapt automatically.
+
+### Changed
+
+**Scanner False-Positive Prevention — Dynamic Parameter Pre-Checks**
+
+Added a pre-check pattern across 14 scanner plugins. Before running heuristic detection (boolean-blind, time-blind, response-diffing), the scanner now verifies that the parameter actually influences the server's response. If the response is identical regardless of value, heuristic detection is skipped — eliminating an entire class of false positives.
+
+*High-priority plugins (response-diffing / timing heuristics):*
+- **`web.deep_sqli`** — Dynamic pre-check gates boolean-blind and UNION-based sections; baseline validation requires boolean difference to exceed `natural_variation * 2 + 50` or show asymmetric distance from baseline.
+- **`web.advanced_xss`** — Second-marker confirmation for both GET and POST reflected XSS; verifies reflection is genuinely input-dependent before testing payloads.
+- **`web.deep_cmdi`** — Dynamic pre-check after baseline; time-based blind sections (Linux + Windows) gated behind `param_is_dynamic`; in-band marker detection left ungated.
+- **`web.nosql_injection`** — Baseline stability check with alternate credentials; auth-bypass detection now requires `baseline_stable` and response delta exceeding `natural_len_variation * 2 + 50`.
+- **`api.scanner.sqli`** — Dynamic pre-check; boolean-blind gated behind `param_is_dynamic` with baseline validation (same pattern as `deep_sqli`).
+- **`api.scanner.cmdi`** — Dynamic pre-check; blind time-based section gated behind `param_is_dynamic`.
+
+*Medium-priority plugins (indicator matching / similarity heuristics):*
+- **`api.scanner.bola`** — Two-identity check now verifies endpoint is ID-dependent (different IDs must return different data); neighbor-walk verifies endpoint rejects implausible IDs before declaring IDOR.
+- **`api.scanner.xss`** — Second-marker confirmation before payload testing.
+- **`web.ssrf_deep`** — Baseline body saved; cloud metadata indicators only counted if absent from the endpoint's normal response.
+- **`api.scanner.ssrf`** — Same baseline-filtered indicator matching.
+- **`web.open_redirect`** — Benign probe URL sent first; parameter must trigger a redirect with input-controlled Location header before testing evil payloads.
+
+*Low-priority plugins (implicit safeguards strengthened):*
+- **`web.ssti.scanner`** — Per-parameter baseline; expected math result (e.g. "49") must not already be present in baseline response.
+- **`api.scanner.ssti`** — `param_is_dynamic` check skips static parameters entirely.
+- **`api.scanner.code_injection`** — `param_is_dynamic` gates time-based detection; math-based and in-band detection retain existing `expected not in bl.body` guard.
+- **`web.ldap_injection`** — Baseline LDAP error pattern check; skips payload loop if endpoint naturally contains LDAP error strings.
+
+**AI Analysis Prompts Overhaul**
+- Shared `_SCANNER_CONTEXT` block injected into all system prompts: explains VulnScan's data format (`plugin_id` namespaces, `key=value` evidence parsing, confidence calibration, `is_kev` meaning) and documents 6 common false-positive patterns.
+- `_serialize_finding` — increased evidence (300→600), description (500→800), and remediation (200→500) character limits; added `references` field.
+- `_truncate_findings` — now sorts by severity then descending confidence; summary items include confidence scores.
+- **Validate mode** — new 6-step validation methodology (evidence audit → technology coherence → confidence calibration → cross-correlation → context plausibility → severity adjustment).
+- **Full analysis mode** — kill-chain-based attack chain guidance (initial access → lateral movement → impact); 4-factor remediation prioritization with `rationale` field.
+- **Full + exploit mode** — three-phase PoC structure requirement (recon → exploit → verify); vulnerability-specific PoC guidance per plugin class (SQLi technique matching, XSS context escape, auth bypass, info disclosure, TLS/crypto, SSRF).
+- **Single-finding PoC mode** — complete rewrite with field-by-field evidence parsing instructions per vulnerability type; structured phase headers (`[*] Recon`, `[*] Exploit`, `[*] Verify`) and PASS/FAIL summary requirement.
+- **User prompts** — now include KEV count and high-confidence finding count as metadata; evidence pre-parsed into structured key-value dict for PoC prompts.
+
+### Fixed
+
+**Claude CLI "Reached max turns" Error**
+- `ClaudeCLIProvider` and `GenericCLIProvider` (claude style) increased `--max-turns` from `1` to `5` — the `full_exploit` prompt was triggering internal tool use that exhausted the single allowed turn, returning `"Error: Reached max turns (1)"` instead of analysis JSON.
+- Both providers now detect CLI error messages on stdout (strings starting with `"Error:"` under 200 chars) and raise `RuntimeError` immediately instead of passing them to the JSON parser.
+
+---
 ## v3.0.1 — 2026-05-07
 
 ### Added
