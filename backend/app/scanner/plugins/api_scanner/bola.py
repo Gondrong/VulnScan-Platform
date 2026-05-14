@@ -121,12 +121,33 @@ async def _check_with_two_identities(client, ep, param, target, findings):
         params_a = {param.name: sample}
 
     resp_a = await client.request_as("primary", ep.method, path_a, params=params_a)
+
+    if resp_a.status != 200 or resp_a.body_length < _MIN_BODY:
+        return
+
+    # Pre-check: verify the endpoint is ID-dependent by requesting a
+    # different ID with the same identity. If both IDs return identical
+    # data, this is a shared/public resource — not per-object.
+    alt_id = str(int(sample) + 100) if sample.isdigit() else sample + "_alt"
+    if param.location == "path":
+        alt_path = ep.path.replace(f"{{{param.name}}}", alt_id)
+        alt_params = None
+    else:
+        alt_path = ep.path
+        alt_params = {param.name: alt_id}
+    resp_alt = await client.request_as("primary", ep.method, alt_path, params=alt_params)
+    if resp_alt.status == 200 and resp_alt.body_length >= _MIN_BODY:
+        keys_a_pre = _extract_json_keys(resp_a.body)
+        keys_alt = _extract_json_keys(resp_alt.body)
+        if _jaccard(keys_a_pre, keys_alt) > 0.95 and abs(resp_a.body_length - resp_alt.body_length) < 50:
+            return  # Same data for different IDs — public/shared endpoint
+
     resp_b = await client.request_as("secondary", ep.method, path_a, params=params_a)
 
     # Both must succeed and return substantive bodies
-    if resp_a.status != 200 or resp_b.status != 200:
+    if resp_b.status != 200:
         return
-    if resp_a.body_length < _MIN_BODY or resp_b.body_length < _MIN_BODY:
+    if resp_b.body_length < _MIN_BODY:
         return
 
     keys_a = _extract_json_keys(resp_a.body)
@@ -178,6 +199,21 @@ async def _check_neighbor_walk(client, ep, param, target, findings):
     if not base.isdigit():
         return  # Only attempt enumeration on numeric IDs
     base_int = int(base)
+
+    # Pre-check: verify the endpoint validates IDs by requesting an
+    # implausible ID. If it returns 200 with a substantive body, the
+    # endpoint likely returns data for any ID (no access control to test).
+    unlikely_id = "999999999"
+    if param.location == "path":
+        check_path = ep.path.replace(f"{{{param.name}}}", unlikely_id)
+        check_params = None
+    else:
+        check_path = ep.path
+        check_params = {param.name: unlikely_id}
+    resp_check = await client.request(ep.method, check_path, params=check_params)
+    if resp_check.status == 200 and resp_check.body_length >= _MIN_BODY:
+        return  # Endpoint returns data for any ID — not meaningful for IDOR
+
     neighbours = [base_int + 1, base_int - 1, base_int + 5]
     neighbours = [n for n in neighbours if n > 0 and n != base_int]
 

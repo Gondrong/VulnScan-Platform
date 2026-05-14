@@ -58,6 +58,13 @@ async def check(client, endpoints, ctx) -> list[Finding]:
             if marker not in r.body:
                 continue  # Not reflected, skip
 
+            # Pre-check: confirm reflection is input-dependent
+            # by verifying a different marker also reflects.
+            alt_marker = f"{_MARKER}dyn_check"
+            r_alt = await client.send_payload(ep, param.name, alt_marker, param.location)
+            if r_alt.status == 0 or alt_marker not in r_alt.body:
+                continue  # Reflection is not input-dependent
+
             # Input IS reflected — test payloads
             found = False
             all_payloads = _BASIC_PAYLOADS + _BYPASS_PAYLOADS + _POLYGLOTS

@@ -86,6 +86,16 @@ async def check(client, endpoints, ctx) -> list[Finding]:
             if bl.status in (0, 404, 405):
                 break
 
+            # Dynamic parameter pre-check: verify the parameter
+            # influences the response before heuristic detection.
+            alt = await client.send_payload(ep, param.name, "2", param.location)
+            param_is_dynamic = (
+                alt.status != bl.status
+                or abs(alt.body_length - bl.body_length) > 20
+                or alt.body[:500] != bl.body[:500]
+            )
+            natural_variation = abs(bl.body_length - alt.body_length)
+
             found = False
 
             # 1. Error-based
@@ -115,22 +125,34 @@ async def check(client, endpoints, ctx) -> list[Finding]:
                 continue
 
             # 2. Boolean-based blind
+            # Skip if parameter is static — response-length diffing
+            # would produce false positives from noise.
             true_lens = []
             false_lens = []
-            for payload, _ in _BOOLEAN_TRUE[:2]:
-                r = await client.send_payload(ep, param.name, payload, param.location)
-                if r.status > 0:
-                    true_lens.append(r.body_length)
-            for payload, _ in _BOOLEAN_FALSE[:2]:
-                r = await client.send_payload(ep, param.name, payload, param.location)
-                if r.status > 0:
-                    false_lens.append(r.body_length)
+            if param_is_dynamic:
+                for payload, _ in _BOOLEAN_TRUE[:2]:
+                    r = await client.send_payload(ep, param.name, payload, param.location)
+                    if r.status > 0:
+                        true_lens.append(r.body_length)
+                for payload, _ in _BOOLEAN_FALSE[:2]:
+                    r = await client.send_payload(ep, param.name, payload, param.location)
+                    if r.status > 0:
+                        false_lens.append(r.body_length)
 
             if true_lens and false_lens:
                 avg_true = sum(true_lens) / len(true_lens)
                 avg_false = sum(false_lens) / len(false_lens)
                 diff = abs(avg_true - avg_false)
-                if diff > 50 and diff / max(avg_true, 1) > 0.1:
+
+                # Validate against baseline to prevent false positives:
+                # the boolean difference must clearly exceed the natural
+                # variation caused by normal parameter value changes.
+                baseline_true_diff = abs(avg_true - bl.body_length)
+                baseline_false_diff = abs(avg_false - bl.body_length)
+                exceeds_natural = diff > natural_variation * 2 + 50
+                asymmetric_vs_baseline = abs(baseline_true_diff - baseline_false_diff) > natural_variation + 30
+
+                if (diff > 50 and diff / max(avg_true, 1) > 0.1) and (exceeds_natural or asymmetric_vs_baseline):
                     fp = stable_fingerprint(target, "api.scanner.sqli", "boolean", ep.path, param.name)
                     findings.append(Finding(
                         severity="high", plugin_id="api.scanner.sqli",

@@ -51,6 +51,10 @@ async def check(client, endpoints, ctx) -> list[Finding]:
             # Check all params if none match by name
             url_params = [p for p in ep.parameters if p.location in ("query", "body")][:2]
 
+        # Get baseline to filter indicators already in the normal response
+        bl = await client.baseline_request(ep)
+        bl_body_lower = bl.body.lower() if bl.status > 0 else ""
+
         for param in url_params[:3]:
             for meta_url, cloud, indicators in _METADATA_URLS[:5]:
                 # GET param injection
@@ -58,7 +62,13 @@ async def check(client, endpoints, ctx) -> list[Finding]:
                 if r.status not in (200, 201):
                     continue
 
-                matched = [ind for ind in indicators if ind.lower() in r.body.lower()]
+                # Only count indicators absent from the baseline to
+                # prevent false positives from pages with cloud terms
+                matched = [
+                    ind for ind in indicators
+                    if ind.lower() in r.body.lower()
+                    and ind.lower() not in bl_body_lower
+                ]
                 if matched:
                     sev = "critical" if "AccessKeyId" in matched or "SecretAccessKey" in matched else "high"
                     fp = stable_fingerprint(target, "api.scanner.ssrf", cloud, ep.path, param.name)

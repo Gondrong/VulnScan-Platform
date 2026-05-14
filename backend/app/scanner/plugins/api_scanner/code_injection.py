@@ -73,6 +73,17 @@ async def check(client, endpoints, ctx) -> list[Finding]:
             if bl.status in (0, 404, 405):
                 break
 
+            # Dynamic parameter pre-check: verify the parameter
+            # influences the response. Used to gate time-based
+            # detection where a static parameter produces false
+            # positives from network jitter.
+            alt = await client.send_payload(ep, param.name, "code_probe_test", param.location)
+            param_is_dynamic = (
+                alt.status != bl.status
+                or abs(alt.body_length - bl.body_length) > 20
+                or alt.body[:500] != bl.body[:500]
+            )
+
             found = False
 
             # 1. Math-based detection
@@ -106,43 +117,46 @@ async def check(client, endpoints, ctx) -> list[Finding]:
                 continue
 
             # 2. Time-based detection
-            for payload, desc in _TIME_PAYLOADS[:4]:
-                r = await client.send_payload(ep, param.name, payload, param.location)
-                if r.elapsed >= _TIME_DELAY - 0.5 and bl.elapsed < _TIME_DELAY - 1:
-                    r2 = await client.send_payload(ep, param.name, payload, param.location)
-                    if r2.elapsed >= _TIME_DELAY - 0.5:
-                        # Determine language
-                        lang = "unknown"
-                        if "python" in desc:
-                            lang = "Python"
-                        elif "php" in desc or "ruby" in desc:
-                            lang = "PHP/Ruby"
-                        elif "node" in desc:
-                            lang = "Node.js"
-                        elif "java" in desc:
-                            lang = "Java"
+            # Skip if parameter is static — timing differences would
+            # be network noise, not code execution.
+            if param_is_dynamic:
+                for payload, desc in _TIME_PAYLOADS[:4]:
+                    r = await client.send_payload(ep, param.name, payload, param.location)
+                    if r.elapsed >= _TIME_DELAY - 0.5 and bl.elapsed < _TIME_DELAY - 1:
+                        r2 = await client.send_payload(ep, param.name, payload, param.location)
+                        if r2.elapsed >= _TIME_DELAY - 0.5:
+                            # Determine language
+                            lang = "unknown"
+                            if "python" in desc:
+                                lang = "Python"
+                            elif "php" in desc or "ruby" in desc:
+                                lang = "PHP/Ruby"
+                            elif "node" in desc:
+                                lang = "Node.js"
+                            elif "java" in desc:
+                                lang = "Java"
 
-                        fp = stable_fingerprint(target, "api.scanner.code_injection", "time", ep.path, param.name)
-                        findings.append(Finding(
-                            severity="critical", plugin_id="api.scanner.code_injection",
-                            title=f"Code injection (time-based, {lang}): {ep.method} {ep.path} [{param.name}]",
-                            description=(
-                                f"Blind code injection confirmed via time delay. "
-                                f"Language: {lang}. Delay: {r.elapsed:.1f}s + {r2.elapsed:.1f}s (baseline: {bl.elapsed:.1f}s)."
-                            ),
-                            evidence=(
-                                f"path={ep.path} param={param.name} lang={lang} desc={desc} "
-                                f"delay1={r.elapsed:.2f}s delay2={r2.elapsed:.2f}s baseline={bl.elapsed:.2f}s"
-                            ),
-                            affected=target, fingerprint=fp, confidence=0.88, cvss=9.8,
-                            remediation=(
-                                f"[CRITICAL — CWE-94] Blind code injection detected ({lang}).\n\n"
-                                f"[FIX] Remove eval()/exec() calls. Use safe alternatives."
-                            ),
-                            references=["https://owasp.org/www-community/attacks/Code_Injection"],
-                        ))
-                        found = True
-                        break
+                            fp = stable_fingerprint(target, "api.scanner.code_injection", "time", ep.path, param.name)
+                            findings.append(Finding(
+                                severity="critical", plugin_id="api.scanner.code_injection",
+                                title=f"Code injection (time-based, {lang}): {ep.method} {ep.path} [{param.name}]",
+                                description=(
+                                    f"Blind code injection confirmed via time delay. "
+                                    f"Language: {lang}. Delay: {r.elapsed:.1f}s + {r2.elapsed:.1f}s (baseline: {bl.elapsed:.1f}s)."
+                                ),
+                                evidence=(
+                                    f"path={ep.path} param={param.name} lang={lang} desc={desc} "
+                                    f"delay1={r.elapsed:.2f}s delay2={r2.elapsed:.2f}s baseline={bl.elapsed:.2f}s"
+                                ),
+                                affected=target, fingerprint=fp, confidence=0.88, cvss=9.8,
+                                remediation=(
+                                    f"[CRITICAL — CWE-94] Blind code injection detected ({lang}).\n\n"
+                                    f"[FIX] Remove eval()/exec() calls. Use safe alternatives."
+                                ),
+                                references=["https://owasp.org/www-community/attacks/Code_Injection"],
+                            ))
+                            found = True
+                            break
 
             if found:
                 continue

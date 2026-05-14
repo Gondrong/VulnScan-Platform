@@ -61,6 +61,18 @@ async def check(client, endpoints, ctx) -> list[Finding]:
             if bl.status in (0, 404, 405):
                 break
 
+            # Pre-check: verify parameter influences the response.
+            # If the response is identical regardless of value, the
+            # parameter is static and SSTI testing would be pointless.
+            alt = await client.send_payload(ep, param.name, "ssti_probe_test", param.location)
+            param_is_dynamic = (
+                alt.status != bl.status
+                or abs(alt.body_length - bl.body_length) > 20
+                or alt.body[:500] != bl.body[:500]
+            )
+            if not param_is_dynamic:
+                continue
+
             found = False
 
             # Test each SSTI payload
