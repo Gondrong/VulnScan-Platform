@@ -23,14 +23,14 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.1 highlights** *(2026-05-07)* — see [Changelog](#changelog) for full notes.
+**v3.0.2 highlights** *(2026-05-14)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
-| 🕸️ **Attack Graph overhaul** | Rebuilt Neo4j engine with auto-indexing, new node types (Plugin, Compliance, AssetGroup), and richer relationships. Five new analytical queries: Attack Map, Shared Vulnerabilities, Blast Radius per asset, Most Vulnerable Assets, workspace stats. New page in the sidebar with D3 force-graph visualization |
-| 🔔 **Notification Preferences** | Workspace-level per-event channel config across email / Slack / webhook for critical findings, CISA KEV matches, scan complete, scan failure, new asset discovery, weekly digest. Scan-failure notifications now wired into the worker |
-| 🤖 **AI Provider Management** | Multi-provider AI configs (OpenAI, Claude, Gemini, Azure OpenAI, OpenAI-compatible) with encrypted API keys, full CRUD, and per-provider Test buttons in Settings |
-| 🛡️ **RBAC tightening** | Credentials API enforces admin/analyst/viewer roles; UI actions gated by `canEdit()` and `isAdmin()` checks throughout |
+| 🛡️ **Scanner false-positive prevention** | Dynamic parameter pre-checks added to 14 plugins — boolean-blind, time-blind, UNION, SSRF indicator, BOLA similarity, and redirect detection now verify the parameter actually influences the response before flagging vulnerabilities |
+| 🤖 **AI prompts overhaul** | Shared scanner-context block, 6-step validation methodology, kill-chain attack chain guidance, three-phase PoC structure (recon → exploit → verify), vulnerability-specific evidence parsing instructions per plugin class |
+| 🔑 **Credential editing** | New Edit button per credential with inline modal; backend `PUT /credentials/{id}` updates individual fields without requiring secret re-entry |
+| 🔧 **Claude CLI fix** | `--max-turns 1→5` fixes "Reached max turns" error on full+exploit analysis; CLI error detection on stdout prevents silent JSON parse failures |
 | 👤 **Scan attribution** | Every scan job records the user who launched it; creator shown in job listings and details |
 | ♻️ **Dataset refresh hardening** | New `vendor_advisories` dataset kind, lock timeout 30→60 min, file-existence verification, fixed double-fire bug, cache auto-invalidation on dataset modify/delete |
 
@@ -289,7 +289,7 @@ A unified CVE-centric view at **Intelligence → Threat Intel** that fuses NVD +
 
 ### 2. Dataset Browser
 
-Raw browsing of all 6 threat intel datasets at **Configuration → Datasets**.
+Raw browsing of all 7 threat intel datasets at **Configuration → Datasets**.
 
 | Dataset | Source | Records | Auto-Refresh |
 |---------|--------|---------|:------------:|
@@ -298,6 +298,7 @@ Raw browsing of all 6 threat intel datasets at **Configuration → Datasets**.
 | **CISA KEV** | CISA KEV feed | ~1K | ✓ |
 | **EPSS** | FIRST EPSS scores | ~200K | ✓ |
 | **CMS-CVE** | Generated from NVD | ~5K | ✓ |
+| **Vendor Advisories** | Vendor security feeds | Varies | ✓ |
 | **Compliance** | Static mapping | ~50 controls | ✓ |
 
 One-click refresh from the UI, or via CLI scripts under `scripts/`. Supports offline dataset upload for air-gapped environments.
@@ -506,6 +507,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.0.2 — 2026-05-14** — Scanner false-positive prevention (14 plugins), AI prompts overhaul, credential editing, Claude CLI max-turns fix
 - **v3.0.1 — 2026-05-07** — Neo4j attack graph overhaul (5 analytical queries, incremental sync, Plugin/Compliance/AssetGroup nodes), notification preferences
  system, AI provider management UI, RBAC on credentials, scan creator tracking, dataset refresh hardening, Attack Graph page
 - **v3.0.0 — 2026-05-03** — Authenticated web scanning, login form inspector, Threat Intel page, IaC scanner, UDP scanner, ephemeral credentials, integrations rewrite, password management
