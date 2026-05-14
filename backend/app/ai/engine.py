@@ -44,7 +44,8 @@ def _extract_json(text: str) -> dict:
     Parse JSON from AI response. Handles:
     1. Direct JSON
     2. JSON wrapped in markdown code blocks
-    3. JSON with leading/trailing text
+    3. JSON embedded in surrounding prose text
+    4. Model refusals / non-JSON responses (returns fallback dict)
     """
     # Try direct parse
     text = text.strip()
@@ -54,23 +55,43 @@ def _extract_json(text: str) -> dict:
         pass
 
     # Try extracting from markdown code blocks
-    patterns = [
+    block_patterns = [
         r"```json\s*\n([\s\S]*?)\n```",
         r"```\s*\n([\s\S]*?)\n```",
-        r"\{[\s\S]*\}",
     ]
-    for pattern in patterns:
+    for pattern in block_patterns:
         match = re.search(pattern, text)
         if match:
-            candidate = match.group(1) if match.lastindex else match.group(0)
             try:
-                return json.loads(candidate.strip())
+                return json.loads(match.group(1).strip())
             except json.JSONDecodeError:
                 continue
 
-    raise ValueError(
-        f"Could not parse JSON from AI response (length={len(text)}): {text[:200]}"
+    # Try to find a JSON object in the text — scan for outermost { ... }
+    # by finding each '{' and attempting to parse from there
+    for m in re.finditer(r"\{", text):
+        candidate = text[m.start():]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            # Try trimming trailing junk after the last '}'
+            last_brace = candidate.rfind("}")
+            if last_brace > 0:
+                try:
+                    return json.loads(candidate[: last_brace + 1])
+                except json.JSONDecodeError:
+                    continue
+                    
+    # No valid JSON found — return a fallback with the raw text as summary
+    # so the analysis doesn't crash and the user sees the AI's response.
+    logger.warning(
+        "AI response contained no valid JSON (length=%d), using fallback. Preview: %.300s",
+        len(text), text,
     )
+    return {
+        "executive_summary": text[:2000],
+        "_parse_warning": "AI response was not valid JSON — raw text preserved as executive_summary",
+    }
 
 
 def _validate_result(result: dict, mode: str) -> dict:
