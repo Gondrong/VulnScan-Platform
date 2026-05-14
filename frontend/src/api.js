@@ -101,6 +101,7 @@ export function logout() { clearToken(); }
 export const credentialsApi = {
   list:   ()         => api("/credentials"),
   create: (body)     => api("/credentials", { method: "POST", body }),
+  update: (id, body) => api(`/credentials/${id}`, { method: "PUT", body }),
   delete: (id)       => api(`/credentials/${id}`, { method: "DELETE" }),
 };
 
