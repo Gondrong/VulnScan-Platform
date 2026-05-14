@@ -278,6 +278,7 @@ export function Credentials() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const refresh = useCallback(async () => {
     try { setCreds(await credentialsApi.list()); setError(""); }
@@ -310,7 +311,7 @@ export function Credentials() {
             </div>
           ) : (
           <table className="tbl">
-            <thead><tr><th style={{width: 40}}/><th>Name</th><th>Kind</th><th>Username</th><th>Secret type</th><th style={{width: 60}}/></tr></thead>
+            <thead><tr><th style={{width: 40}}/><th>Name</th><th>Kind</th><th>Username</th><th>Secret type</th><th style={{width: 90}}/></tr></thead>
             <tbody>
               {creds.map(c => {
                 const I = KIND_ICONS[c.kind] || Icons.Key;
@@ -322,7 +323,9 @@ export function Credentials() {
                     <td><span className="mono" style={{fontSize: 12.5}}>{c.username}</span></td>
                     <td><span className="tag">{c.secret_type}</span></td>
                     {canEdit() && (
-                    <td>
+                    <td style={{display: "flex", gap: 2}}>
+                      <button className="btn btn-icon btn-ghost btn-sm" title="Edit" style={{color: "var(--text-3)"}}
+                              onClick={() => setEditing(c)}><Icons.Edit size={13}/></button>
                       <button className="btn btn-icon btn-ghost btn-sm" title="Delete" style={{color: "var(--text-3)"}}
                               onClick={() => onDelete(c.id, c.name)}><Icons.Trash size={13}/></button>
                     </td>
@@ -335,13 +338,22 @@ export function Credentials() {
           )}
         </div>
       </div>
-      {showNew && <NewCredentialModal close={() => setShowNew(false)} onCreated={() => { setShowNew(false); refresh(); }}/>}
+      {showNew && <NewCredentialModal close={() => setShowNew(false)} onSaved={() => { setShowNew(false); refresh(); }}/>}
+      {editing && <NewCredentialModal credential={editing} close={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }}/>}
     </>
   );
 }
 
-function NewCredentialModal({ close, onCreated }) {
-  const [data, setData] = useState({ name: "", kind: "ssh", username: "", secret: "", secret_type: "password", passphrase: "" });
+function NewCredentialModal({ credential, close, onSaved }) {
+  const isEdit = !!credential;
+  const [data, setData] = useState({
+    name: credential?.name || "",
+    kind: credential?.kind || "ssh",
+    username: credential?.username || "",
+    secret: "",
+    secret_type: credential?.secret_type || "password",
+    passphrase: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const update = (k, v) => setData(d => ({ ...d, [k]: v }));
@@ -351,8 +363,15 @@ function NewCredentialModal({ close, onCreated }) {
     setSubmitting(true);
     setError("");
     try {
-      await credentialsApi.create(data);
-      onCreated();
+      if (isEdit) {
+        const body = { name: data.name, kind: data.kind, username: data.username, secret_type: data.secret_type };
+        if (data.secret) body.secret = data.secret;
+        if (data.passphrase) body.passphrase = data.passphrase;
+        await credentialsApi.update(credential.id, body);
+      } else {
+        await credentialsApi.create(data);
+      }
+      onSaved();
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -365,7 +384,7 @@ function NewCredentialModal({ close, onCreated }) {
       <div className="modal" style={{maxWidth: 460}}>
         <div className="drawer-head">
           <Icons.Key size={16} color="var(--brand)"/>
-          <span style={{fontSize: 14, fontWeight: 600, color: "var(--text-0)"}}>New credential</span>
+          <span style={{fontSize: 14, fontWeight: 600, color: "var(--text-0)"}}>{isEdit ? "Edit credential" : "New credential"}</span>
           <button className="btn btn-ghost btn-icon btn-sm" onClick={close} style={{marginLeft: "auto"}}><Icons.X size={14}/></button>
         </div>
         <form onSubmit={submit} style={{padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14}}>
@@ -401,8 +420,8 @@ function NewCredentialModal({ close, onCreated }) {
                       value={data.secret}
                       onChange={e => update("secret", e.target.value)}
                       style={{height: data.secret_type === "SSH_KEY" ? "auto" : 36, padding: "8px 12px"}}
-                      placeholder={data.secret_type === "SSH_KEY" ? "-----BEGIN OPENSSH PRIVATE KEY-----\n…" : "••••••••"}
-                      required/>
+                      placeholder={isEdit ? "(leave blank to keep current)" : (data.secret_type === "SSH_KEY" ? "-----BEGIN OPENSSH PRIVATE KEY-----\n…" : "••••••••")}
+                      required={!isEdit}/>
           </div>
           {data.secret_type === "SSH_KEY" && (
             <div>
@@ -414,7 +433,7 @@ function NewCredentialModal({ close, onCreated }) {
           <div style={{display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6}}>
             <button type="button" className="btn" onClick={close} disabled={submitting}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? <><Icons.Refresh size={12} className="spin"/> Saving…</> : <>Save credential</>}
+              {submitting ? <><Icons.Refresh size={12} className="spin"/> Saving…</> : <>{isEdit ? "Save changes" : "Save credential"}</>}
             </button>
           </div>
         </form>
@@ -803,12 +822,34 @@ function SystemPanel() {
   );
 }
 
-const _AI_TYPE_META = {
+// Provider types that can be added manually via the "Add provider" modal (require API key)
+const _AI_ADD_TYPES = {
   openai:       { label: "OpenAI",              icon: Icons.Cloud,    models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3-mini"] },
   claude_api:   { label: "Claude API",          icon: Icons.Brain,    models: ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"] },
   gemini:       { label: "Gemini",              icon: Icons.Sparkles, models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"] },
   azure_openai: { label: "Azure OpenAI",        icon: Icons.Cloud,    models: [] },
   openai_compat:{ label: "OpenAI-Compatible",   icon: Icons.Server,   models: [] },
+  local_llm:    { label: "Local LLM (Ollama, LM Studio, etc.)", icon: Icons.Server, models: ["llama3.1", "mistral", "codellama", "deepseek-r1", "qwen2.5", "gemma2"] },
+};
+
+// Full metadata map for display (includes auto-detected CLI providers)
+const _AI_TYPE_META = {
+  ..._AI_ADD_TYPES,
+  // CLI-detected providers (auto-detected, not manually added)
+  claude_cli:   { label: "Claude CLI",          icon: Icons.Brain },
+  codex_cli:    { label: "Codex CLI",           icon: Icons.Code },
+  gemini_cli:   { label: "Gemini CLI",          icon: Icons.Sparkles },
+  copilot_cli:  { label: "GitHub Copilot CLI",  icon: Icons.Cloud },
+  ollama:       { label: "Ollama",              icon: Icons.Server },
+  llamacpp:     { label: "llama.cpp",           icon: Icons.Server },
+  lmstudio:     { label: "LM Studio",          icon: Icons.Monitor },
+  localai:      { label: "LocalAI",            icon: Icons.Server },
+  jan:          { label: "Jan",                 icon: Icons.Monitor },
+  aichat:       { label: "aichat",             icon: Icons.Code },
+  mods:         { label: "Mods",               icon: Icons.Code },
+  fabric:       { label: "Fabric",             icon: Icons.Code },
+  llm:          { label: "llm",                icon: Icons.Code },
+  qwen_cli:     { label: "Qwen CLI",           icon: Icons.Code },
 };
 
 const _SOURCE_BADGE = {
@@ -849,11 +890,12 @@ function AIProvidersPanel() {
   };
 
   const providerIcon = (p) => {
-    const pt = p.provider_type || "";
+    const pt = p.provider_type || p.id || "";
     if (pt in _AI_TYPE_META) return _AI_TYPE_META[pt].icon;
     if (pt.includes("claude")) return Icons.Brain;
     if (pt.includes("openai")) return Icons.Cloud;
     if (pt.includes("gemini")) return Icons.Sparkles;
+    if (p.source === "cli") return Icons.Code;
     return Icons.Brain;
   };
 
@@ -927,24 +969,35 @@ function AddAIProviderModal({ close, onSaved }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const meta = _AI_TYPE_META[providerType] || {};
-  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat";
+  const meta = _AI_ADD_TYPES[providerType] || {};
+  const isLocal = providerType === "local_llm";
+  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat" || isLocal;
+  const needsApiKey = !isLocal;
 
   useEffect(() => {
     setName(meta.label || providerType);
     setModel(meta.models?.[0] || "");
-    setEndpoint("");
+    setEndpoint(isLocal ? "http://localhost:11434/v1" : "");
+    setApiKey("");
   }, [providerType]);
 
   const submit = async () => {
     setError("");
     setSubmitting(true);
     try {
-      await aiApi.saveProvider({ provider_type: providerType, name, model, api_key: apiKey, endpoint: endpoint || undefined });
+      await aiApi.saveProvider({
+        provider_type: isLocal ? "openai_compat" : providerType,
+        name,
+        model,
+        api_key: apiKey || (isLocal ? "local" : ""),
+        endpoint: endpoint || undefined,
+      });
       onSaved();
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }
   };
+
+  const canSubmit = !submitting && name && model && (needsApiKey ? !!apiKey : true) && (needsEndpoint ? !!endpoint : true);
 
   return (
     <>
@@ -959,34 +1012,35 @@ function AddAIProviderModal({ close, onSaved }) {
           <div>
             <label className="form-label">Provider type</label>
             <select className="form-input" value={providerType} onChange={e => setProviderType(e.target.value)}>
-              {Object.entries(_AI_TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              {Object.entries(_AI_ADD_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
           <div>
             <label className="form-label">Display name</label>
-            <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="My OpenAI"/>
+            <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder={isLocal ? "My Local LLM" : "My OpenAI"}/>
           </div>
           <div>
             <label className="form-label">Model</label>
-            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
+            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={isLocal ? "e.g. llama3.1, mistral, deepseek-r1" : needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
             {meta.models?.length > 0 && (
               <datalist id="ai-model-list">
                 {meta.models.map(m => <option key={m} value={m}/>)}
               </datalist>
             )}
           </div>
-          <div>
-            <label className="form-label">API key</label>
-            <input className="form-input" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..."/>
-          </div>
           {needsEndpoint && (
             <div>
               <label className="form-label">Endpoint URL</label>
-              <input className="form-input" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder={providerType === "azure_openai" ? "https://your-resource.openai.azure.com" : "https://api.example.com/v1"}/>
+              <input className="form-input" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder={isLocal ? "http://localhost:11434/v1" : providerType === "azure_openai" ? "https://your-resource.openai.azure.com" : "https://api.example.com/v1"}/>
+              {isLocal && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 3}}>Ollama: :11434/v1 &middot; LM Studio: :1234/v1 &middot; LocalAI: :8080/v1 &middot; Jan: :1337/v1</div>}
             </div>
           )}
+          <div>
+            <label className="form-label">API key {isLocal && <span style={{color: "var(--text-3)", fontWeight: 400}}>(optional — most local LLMs don't need one)</span>}</label>
+            <input className="form-input" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={isLocal ? "leave empty if not required" : "sk-..."}/>
+          </div>
           {error && <div style={{color: "var(--err)", fontSize: 13}}><Icons.AlertTriangle size={12}/> {error}</div>}
-          <button className="btn btn-primary" onClick={submit} disabled={submitting || !name || !model || !apiKey}>
+          <button className="btn btn-primary" onClick={submit} disabled={!canSubmit}>
             {submitting ? "Adding..." : "Add provider"}
           </button>
         </div>

@@ -28,7 +28,7 @@ export function Nav({ page, setPage, onSignOut, counts = {} }) {
     <aside className="nav">
       <div className="nav-brand">
         <div className="nav-logo">V</div>
-        <div className="nav-name">VulnScan<span className="ver">v3.0.1</span></div>
+        <div className="nav-name">VulnScan<span className="ver">v3.0.2</span></div>
       </div>
       <div className="nav-search">
         <span className="icon"><Icons.Search size={14}/></span>
