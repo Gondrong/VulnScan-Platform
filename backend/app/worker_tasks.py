@@ -879,7 +879,7 @@ import threading
 import time
 
 _DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories", "cvedetails_cvss", "cms_cve_map", "compliance_map"]
-_DS_KIND_DEPENDS = {"cms_cve_map": "nvd_cpe_cve", "cvedetails_cvss": "nvd_cpe_cve", "vendor_advisories": "nvd_cpe_cve"}
+_DS_KIND_DEPENDS = {"cms_cve_map": "nvd_cpe_cve", "cvedetails_cvss": "nvd_cpe_cve"}
 _DS_KIND_NAMES = {
     "nvd_cpe_cve": "nvd_auto", "cisa_kev": "kev_auto", "epss": "epss_auto",
     "vendor_advisories": "vendor_adv_auto",
@@ -1171,7 +1171,7 @@ def _ds_refresh_compliance_map():
     return True, out_path, None
 
 
-def _ds_refresh_vendor_advisories(nvd_path):
+def _ds_refresh_vendor_advisories():
     from pathlib import Path
     out_dir = Path("/data/cve")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1231,7 +1231,7 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
         "nvd_cpe_cve": lambda: _ds_refresh_nvd(api_key),
         "cisa_kev": lambda: _ds_refresh_cisa_kev(),
         "epss": lambda: _ds_refresh_epss(),
-        "vendor_advisories": lambda dep: _ds_refresh_vendor_advisories(dep),
+        "vendor_advisories": lambda: _ds_refresh_vendor_advisories(),
         "cvedetails_cvss": lambda dep: _ds_refresh_cvedetails(dep, on_progress=_cveorg_progress),
         "cms_cve_map": lambda dep: _ds_refresh_cms_cve_map(dep),
         "compliance_map": lambda: _ds_refresh_compliance_map(),
