@@ -235,6 +235,14 @@ class Check(Plugin):
                 if baseline_status in (0, 404, 405):
                     continue
 
+                # Pre-check: if the baseline response already contains
+                # LDAP error patterns, this endpoint naturally shows
+                # LDAP-related content and error detection is unreliable.
+                baseline_has_ldap_errors = any(
+                    re.search(pat, baseline_body, re.I)
+                    for pat in _LDAP_ERROR_PATTERNS
+                )
+
                 # Test each payload
                 for payload, payload_type in _LDAP_PAYLOADS:
                     inj_status, inj_body = await _http_request(
@@ -247,7 +255,10 @@ class Check(Plugin):
                     if inj_status == 0:
                         continue
 
-                    # Check for LDAP error messages in response
+                    # Check for LDAP error messages in response,
+                    # but only if the baseline is clean
+                    if baseline_has_ldap_errors:
+                        break  # Skip — baseline already has LDAP errors
                     for pattern in _LDAP_ERROR_PATTERNS:
                         if re.search(pattern, inj_body, re.I):
                             fp = stable_fingerprint(target, META.plugin_id, "injection", path, param_name)

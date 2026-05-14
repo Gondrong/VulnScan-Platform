@@ -215,6 +215,11 @@ class Check(Plugin):
 
             # Test GET parameters
             for param in _TEST_PARAMS[:8]:  # Limit params for speed
+                # Pre-check: get a per-parameter baseline to verify
+                # the expected result isn't already in the response.
+                param_bl_path = f"/?{param}=harmless_test_value"
+                _, param_bl_body = await _http_get(host, port, param_bl_path, scheme)
+
                 for raw_payload, encoded_payload, expected, engine in _PAYLOADS:
                     if encoded_payload is None:
                         encoded_payload = urllib.parse.quote(raw_payload)
@@ -223,7 +228,7 @@ class Check(Plugin):
                     test_path = f"/?{param}={encoded_payload}"
                     status, body = await _http_get(host, port, test_path, scheme)
 
-                    if status > 0 and _check_ssti_in_response(body, expected, raw_payload):
+                    if status > 0 and _check_ssti_in_response(body, expected, raw_payload) and expected not in param_bl_body:
                         vuln_key = (base_url, engine)
                         if vuln_key in found_vulns:
                             continue

@@ -182,6 +182,16 @@ class Check(Plugin):
                 if baseline_status in (0, 404, 405):
                     continue
 
+                # Pre-check: verify baseline is stable with different
+                # credentials. If different normal credentials produce
+                # different status codes, auth bypass detection is unreliable.
+                alt_creds = json.dumps({"username": "anotheruser123", "password": "wrongpass456"})
+                alt_status, _, alt_len = await _http_request(
+                    host, port, "POST", endpoint, alt_creds, use_tls=use_tls
+                )
+                baseline_stable = (alt_status == baseline_status)
+                natural_len_variation = abs(alt_len - baseline_len)
+
                 # ── Test 1: JSON body injection ────────────────────────
                 for payload_info in _NOSQL_PAYLOADS:
                     inj_body = json.dumps(payload_info["body"])
@@ -199,10 +209,15 @@ class Check(Plugin):
                             error_found = pattern
                             break
 
-                    # Check for auth bypass (different response from baseline)
+                    # Check for auth bypass (different response from baseline).
+                    # Require stable baseline and response delta exceeding
+                    # natural variation to prevent false positives from
+                    # endpoints that return 200 for any malformed JSON.
                     auth_bypass = (
-                        inj_status == 200 and baseline_status in (401, 403)
+                        baseline_stable
+                        and inj_status == 200 and baseline_status in (401, 403)
                         and inj_len > baseline_len * 1.5
+                        and inj_len > baseline_len + natural_len_variation * 2 + 50
                     )
 
                     if error_found or auth_bypass:
@@ -267,8 +282,10 @@ class Check(Plugin):
                         continue
 
                     auth_bypass = (
-                        inj_status == 200 and baseline_status in (401, 403)
+                        baseline_stable
+                        and inj_status == 200 and baseline_status in (401, 403)
                         and inj_len > baseline_len * 1.5
+                        and inj_len > baseline_len + natural_len_variation * 2 + 50
                     )
 
                     if auth_bypass:

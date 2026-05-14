@@ -242,6 +242,20 @@ class Check(Plugin):
                     if bl_status in (0, 404, 405):
                         break  # Endpoint doesn't exist
 
+                    # ── Dynamic parameter pre-check ────────────────────
+                    # Verify changing the value actually changes the response.
+                    # If the response is identical regardless of value, the
+                    # parameter is static and boolean analysis would produce
+                    # false positives.
+                    alt_path = f"{endpoint}?{param}=2"
+                    alt_status, alt_body, _ = await _http_request(host, port, "GET", alt_path, use_tls=tls)
+                    param_is_dynamic = (
+                        alt_status != bl_status
+                        or abs(len(alt_body) - len(bl_body)) > 20
+                        or bl_body[:500] != alt_body[:500]
+                    )
+                    natural_variation = abs(len(bl_body) - len(alt_body))
+
                     # ── 1. Error-based ──────────────────────────────────
                     for payload, desc, db_type in _ERROR_PAYLOADS[:6]:
                         inj_path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
@@ -286,19 +300,22 @@ class Check(Plugin):
                         continue  # Already found SQLi, skip other techniques for this param
 
                     # ── 2. Boolean-based blind ──────────────────────────
+                    # Skip boolean analysis if parameter is not dynamic —
+                    # a static parameter will never reveal boolean SQLi.
                     true_responses = []
                     false_responses = []
-                    for payload, desc in _BOOLEAN_TRUE[:3]:
-                        path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
-                        st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
-                        if st > 0:
-                            true_responses.append((st, len(body), body[:500]))
+                    if param_is_dynamic:
+                        for payload, desc in _BOOLEAN_TRUE[:3]:
+                            path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
+                            st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
+                            if st > 0:
+                                true_responses.append((st, len(body), body[:500]))
 
-                    for payload, desc in _BOOLEAN_FALSE[:3]:
-                        path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
-                        st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
-                        if st > 0:
-                            false_responses.append((st, len(body), body[:500]))
+                        for payload, desc in _BOOLEAN_FALSE[:3]:
+                            path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
+                            st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
+                            if st > 0:
+                                false_responses.append((st, len(body), body[:500]))
 
                     if true_responses and false_responses:
                         avg_true_len = sum(r[1] for r in true_responses) / len(true_responses)
@@ -310,7 +327,15 @@ class Check(Plugin):
                         len_diff = abs(avg_true_len - avg_false_len)
                         status_diff = true_statuses != false_statuses
 
-                        if (len_diff > 50 and len_diff / max(avg_true_len, 1) > 0.1) or status_diff:
+                        # Validate against baseline to prevent false positives:
+                        # the boolean true/false difference must clearly exceed
+                        # the natural variation caused by normal value changes.
+                        baseline_true_diff = abs(avg_true_len - len(bl_body))
+                        baseline_false_diff = abs(avg_false_len - len(bl_body))
+                        exceeds_natural = len_diff > natural_variation * 2 + 50
+                        asymmetric_vs_baseline = abs(baseline_true_diff - baseline_false_diff) > natural_variation + 30
+
+                        if ((len_diff > 50 and len_diff / max(avg_true_len, 1) > 0.1) or status_diff) and (exceeds_natural or asymmetric_vs_baseline or status_diff):
                             fp = stable_fingerprint(target, META.plugin_id, "boolean", endpoint, param)
                             findings.append(Finding(
                                 severity="high",
@@ -373,7 +398,9 @@ class Check(Plugin):
                                 break
 
                     # ── 4. UNION-based (column enumeration) ─────────────
-                    if not any(r["endpoint"] == endpoint and r["param"] == param for r in sqli_results):
+                    # Skip if parameter is not dynamic — a static parameter
+                    # can't produce meaningful probe differences.
+                    if not any(r["endpoint"] == endpoint and r["param"] == param for r in sqli_results) and param_is_dynamic:
                         for i, union_payload in enumerate(_UNION_COLUMN_PROBES[:6]):
                             path = f"{endpoint}?{param}={urllib.parse.quote(union_payload)}"
                             st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
@@ -382,7 +409,17 @@ class Check(Plugin):
                                 prev_path = f"{endpoint}?{param}={urllib.parse.quote(_UNION_COLUMN_PROBES[max(0,i-1)])}" if i > 0 else ""
                                 if prev_path:
                                     prev_st, prev_body, _ = await _http_request(host, port, "GET", prev_path, use_tls=tls)
-                                    if prev_st != st or abs(len(prev_body) - len(body)) > 100:
+                                    probe_diff = abs(len(prev_body) - len(body))
+                                    if prev_st != st or probe_diff > 100:
+                                        # Validate against baseline to prevent false positives:
+                                        # the adjacent-probe difference must clearly exceed
+                                        # natural parameter variation, and the matching
+                                        # response must itself differ from the baseline.
+                                        baseline_match_diff = abs(len(body) - len(bl_body))
+                                        exceeds_natural = probe_diff > natural_variation * 2 + 50
+                                        status_changed = prev_st != st and baseline_match_diff > natural_variation + 30
+                                        if not (exceeds_natural or status_changed):
+                                            continue
                                         cols = i + 1
                                         fp = stable_fingerprint(target, META.plugin_id, "union", endpoint, param)
                                         findings.append(Finding(

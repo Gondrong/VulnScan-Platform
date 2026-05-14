@@ -137,6 +137,16 @@ class Check(Plugin):
 
             for base_path in test_paths:
                 for param in _REDIRECT_PARAMS[:10]:  # Top 10 params
+                    # Pre-check: verify this parameter actually triggers
+                    # and controls a redirect before testing evil payloads.
+                    probe_url = "https://redirect-probe-test.example.com"
+                    probe_path = f"{base_path}?{param}={urllib.parse.quote(probe_url)}"
+                    probe_status, probe_headers = await _fetch(host, port, probe_path, use_tls)
+                    if probe_status not in (301, 302, 303, 307, 308):
+                        continue  # Parameter doesn't trigger a redirect
+                    if "redirect-probe-test.example.com" not in probe_headers.get("location", ""):
+                        continue  # Redirect target not controlled by input
+
                     for payload in _PAYLOADS[:4]:  # Top 4 payloads
                         test_path = f"{base_path}?{param}={urllib.parse.quote(payload)}"
                         status, headers = await _fetch(host, port, test_path, use_tls)

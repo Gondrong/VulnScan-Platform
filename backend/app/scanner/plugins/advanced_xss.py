@@ -249,6 +249,16 @@ class Check(Plugin):
                             break  # Endpoint doesn't exist
                         continue  # Param not reflected
 
+                    # Pre-check: confirm reflection is input-dependent
+                    # by verifying a different marker also reflects.
+                    # Prevents false positives from static pages that
+                    # coincidentally contain the first marker string.
+                    alt_marker = f"{_MARKER}dyn_check"
+                    alt_path = f"{endpoint}?{param}={urllib.parse.quote(alt_marker)}"
+                    st_alt, body_alt, _ = await _http_request(host, port, "GET", alt_path, use_tls=tls)
+                    if st_alt == 0 or alt_marker not in body_alt:
+                        continue  # Reflection is not input-dependent
+
                     # Input IS reflected — detect context
                     context = _detect_context(body, test_marker)
 
@@ -429,6 +439,15 @@ class Check(Plugin):
                     )
                     if st in (0, 404, 405) or test_marker not in body:
                         continue
+
+                    # Pre-check: confirm POST reflection is input-dependent
+                    alt_marker = f"{_MARKER}post_dyn"
+                    alt_body = f"{param}={urllib.parse.quote(alt_marker)}"
+                    st_alt, body_alt, _ = await _http_request(
+                        host, port, "POST", endpoint, body=alt_body, use_tls=tls
+                    )
+                    if st_alt == 0 or alt_marker not in body_alt:
+                        continue  # Not genuinely reflected
 
                     # Reflected in POST — test payloads
                     for payload, check_pattern, desc in _BASIC_PAYLOADS[:4]:

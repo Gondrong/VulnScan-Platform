@@ -148,10 +148,14 @@ class Check(Plugin):
                     test_endpoints.append(d)
 
             for endpoint in test_endpoints:
-                # First check if endpoint exists
-                status, _ = await _http_request(host, port, "GET", endpoint, use_tls=use_tls)
+                # First check if endpoint exists and capture baseline body
+                # to filter out indicators that already appear in the
+                # normal response (prevents false positives from pages
+                # that naturally contain cloud-related terms).
+                status, baseline_ep_body = await _http_request(host, port, "GET", endpoint, use_tls=use_tls)
                 if status in (0, 404):
                     continue
+                baseline_ep_lower = baseline_ep_body.lower()
 
                 # Test each metadata URL via each parameter
                 for meta_url, cloud_name, indicators in _METADATA_URLS[:6]:  # Top 6 metadata URLs
@@ -177,7 +181,12 @@ class Check(Plugin):
                                 continue
 
                             # Check if response contains cloud metadata
-                            matched_indicators = [ind for ind in indicators if ind.lower() in resp_body.lower()]
+                            # that is NOT already in the baseline response
+                            matched_indicators = [
+                                ind for ind in indicators
+                                if ind.lower() in resp_body.lower()
+                                and ind.lower() not in baseline_ep_lower
+                            ]
 
                             if matched_indicators:
                                 severity = "critical" if "AccessKeyId" in matched_indicators or "SecretAccessKey" in matched_indicators else "high"

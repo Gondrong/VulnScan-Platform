@@ -198,6 +198,18 @@ class Check(Plugin):
                     if bl_st in (0, 404, 405):
                         break
 
+                    # Dynamic parameter pre-check: verify changing the
+                    # value actually changes the response. Used to gate
+                    # time-based blind detection where a static parameter
+                    # would produce false positives from network jitter.
+                    alt_path = f"{endpoint}?{param}=192.168.1.1"
+                    alt_st, alt_body, _ = await _http_request(host, port, "GET", alt_path, use_tls=tls)
+                    param_is_dynamic = (
+                        alt_st != bl_st
+                        or abs(len(alt_body) - len(bl_body)) > 20
+                        or bl_body[:500] != alt_body[:500]
+                    )
+
                     found = False
 
                     # ── 1. In-band Linux ────────────────────────────────
@@ -260,61 +272,65 @@ class Check(Plugin):
                         continue
 
                     # ── 3. Blind time-based (Linux) ─────────────────────
-                    for payload, desc in _BLIND_TIME_LINUX[:4]:
-                        path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
-                        st, _, elapsed = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
+                    # Skip time-based detection if parameter is static —
+                    # timing differences would be network noise, not injection.
+                    if param_is_dynamic:
+                        for payload, desc in _BLIND_TIME_LINUX[:4]:
+                            path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
+                            st, _, elapsed = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
 
-                        if elapsed >= _TIME_DELAY - 0.5 and bl_time < _TIME_DELAY - 1:
-                            # Confirm
-                            st2, _, elapsed2 = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
-                            if elapsed2 >= _TIME_DELAY - 0.5:
-                                fp = stable_fingerprint(target, META.plugin_id, "blind_time", endpoint, param)
-                                findings.append(Finding(
-                                    severity="critical",
-                                    plugin_id=META.plugin_id,
-                                    title=f"Command Injection (blind time): {endpoint}?{param}= [{desc}]",
-                                    description=(
-                                        f"Blind command injection confirmed via time delay on {endpoint}. "
-                                        f"Payload '{desc}' caused {elapsed:.1f}s delay (baseline: {bl_time:.1f}s). "
-                                        f"Confirmed: {elapsed2:.1f}s on second attempt."
-                                    ),
-                                    evidence=(
-                                        f"url={base}{endpoint} param={param} type=blind_time_linux "
-                                        f"technique={desc} baseline={bl_time:.2f}s "
-                                        f"delay1={elapsed:.2f}s delay2={elapsed2:.2f}s expected={_TIME_DELAY}s"
-                                    ),
-                                    affected=target, fingerprint=fp, confidence=0.90,
-                                    remediation=f"[CRITICAL] Blind command injection (time-based) at {endpoint}?{param}=\n\n[FIX] Same as in-band — never pass user input to shell commands.",
-                                    references=["https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html"],
-                                ))
-                                cmdi_results.append({"endpoint": endpoint, "param": param, "type": "blind_time_linux", "technique": desc})
-                                found = True
-                                break
+                            if elapsed >= _TIME_DELAY - 0.5 and bl_time < _TIME_DELAY - 1:
+                                # Confirm
+                                st2, _, elapsed2 = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
+                                if elapsed2 >= _TIME_DELAY - 0.5:
+                                    fp = stable_fingerprint(target, META.plugin_id, "blind_time", endpoint, param)
+                                    findings.append(Finding(
+                                        severity="critical",
+                                        plugin_id=META.plugin_id,
+                                        title=f"Command Injection (blind time): {endpoint}?{param}= [{desc}]",
+                                        description=(
+                                            f"Blind command injection confirmed via time delay on {endpoint}. "
+                                            f"Payload '{desc}' caused {elapsed:.1f}s delay (baseline: {bl_time:.1f}s). "
+                                            f"Confirmed: {elapsed2:.1f}s on second attempt."
+                                        ),
+                                        evidence=(
+                                            f"url={base}{endpoint} param={param} type=blind_time_linux "
+                                            f"technique={desc} baseline={bl_time:.2f}s "
+                                            f"delay1={elapsed:.2f}s delay2={elapsed2:.2f}s expected={_TIME_DELAY}s"
+                                        ),
+                                        affected=target, fingerprint=fp, confidence=0.90,
+                                        remediation=f"[CRITICAL] Blind command injection (time-based) at {endpoint}?{param}=\n\n[FIX] Same as in-band — never pass user input to shell commands.",
+                                        references=["https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html"],
+                                    ))
+                                    cmdi_results.append({"endpoint": endpoint, "param": param, "type": "blind_time_linux", "technique": desc})
+                                    found = True
+                                    break
 
                     if found:
                         continue
 
                     # ── 4. Blind time-based (Windows) ───────────────────
-                    for payload, desc in _BLIND_TIME_WINDOWS[:2]:
-                        path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
-                        st, _, elapsed = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
-                        if elapsed >= _TIME_DELAY - 0.5 and bl_time < _TIME_DELAY - 1:
-                            st2, _, elapsed2 = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
-                            if elapsed2 >= _TIME_DELAY - 0.5:
-                                fp = stable_fingerprint(target, META.plugin_id, "blind_time_win", endpoint, param)
-                                findings.append(Finding(
-                                    severity="critical",
-                                    plugin_id=META.plugin_id,
-                                    title=f"Command Injection (blind time Windows): {endpoint}?{param}= [{desc}]",
-                                    description=f"Blind command injection confirmed via time delay (Windows). Delay: {elapsed:.1f}s.",
-                                    evidence=f"url={base}{endpoint} param={param} type=blind_time_windows technique={desc} delay={elapsed:.2f}s",
-                                    affected=target, fingerprint=fp, confidence=0.90,
-                                    remediation=f"[CRITICAL] Blind command injection (Windows) at {endpoint}?{param}=\n\n[FIX] Avoid shell execution.",
-                                    references=["https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html"],
-                                ))
-                                cmdi_results.append({"endpoint": endpoint, "param": param, "type": "blind_time_windows"})
-                                found = True
-                                break
+                    if param_is_dynamic:
+                        for payload, desc in _BLIND_TIME_WINDOWS[:2]:
+                            path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
+                            st, _, elapsed = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
+                            if elapsed >= _TIME_DELAY - 0.5 and bl_time < _TIME_DELAY - 1:
+                                st2, _, elapsed2 = await _http_request(host, port, "GET", path, use_tls=tls, timeout=_TIME_DELAY + 5)
+                                if elapsed2 >= _TIME_DELAY - 0.5:
+                                    fp = stable_fingerprint(target, META.plugin_id, "blind_time_win", endpoint, param)
+                                    findings.append(Finding(
+                                        severity="critical",
+                                        plugin_id=META.plugin_id,
+                                        title=f"Command Injection (blind time Windows): {endpoint}?{param}= [{desc}]",
+                                        description=f"Blind command injection confirmed via time delay (Windows). Delay: {elapsed:.1f}s.",
+                                        evidence=f"url={base}{endpoint} param={param} type=blind_time_windows technique={desc} delay={elapsed:.2f}s",
+                                        affected=target, fingerprint=fp, confidence=0.90,
+                                        remediation=f"[CRITICAL] Blind command injection (Windows) at {endpoint}?{param}=\n\n[FIX] Avoid shell execution.",
+                                        references=["https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html"],
+                                    ))
+                                    cmdi_results.append({"endpoint": endpoint, "param": param, "type": "blind_time_windows"})
+                                    found = True
+                                    break
 
                     if found:
                         continue
