@@ -14,6 +14,7 @@ logger = logging.getLogger("vulnscan.loader")
 _BUILTIN_PLUGINS = [
     "port_scan",
     "nmap_portscan",
+    "nmap_external",
     "http_fingerprint",
     "banner_grabber",
     "web_tech",
@@ -72,6 +73,13 @@ _BUILTIN_PLUGINS = [
     # Tier 6 — Authenticated web scanning + UDP discovery (opt-in)
     "web_auth",
     "udp_portscan",
+    # External tool integrations
+    "subfinder_external",       # passive subdomain enum (early recon)
+    "httpx_external",           # HTTP probing (after subfinder + nmap)
+    "ffuf_external",            # directory fuzzing (after HTTP fingerprint)
+    "testssl_external",         # deep TLS audit (after nmap finds TLS ports)
+    "nuclei_external",          # template-based vuln scanning
+    "sqlmap_external",          # advanced SQL injection testing (last — needs URLs)
 ]
 
 
