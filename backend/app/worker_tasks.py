@@ -911,12 +911,43 @@ def _ds_fetch_url(url, headers=None, timeout=30):
         return resp.read()
 
 
-def _ds_run_script(name, args):
+# HTTP status codes worth retrying (transient server errors)
+_RETRYABLE_HTTP_CODES = {429, 500, 502, 503, 504}
+
+
+def _ds_fetch_url_retry(url, headers=None, timeout=30, max_retries=3, label=""):
+    """Fetch URL with exponential backoff retry for transient errors."""
+    last_exc = None
+    for attempt in range(1, max_retries + 2):  # attempt 1 = initial, 2..4 = retries
+        try:
+            return _ds_fetch_url(url, headers, timeout)
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            if e.code in _RETRYABLE_HTTP_CODES and attempt <= max_retries:
+                delay = 10 * (2 ** (attempt - 1))  # 10s, 20s, 40s
+                logger.warning("  %s: HTTP %d, retry %d/%d in %ds...",
+                               label, e.code, attempt, max_retries, delay)
+                time.sleep(delay)
+                continue
+            raise  # non-retryable (e.g. 403) or retries exhausted
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last_exc = e
+            if attempt <= max_retries:
+                delay = 10 * (2 ** (attempt - 1))
+                logger.warning("  %s: %s, retry %d/%d in %ds...",
+                               label, e, attempt, max_retries, delay)
+                time.sleep(delay)
+                continue
+            raise
+    raise last_exc  # should not reach here, but just in case
+
+
+def _ds_run_script(name, args, timeout=180):
     script = f"/scripts/{name}"
     if not os.path.exists(script):
         return False, f"Script not found: {script}"
     try:
-        r = subprocess.run([sys.executable, script] + args, capture_output=True, text=True, timeout=180)
+        r = subprocess.run([sys.executable, script] + args, capture_output=True, text=True, timeout=timeout)
         if r.returncode != 0:
             return False, (r.stderr.strip()[:500] or "non-zero exit")
         return True, ""
@@ -939,10 +970,10 @@ def _ds_refresh_nvd(api_key, nvd_days=120):
     if api_key:
         headers["apiKey"] = api_key
 
-    # Fetch first page
+    # Fetch first page (with retry for transient errors like 503)
     try:
         url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex=0&resultsPerPage=2000"
-        first = json.loads(_ds_fetch_url(url, headers, 60))
+        first = json.loads(_ds_fetch_url_retry(url, headers, 60, label="NVD page 1"))
     except Exception as e:
         return False, None, f"NVD first page failed: {e}"
 
@@ -953,13 +984,14 @@ def _ds_refresh_nvd(api_key, nvd_days=120):
     if total > 2000:
         for start_idx in range(2000, total, 2000):
             time.sleep(rate_delay)
+            page_num = start_idx // 2000 + 1
             try:
                 url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex={start_idx}&resultsPerPage=2000"
-                page = json.loads(_ds_fetch_url(url, headers, 60))
+                page = json.loads(_ds_fetch_url_retry(url, headers, 60, label=f"NVD page {page_num}"))
                 pages.append(page)
-                logger.info("  NVD page: startIndex=%d, got %d", start_idx, len(page.get("vulnerabilities", [])))
+                logger.info("  NVD page %d: startIndex=%d, got %d", page_num, start_idx, len(page.get("vulnerabilities", [])))
             except Exception as e:
-                logger.warning("  NVD page startIndex=%d failed: %s", start_idx, e)
+                logger.warning("  NVD page %d (startIndex=%d) failed after retries: %s", page_num, start_idx, e)
 
     # Write raw pages
     for i, p in enumerate(pages, 1):
@@ -1176,7 +1208,7 @@ def _ds_refresh_vendor_advisories():
     out_dir = Path("/data/cve")
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = str(out_dir / f"vendor_advisories_{_ds_ts()}.json")
-    ok, err = _ds_run_script("vendor_advisories_fetch.py", ["--out", out_path])
+    ok, err = _ds_run_script("vendor_advisories_fetch.py", ["--out", out_path], timeout=900)
     if not ok:
         return False, None, f"vendor_advisories_fetch.py: {err}"
     return True, out_path, None
