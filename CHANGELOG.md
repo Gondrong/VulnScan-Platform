@@ -5,6 +5,68 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.0.3 — 2026-06-19
+
+### Added
+
+**7 External Pentest Tool Integrations**
+
+Integrated industry-standard pentesting tools directly into the Docker runtime. All tools run automatically on every scan — zero user configuration required.
+
+| Tool | Version | Plugin ID | Description |
+|------|---------|-----------|-------------|
+| **Nmap** | 7.95 | `ext.nmap` | Real nmap binary with `-sV` service/version detection. Merges results with built-in port scanner. Provides `net.open_ports` + `net.service_banners` artifacts for all downstream plugins |
+| **Nuclei** | 3.3.7 | `ext.nuclei` | ProjectDiscovery template-based scanning — 8000+ community templates for CVEs, misconfigurations, and exposures. Auto-scans non-standard ports discovered by nmap |
+| **testssl.sh** | 3.2 | `ext.testssl` | Deep TLS/SSL audit — tests for Heartbleed, ROBOT, POODLE, CRIME, BREACH, DROWN, FREAK, Logjam, Sweet32, Lucky13, weak ciphers, cert chain issues, HSTS. Far more comprehensive than the built-in `tls.basic` plugin |
+| **ffuf** | 2.1.0 | `ext.ffuf` | Fast web fuzzer for directory/file discovery with bundled SecLists wordlists (35k entries). Auto-detects sensitive paths (.env, .git, wp-config, backup files, admin panels, config files). Results feed into `recon.directories` for downstream plugins |
+| **subfinder** | 2.6.7 | `ext.subfinder` | Passive subdomain enumeration via 20+ sources (crt.sh, Shodan, VirusTotal, SecurityTrails) without sending traffic to the target. Only runs for domain targets (skips IPs). Produces `recon.subdomains` artifact |
+| **httpx** | 1.6.9 | `ext.httpx` | HTTP probing + technology detection. Probes subdomains from subfinder and open ports from nmap. Detects CMS platforms, exposed admin panels (Jenkins, phpMyAdmin, Kibana), and tech stack |
+| **sqlmap** | 1.10.6 | `ext.sqlmap` | Advanced SQL injection with 100+ bypass techniques (boolean-blind, time-blind, error-based, UNION, stacked queries). Runs in safe non-destructive mode. Tests URLs discovered by ffuf and dir_crawl |
+
+**Intelligent Execution Pipeline**
+
+Tools are ordered by dependency resolution so each tool's output feeds the next:
+
+```
+nmap (ports) → subfinder (subdomains) → httpx (probe live services)
+            → testssl.sh (TLS audit on discovered TLS ports)
+            → ffuf (directory fuzzing) → nuclei (template scanning)
+                                       → sqlmap (SQLi on discovered URLs)
+```
+
+**Bundled Wordlists**
+- `/opt/wordlists/common.txt` — 4,750 common web paths
+- `/opt/wordlists/raft-medium-directories.txt` — 30,000 directory names from SecLists
+
+**Profile Options for External Tools**
+
+Each tool accepts per-scan configuration via profile `options_json`:
+
+```json
+{
+  "nmap": {"mode": "top1000", "timing": "T4"},
+  "nuclei": {"severity": "critical,high", "tags": "cve", "exclude_tags": "dos"},
+  "ffuf": {"threads": 40, "rate": 100, "wordlist": "/opt/wordlists/common.txt"},
+  "subfinder": {"timeout": 30, "recursive": false},
+  "httpx": {"threads": 25, "rate": 50},
+  "sqlmap": {"level": 1, "risk": 1, "crawl": 2, "threads": 3}
+}
+```
+
+**NVD API Retry Logic**
+- Added `_ds_fetch_url_retry()` with exponential backoff (10s → 20s → 40s, max 3 retries) for NVD dataset refresh.
+- Retries only on transient errors: HTTP 429, 500, 502, 503, 504, timeouts, and connection errors.
+- Permanent errors (e.g. 403 Forbidden) fail immediately without retry.
+- Applied to both the first-page fetch and all subsequent paginated requests.
+- Prevents dataset refresh failures due to temporary NVD API outages.
+
+### Changed
+
+- **Plugin count:** 53 → 60 (7 new external tool plugins)
+- **Dockerfile:** Added testssl.sh, ffuf, subfinder, httpx, sqlmap installations + SecLists wordlists
+- **Plugin loader:** Registered all 7 external tool modules with correct dependency ordering
+
+---
 ## v3.0.2 — 2026-05-14
 
 ### Added
