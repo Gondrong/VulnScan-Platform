@@ -23,20 +23,19 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.2 highlights** *(2026-05-14)* — see [Changelog](#changelog) for full notes.
+**v3.0.3 highlights** *(2026-06-19)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
-| 🛡️ **Scanner false-positive prevention** | Dynamic parameter pre-checks added to 14 plugins — boolean-blind, time-blind, UNION, SSRF indicator, BOLA similarity, and redirect detection now verify the parameter actually influences the response before flagging vulnerabilities |
-| 🤖 **AI prompts overhaul** | Shared scanner-context block, 6-step validation methodology, kill-chain attack chain guidance, three-phase PoC structure (recon → exploit → verify), vulnerability-specific evidence parsing instructions per plugin class |
-| 🔑 **Credential editing** | New Edit button per credential with inline modal; backend `PUT /credentials/{id}` updates individual fields without requiring secret re-entry |
-| 🔧 **Claude CLI fix** | `--max-turns 1→5` fixes "Reached max turns" error on full+exploit analysis; CLI error detection on stdout prevents silent JSON parse failures |
-| 🚀 **Auto updater install** | `bootstrap.sh` now installs the `vulnscan-updater` systemd service automatically — one-click updates from Settings work out of the box |
-| 👤 **Scan attribution** | Every scan job records the user who launched it; creator shown in job listings and details |
-| ♻️ **Dataset refresh hardening** | New `vendor_advisories` dataset kind, lock timeout 30→60 min, file-existence verification, fixed double-fire bug, cache auto-invalidation on dataset modify/delete |
+| 🔧 **7 external pentest tools** | Nmap, Nuclei, testssl.sh, ffuf, subfinder, httpx, and sqlmap — all integrated into Docker, running automatically on every scan with zero configuration |
+| 🔗 **Intelligent pipeline** | Tools feed data to each other: nmap finds ports → subfinder discovers subdomains → httpx probes services → ffuf discovers paths → nuclei + sqlmap hunt vulnerabilities |
+| 🛡️ **testssl.sh deep TLS audit** | Heartbleed, ROBOT, POODLE, CRIME, BREACH, DROWN, FREAK, Logjam — 17 named vulnerability checks beyond basic TLS version detection |
+| 🔍 **Passive subdomain recon** | subfinder enumerates subdomains from 20+ passive sources (crt.sh, Shodan, VirusTotal) without touching the target |
+| 💉 **sqlmap integration** | 100+ SQL injection bypass techniques (boolean-blind, time-blind, UNION, stacked queries) in safe non-destructive mode |
+| ♻️ **NVD retry logic** | Exponential backoff (10s → 20s → 40s) for transient NVD API errors — dataset refresh no longer fails on temporary 503s |
 
 **Key capabilities:**
-- **53 scanner plugins** spanning network / web / infrastructure / IoT / cloud / API
+- **60 scanner plugins** (53 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API
 - **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance) with one-click refresh
 - **Composite threat-score prioritization** beyond CVSS-only — uses EPSS percentile, KEV listing, and ransomware status
@@ -51,8 +50,8 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
 
 | Category | Details |
 |----------|---------|
-| **Scan engine** | Plugin-based, dependency-resolved, artifact pipeline; per-plugin timeouts; global scan budget |
-| **Network** | TCP port discovery (top 100 / 1000 / full), Nmap-style banners, **UDP** with protocol probes, DNS enum, TLS analysis, CT logs |
+| **Scan engine** | Plugin-based, dependency-resolved, artifact pipeline; per-plugin timeouts; global scan budget; 7 integrated external tools |
+| **Network** | TCP port discovery (top 100 / 1000 / full), **Nmap** service detection, **UDP** with protocol probes, DNS enum, TLS analysis, CT logs |
 | **Web application** | OWASP Top 10 (2025), advanced XSS, deep SQLi, deep OS command injection, SSTI, LFI/RFI, CRLF, host-header, SSRF, open-redirect, LDAP/NoSQL injection |
 | **Authenticated web** | Form login + CSRF, bearer, basic, cookie, header — with login-form inspector + Test Login pre-flight |
 | **API security** | OpenAPI / Swagger / Postman ingestion + 15 sub-checks (BOLA, mass-assignment, excessive-data, type-confusion, spec-hygiene, GraphQL) |
@@ -95,7 +94,7 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
            └────────────┘
 ```
 
-**Tech stack:** Python 3.11 · FastAPI · SQLAlchemy 2.0 · Redis + RQ · PostgreSQL 16 · Neo4j 5 · React + Vite
+**Tech stack:** Python 3.11 · FastAPI · SQLAlchemy 2.0 · Redis + RQ · PostgreSQL 16 · Neo4j 5 · React + Vite · Nmap · Nuclei · testssl.sh · ffuf · subfinder · httpx · sqlmap
 
 ---
 
@@ -154,7 +153,21 @@ cd VulnScan-Platform
 
 ## Scanner Plugins
 
-**53 plugins total**, opt-in via profile selection. Plugins use a dependency-resolved pipeline so e.g. CPE matching runs after fingerprinting.
+**60 plugins total** (53 built-in + 7 external tools), opt-in via profile selection. Plugins use a dependency-resolved pipeline so e.g. CPE matching runs after fingerprinting.
+
+### External Tool Integrations (7) *(new in v3.1)*
+
+Industry-standard pentest tools running inside Docker — enabled by default on all scan types.
+
+| Plugin | Tool | Description |
+|--------|------|-------------|
+| `nmap_external` | **Nmap** 7.95 | Real nmap with `-sV` service/version detection, XML parsing, risky service flagging |
+| `nuclei_external` | **Nuclei** 3.3.7 | 8000+ vulnerability templates (CVEs, misconfigs, exposures) from ProjectDiscovery |
+| `testssl_external` | **testssl.sh** 3.2 | Deep TLS/SSL audit — Heartbleed, ROBOT, POODLE, CRIME, BREACH, DROWN, FREAK, Logjam, weak ciphers |
+| `ffuf_external` | **ffuf** 2.1.0 | Fast directory/file fuzzing with bundled SecLists wordlists + sensitive path detection |
+| `subfinder_external` | **subfinder** 2.6.7 | Passive subdomain enumeration from 20+ sources (crt.sh, Shodan, VirusTotal, SecurityTrails) |
+| `httpx_external` | **httpx** 1.6.9 | HTTP probing + technology detection on subdomains and open ports |
+| `sqlmap_external` | **sqlmap** 1.10.6 | Advanced SQL injection (100+ bypass techniques, boolean/time-blind, UNION, stacked queries) |
 
 ### Network & Discovery (8)
 
@@ -393,18 +406,25 @@ Click "Generate PoC" on any individual finding to get an AI-generated Python exp
 ## Scan Flow
 
 ```
-1. Web Auth          ─→ Establish authenticated session (if configured)
-2. Port Discovery    ─→ TCP / UDP port scanning
-3. Service Fingerprint ─→ Banners, HTTP headers, TLS, web tech
-4. Deep Fingerprint  ─→ Version-specific detection, favicon hash
-5. CPE Construction  ─→ Build CPE 2.3 URIs from fingerprint data
-6. CVE Matching      ─→ NVD + CMS + package-based matching
-7. Active Testing    ─→ OWASP, SQLi, XSS, SSTI, CRLF, etc. (with auth session)
-8. Infrastructure    ─→ SSH, SMB, SNMP, MQTT, Docker, Redis, K8s
-9. Prioritization    ─→ CISA KEV, EPSS, threat-score, risk scoring
-10. Compliance       ─→ NIST 800-53, PCI DSS, CIS, ISO 27001
-11. Attack Graph     ─→ Neo4j graph modeling
-12. Cleanup          ─→ Ephemeral credentials deleted (if configured)
+ 1. Web Auth            ─→ Establish authenticated session (if configured)
+ 2. Port Discovery      ─→ TCP / UDP port scanning
+ 3. Nmap Service Scan   ─→ Real nmap -sV for service/version detection
+ 4. Subfinder           ─→ Passive subdomain enumeration (domain targets)
+ 5. Service Fingerprint ─→ Banners, HTTP headers, TLS, web tech
+ 6. testssl.sh          ─→ Deep TLS/SSL vulnerability audit
+ 7. Deep Fingerprint    ─→ Version-specific detection, favicon hash
+ 8. CPE Construction    ─→ Build CPE 2.3 URIs from fingerprint data
+ 9. CVE Matching        ─→ NVD + CMS + package-based matching
+10. httpx Probing       ─→ Probe subdomains + open ports for live HTTP services
+11. ffuf Fuzzing        ─→ Directory/file discovery with wordlists
+12. Active Testing      ─→ OWASP, SQLi, XSS, SSTI, CRLF, etc. (with auth session)
+13. Nuclei Templates    ─→ 8000+ vulnerability templates (CVEs, misconfigs)
+14. Infrastructure      ─→ SSH, SMB, SNMP, MQTT, Docker, Redis, K8s
+15. sqlmap              ─→ Advanced SQL injection on discovered URLs
+16. Prioritization      ─→ CISA KEV, EPSS, threat-score, risk scoring
+17. Compliance          ─→ NIST 800-53, PCI DSS, CIS, ISO 27001
+18. Attack Graph        ─→ Neo4j graph modeling
+19. Cleanup             ─→ Ephemeral credentials deleted (if configured)
 ```
 
 ---
@@ -508,6 +528,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.0.3 — 2026-06-19** — 7 external pentest tools (Nmap, Nuclei, testssl.sh, ffuf, subfinder, httpx, sqlmap) integrated into Docker with intelligent pipeline, NVD API retry logic, 60 total plugins
 - **v3.0.2 — 2026-05-14** — Scanner false-positive prevention (14 plugins), AI prompts overhaul, credential editing, auto updater install, Claude CLI max-turns fix
 - **v3.0.1 — 2026-05-07** — Neo4j attack graph overhaul (5 analytical queries, incremental sync, Plugin/Compliance/AssetGroup nodes), notification preferences
  system, AI provider management UI, RBAC on credentials, scan creator tracking, dataset refresh hardening, Attack Graph page
