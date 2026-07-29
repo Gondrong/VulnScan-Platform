@@ -1,4 +1,3 @@
-import hashlib
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,14 +7,12 @@ from sqlalchemy.orm import Session
 from app.core.auth import create_token, require_auth
 from app.core.config import settings
 from app.core.geoip import resolve as geoip_resolve
+from app.core.password import verify_password, needs_rehash, hash_password
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.db import models
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def _hash(pw: str) -> str:
-    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
 
 class LoginRequest(BaseModel):
@@ -24,14 +21,22 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+def login(
+    body: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    _rl=Depends(rate_limit(max_requests=5, window_seconds=60)),
+):
     user = (
         db.query(models.User)
         .filter(models.User.email == body.email)
         .first()
     )
-    if not user or user.password_hash != _hash(body.password):
+    if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Auto-migrate legacy SHA256 hashes to bcrypt on successful login
+    if needs_rehash(user.password_hash):
+        user.password_hash = hash_password(body.password)
     user.last_login_at = datetime.now(timezone.utc)
     client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host
     user.last_login_ip = client_ip

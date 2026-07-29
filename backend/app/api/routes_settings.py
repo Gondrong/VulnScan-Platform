@@ -1,7 +1,6 @@
 """
 Settings API — manage platform configuration from the UI.
 """
-import hashlib
 import json
 import logging
 import os
@@ -15,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_role
 from app.core.config import settings
+from app.core.password import hash_password, verify_password
 from app.db import models
 
 logger = logging.getLogger("vulnscan.settings")
@@ -165,7 +165,7 @@ def create_user(
     if existing:
         raise HTTPException(409, f"User '{body.email}' already exists")
 
-    pw_hash = hashlib.sha256(body.password.encode("utf-8")).hexdigest()
+    pw_hash = hash_password(body.password)
     new_user = models.User(
         workspace_id=ws,
         email=body.email,
@@ -197,11 +197,11 @@ def change_own_password(
     ).first()
     if not target:
         raise HTTPException(404, "User not found")
-    if target.password_hash != hashlib.sha256(body.current_password.encode("utf-8")).hexdigest():
+    if not verify_password(body.current_password, target.password_hash):
         raise HTTPException(403, "Current password is incorrect")
     if len(body.new_password) < 6:
         raise HTTPException(400, "New password must be at least 6 characters")
-    target.password_hash = hashlib.sha256(body.new_password.encode("utf-8")).hexdigest()
+    target.password_hash = hash_password(body.new_password)
     target.updated_at = datetime.now(timezone.utc)
     db.commit()
     logger.info("Password changed by %s", user.get("sub", "?"))
@@ -228,7 +228,7 @@ def admin_reset_password(
         raise HTTPException(404, "User not found")
     if len(body.new_password) < 6:
         raise HTTPException(400, "New password must be at least 6 characters")
-    target.password_hash = hashlib.sha256(body.new_password.encode("utf-8")).hexdigest()
+    target.password_hash = hash_password(body.new_password)
     target.updated_at = datetime.now(timezone.utc)
     db.commit()
     logger.info("Password reset for %s (#%d) by admin %s", target.email, user_id, user.get("sub", "?"))
@@ -309,7 +309,7 @@ def check_for_update(user=Depends(require_role("admin", "analyst", "viewer"))):
     cache_key = "update_check_cache"
 
     # Return cached result if available — but invalidate if the running
-    # version has changed (e.g. after an update + restart)
+    # version has changed (e.g. after an update + restart).
     cached = r.get(cache_key)
     if cached:
         try:
