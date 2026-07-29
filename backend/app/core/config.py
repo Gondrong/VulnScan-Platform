@@ -30,8 +30,8 @@ class Settings(BaseModel):
     DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
     DEFAULT_WORKSPACE: str = os.getenv("DEFAULT_WORKSPACE", "default")
 
-    # CORS: comma-separated origins, or "*" for all
-    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
+    # CORS: comma-separated origins, or "*" for all (NOT recommended in production)
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:8888")
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
