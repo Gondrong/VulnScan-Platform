@@ -1,4 +1,3 @@
-import hashlib
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -39,6 +38,10 @@ app = FastAPI(
 # ─── CORS ──────────────────────────────────────────────────────────────────────
 origins = settings.cors_origins_list()
 if origins == ["*"]:
+    logger.warning(
+        "CORS_ORIGINS is set to '*' — all origins allowed. "
+        "Set CORS_ORIGINS to specific origins in .env for production."
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r".*",
@@ -47,6 +50,7 @@ if origins == ["*"]:
         allow_headers=["*"],
     )
 else:
+    logger.info("CORS allowed origins: %s", origins)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -66,8 +70,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-def _hash(pw: str) -> str:
-    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
+from app.core.password import hash_password as _hash
 
 
 def _run_migrations(db: Session) -> None:
