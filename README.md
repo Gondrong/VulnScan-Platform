@@ -23,16 +23,14 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.3 highlights** *(2026-06-19)* — see [Changelog](#changelog) for full notes.
+**v3.0.4 highlights** *(2026-07-29)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
-| 🔧 **7 external pentest tools** | Nmap, Nuclei, testssl.sh, ffuf, subfinder, httpx, and sqlmap — all integrated into Docker, running automatically on every scan with zero configuration |
-| 🔗 **Intelligent pipeline** | Tools feed data to each other: nmap finds ports → subfinder discovers subdomains → httpx probes services → ffuf discovers paths → nuclei + sqlmap hunt vulnerabilities |
-| 🛡️ **testssl.sh deep TLS audit** | Heartbleed, ROBOT, POODLE, CRIME, BREACH, DROWN, FREAK, Logjam — 17 named vulnerability checks beyond basic TLS version detection |
-| 🔍 **Passive subdomain recon** | subfinder enumerates subdomains from 20+ passive sources (crt.sh, Shodan, VirusTotal) without touching the target |
-| 💉 **sqlmap integration** | 100+ SQL injection bypass techniques (boolean-blind, time-blind, UNION, stacked queries) in safe non-destructive mode |
-| ♻️ **NVD retry logic** | Exponential backoff (10s → 20s → 40s) for transient NVD API errors — dataset refresh no longer fails on temporary 503s |
+| 🔒 **Bcrypt password hashing** | Replaced SHA256 with bcrypt — per-password salts, adaptive cost factor, automatic migration of existing hashes on next login |
+| 🌐 **CORS restriction** | Default changed from allow-all (`*`) to specific origins — prevents cross-origin attacks in production deployments |
+| 🚦 **Login rate limiting** | Redis-backed sliding-window limiter on `/auth/login` — 5 requests/minute per IP, blocks brute-force and credential stuffing |
+| 🛡️ **React Error Boundary** | Catches unhandled frontend crashes and renders a recovery UI instead of a blank white screen |
 
 **Key capabilities:**
 - **60 scanner plugins** (53 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API
@@ -528,6 +526,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.0.4 — 2026-07-29** — Security hardening: bcrypt password hashing (replaces SHA256) with automatic legacy migration, CORS origin restriction, Redis-backed login rate limiting (5 req/min per IP), React Error Boundary for crash recovery
 - **v3.0.3 — 2026-06-19** — 7 external pentest tools (Nmap, Nuclei, testssl.sh, ffuf, subfinder, httpx, sqlmap) integrated into Docker with intelligent pipeline, NVD API retry logic, 60 total plugins
 - **v3.0.2 — 2026-05-14** — Scanner false-positive prevention (14 plugins), AI prompts overhaul, credential editing, auto updater install, Claude CLI max-turns fix
 - **v3.0.1 — 2026-05-07** — Neo4j attack graph overhaul (5 analytical queries, incremental sync, Plugin/Compliance/AssetGroup nodes), notification preferences
