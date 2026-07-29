@@ -5,6 +5,56 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.0.4 — 2026-07-29
+
+### Security Hardening
+
+**Bcrypt Password Hashing (replaces SHA256)**
+
+- Replaced all SHA256 password hashing with **bcrypt** (`bcrypt>=4.1.0`) — SHA256 without salt is trivially reversible via rainbow tables; bcrypt uses per-password salts and adaptive cost factor.
+- New centralized module `app/core/password.py` with three functions: `hash_password()`, `verify_password()`, `needs_rehash()`.
+- **Automatic migration**: existing SHA256 hashes are transparently upgraded to bcrypt on next successful login — no manual password reset required, no downtime.
+- All password operations updated: login (`routes_auth.py`), user creation (`routes_settings.py`), password change, and admin password reset.
+- Default admin user created at startup now uses bcrypt.
+
+**CORS Origin Restriction**
+
+- Default `CORS_ORIGINS` changed from `"*"` (allow all) to `"http://localhost:5173,http://localhost:8888"`.
+- New `CORS_ORIGINS` entry in `.env` for easy configuration.
+- Backend logs a warning at startup if CORS is still set to `"*"`.
+- Production deployments should set `CORS_ORIGINS` to their specific domain(s).
+
+**Rate Limiting on Login Endpoint**
+
+- New Redis-backed sliding-window rate limiter (`app/core/rate_limit.py`) applied to `POST /auth/login`.
+- Default: **5 requests per 60 seconds per IP** — blocks brute-force and credential-stuffing attacks.
+- Returns HTTP `429 Too Many Requests` with `Retry-After` header when exceeded.
+- **Fail-open**: if Redis is unavailable, login continues to work (no lockout risk).
+- Tracks requests via Redis sorted sets with automatic key expiry.
+
+### Added
+
+**React Error Boundary**
+
+- New `ErrorBoundary` component (`frontend/src/components/ErrorBoundary.jsx`) wraps the entire `<App/>` in `main.jsx`.
+- Catches unhandled JavaScript errors and renders a fallback UI with error details and a "Reload page" button instead of a blank white screen.
+- Styled to match the app's dark/light/dim theme using CSS variables.
+- Resolves the roadmap item "Top-level React error boundary" from v3.0.0.
+
+### Changed
+
+- `requirements.txt` — added `bcrypt>=4.1.0`.
+- `main.py` — removed inline `_hash()` function; imports `hash_password` from `app.core.password`.
+- `frontend/src/main.jsx` — moved `responsive.css` import to top-level; wrapped `<App/>` with `<ErrorBoundary>`.
+
+### Migration notes
+
+- **No DB migration required** — bcrypt hashes are stored in the same `password_hash` column (bcrypt hashes start with `$2b$`, SHA256 are 64-char hex — the verifier auto-detects).
+- **Backward compatible** — users with old SHA256 hashes can still log in; their hash is silently upgraded to bcrypt on next login.
+- **CORS change** — if you access VulnScan from a non-localhost URL, add your origin to `CORS_ORIGINS` in `.env` (comma-separated). Set to `*` to restore the old behavior (not recommended).
+- Run `docker compose up -d --build` to apply.
+
+---
 ## v3.0.3 — 2026-06-19
 
 ### Added
