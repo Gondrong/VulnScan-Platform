@@ -25,6 +25,7 @@ from app.api.routes_threat_intel import router as threat_intel_router
 from app.api.routes_assets import router as assets_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_events import router as events_router
+from app.api.routes_analytics import router as analytics_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
@@ -372,4 +373,5 @@ app.include_router(threat_intel_router)
 app.include_router(assets_router)
 app.include_router(reports_router)
 app.include_router(events_router)
+app.include_router(analytics_router)
 
