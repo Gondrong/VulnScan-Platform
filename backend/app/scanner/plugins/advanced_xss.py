@@ -135,6 +135,48 @@ _REFLECTED_PARAMS = ["q", "search", "query", "keyword", "term", "s",
                      "redirect", "url", "page", "callback"]
 
 
+import html as _html_mod
+
+# HTML-encoded equivalents that indicate the payload was escaped (not executable)
+_ENCODED_PATTERNS = [
+    ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&#x27;", "'"),
+    ("&#39;", "'"), ("&amp;", "&"), ("&#x3c;", "<"), ("&#x3e;", ">"),
+    ("&#60;", "<"), ("&#62;", ">"),
+]
+
+
+def _is_payload_escaped(body: str, payload: str, check_pattern: str) -> bool:
+    """Return True if the payload appears HTML-encoded (not executable).
+
+    Checks whether the response contains the escaped version of the payload
+    rather than the raw executable version. If both exist, we look for the
+    raw version NOT inside an HTML-encoded context.
+    """
+    # Find raw payload position
+    raw_idx = body.find(check_pattern)
+    if raw_idx < 0:
+        return True  # Pattern not even found — nothing to exploit
+
+    # Check surrounding context for HTML encoding
+    # Look at the region around the match for encoded delimiters
+    region_start = max(0, raw_idx - 50)
+    region_end = min(len(body), raw_idx + len(check_pattern) + 50)
+    region = body[region_start:region_end]
+
+    # If the region contains HTML-encoded versions of < or > around our payload,
+    # the framework is encoding output — this is not exploitable XSS
+    escaped_payload = _html_mod.escape(payload)
+    if escaped_payload in body and escaped_payload != payload:
+        return True
+
+    # Check if the payload appears inside an HTML comment or escaped attribute
+    before = body[max(0, raw_idx - 200):raw_idx]
+    if "<!--" in before and "-->" not in before[before.rfind("<!--"):]:
+        return True  # Inside HTML comment
+
+    return False
+
+
 async def _http_request(host, port, method, path, body="",
                         content_type="application/x-www-form-urlencoded",
                         use_tls=False, timeout=8.0):
@@ -265,7 +307,11 @@ class Check(Plugin):
                     # Check for XSS protections
                     csp = headers.get("content-security-policy", "")
                     x_xss = headers.get("x-xss-protection", "")
-                    has_csp_script = "script-src" in csp and "'unsafe-inline'" not in csp
+                    # CSP blocks inline scripts if script-src OR default-src is set without 'unsafe-inline'
+                    has_csp_script = (
+                        ("script-src" in csp or "default-src" in csp)
+                        and "'unsafe-inline'" not in csp
+                    )
 
                     # Step 2: Choose payloads based on context
                     if context == "javascript":
@@ -283,7 +329,7 @@ class Check(Plugin):
                         inj_path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
                         st2, body2, _ = await _http_request(host, port, "GET", inj_path, use_tls=tls)
 
-                        if st2 > 0 and check_pattern in body2:
+                        if st2 > 0 and check_pattern in body2 and not _is_payload_escaped(body2, payload, check_pattern):
                             fp = stable_fingerprint(target, META.plugin_id, "reflected", endpoint, param)
                             sev = "high"
                             if has_csp_script:
@@ -334,7 +380,7 @@ class Check(Plugin):
                             else:
                                 inj_path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
                             st2, body2, _ = await _http_request(host, port, "GET", inj_path, use_tls=tls)
-                            if st2 > 0 and check_pattern in body2:
+                            if st2 > 0 and check_pattern in body2 and not _is_payload_escaped(body2, payload, check_pattern):
                                 fp = stable_fingerprint(target, META.plugin_id, "bypass", endpoint, param)
                                 findings.append(Finding(
                                     severity="high",
@@ -455,7 +501,7 @@ class Check(Plugin):
                         st2, body2, _ = await _http_request(
                             host, port, "POST", endpoint, body=post_body, use_tls=tls
                         )
-                        if st2 > 0 and check_pattern in body2:
+                        if st2 > 0 and check_pattern in body2 and not _is_payload_escaped(body2, payload, check_pattern):
                             fp = stable_fingerprint(target, META.plugin_id, "post_reflected", endpoint, param)
                             findings.append(Finding(
                                 severity="high",

@@ -17,11 +17,19 @@ META = PluginMeta(
 )
 
 CMS_PATTERNS = [
-    ("wordpress", r"wp-content|wp-includes|wordpress"),
+    ("wordpress", r"wp-content/|wp-includes/|/wp-login\.php|/wp-admin"),
     ("drupal", r'Drupal\.settings|drupal\.js|sites/default/files'),
-    ("joomla", r"Joomla!|/components/com_"),
-    ("magento", r"Mage\.Cookies|magento"),
+    ("joomla", r"Joomla!|/components/com_|/administrator/"),
+    ("magento", r"Mage\.Cookies|/skin/frontend/|/static/frontend/"),
 ]
+
+# Confirmation endpoints — probed after regex match to raise confidence
+_CMS_CONFIRM_ENDPOINTS = {
+    "wordpress": ["/wp-login.php", "/wp-json/wp/v2/posts"],
+    "drupal": ["/core/misc/drupal.js", "/user/login"],
+    "joomla": ["/administrator/index.php", "/media/system/js/core.js"],
+    "magento": ["/admin", "/static/version"],
+}
 FRAMEWORK_PATTERNS = [
     ("laravel", r"laravel_session|XSRF-TOKEN"),
     ("nextjs", r"__NEXT_DATA__|/_next/static"),
@@ -114,8 +122,22 @@ class Check(Plugin):
                                 vm = re.search(r'Drupal ([0-9.]+)', html)
                                 if vm:
                                     version = vm.group(1)
+
+                            # Confirmation: probe CMS-specific endpoint to
+                            # reduce false positives from regex-only matching
+                            confidence = 0.60  # regex-only baseline
+                            confirm_urls = _CMS_CONFIRM_ENDPOINTS.get(name, [])
+                            for cpath in confirm_urls:
+                                try:
+                                    cr = await client.get(url.rstrip("/") + cpath)
+                                    if cr.status_code < 404:
+                                        confidence = 0.92  # confirmed via endpoint
+                                        break
+                                except Exception:
+                                    pass
+
                             detected.append({
-                                "type": "cms", "name": name, "confidence": 0.9,
+                                "type": "cms", "name": name, "confidence": confidence,
                                 "version": version,
                             })
 

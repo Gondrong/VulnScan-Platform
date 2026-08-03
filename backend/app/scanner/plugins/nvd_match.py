@@ -21,9 +21,27 @@ def split_cpe23(cpe: str):
     if len(parts) < 6: return None
     return {"part": parts[2], "vendor": parts[3], "product": parts[4], "version": parts[5] if len(parts) > 5 else "*"}
 
+# Vendor aliases — NVD uses different vendor names for the same software.
+# Maps alias → canonical name so both sides of a CPE comparison normalize.
+_VENDOR_ALIASES = {
+    "f5": "nginx",              # F5 acquired nginx; NVD uses both
+    "pivotal_software": "vmware",  # VMware acquired Pivotal; Spring Boot
+    "pivotal": "vmware",
+    "oracle": "sun",            # Oracle acquired Sun; some old Java CVEs
+    "sun": "oracle",
+}
+
+def _normalize_vendor(vendor: str) -> str:
+    return _VENDOR_ALIASES.get(vendor, vendor)
+
 def same_family(a: str, b: str) -> bool:
     aa=split_cpe23(a); bb=split_cpe23(b)
-    return bool(aa and bb and aa["part"]==bb["part"] and aa["vendor"]==bb["vendor"] and aa["product"]==bb["product"])
+    if not (aa and bb): return False
+    return (
+        aa["part"] == bb["part"]
+        and _normalize_vendor(aa["vendor"]) == _normalize_vendor(bb["vendor"])
+        and aa["product"] == bb["product"]
+    )
 
 def range_ok(installed: str | None, m: dict) -> bool:
     vsi=m.get("versionStartIncluding"); vee=m.get("versionEndExcluding")
@@ -183,10 +201,10 @@ class Check(Plugin):
             else:
                 v_state = "provisional"
                 v_method = "cpe_version_match_only"
-                v_confidence = min(h.get("confidence", 0.6), 0.35)
+                v_confidence = min(h.get("confidence", 0.6), 0.65)
                 v_note = (
-                    "This is not proof that the target is actually exploitable "
-                    "or affected by a vendor-shipped vulnerable build."
+                    "Based on CPE version matching against NVD. "
+                    "Verify the installed version is not patched by the OS vendor."
                 )
 
             description = h.get("summary", "")

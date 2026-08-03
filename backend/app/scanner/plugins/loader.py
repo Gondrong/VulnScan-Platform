@@ -73,6 +73,11 @@ _BUILTIN_PLUGINS = [
     # Tier 6 — Authenticated web scanning + UDP discovery (opt-in)
     "web_auth",
     "udp_portscan",
+    # Tier 7 — passive recon & intelligence gathering
+    "wayback_urls",             # Wayback Machine URL discovery
+    "subdomain_takeover",       # subdomain takeover detection
+    "github_secret_scan",       # GitHub secret/credential leak scan (opt-in)
+    "dns_history",              # DNS history & passive intelligence (CT, SPF, DMARC)
     # External tool integrations
     "subfinder_external",       # passive subdomain enum (early recon)
     "httpx_external",           # HTTP probing (after subfinder + nmap)

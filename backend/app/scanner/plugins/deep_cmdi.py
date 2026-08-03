@@ -217,6 +217,14 @@ class Check(Plugin):
                         path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
                         st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
                         if st > 0 and _MARKER in body:
+                            # Double-check: send a DIFFERENT marker with same
+                            # syntax to rule out the app merely echoing input
+                            confirm_marker = "VULNSCAN_CMDv_8y4l0"
+                            confirm_payload = payload.replace(_MARKER, confirm_marker)
+                            c_path = f"{endpoint}?{param}={urllib.parse.quote(confirm_payload)}"
+                            c_st, c_body, _ = await _http_request(host, port, "GET", c_path, use_tls=tls)
+                            if c_st == 0 or confirm_marker not in c_body:
+                                continue  # First marker was likely just echoed input
                             fp = stable_fingerprint(target, META.plugin_id, "inband", endpoint, param)
                             findings.append(Finding(
                                 severity="critical",
@@ -253,6 +261,13 @@ class Check(Plugin):
                         path = f"{endpoint}?{param}={urllib.parse.quote(payload)}"
                         st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
                         if st > 0 and _MARKER in body:
+                            # Double-check with different marker
+                            confirm_marker = "VULNSCAN_CMDv_8y4l0"
+                            confirm_payload = payload.replace(_MARKER, confirm_marker)
+                            c_path = f"{endpoint}?{param}={urllib.parse.quote(confirm_payload)}"
+                            c_st, c_body, _ = await _http_request(host, port, "GET", c_path, use_tls=tls)
+                            if c_st == 0 or confirm_marker not in c_body:
+                                continue
                             fp = stable_fingerprint(target, META.plugin_id, "inband_win", endpoint, param)
                             findings.append(Finding(
                                 severity="critical",
@@ -340,6 +355,13 @@ class Check(Plugin):
                         path = f"{endpoint}?{param}={urllib.parse.quote(payload)}" if "%" not in payload else f"{endpoint}?{param}={payload}"
                         st, body, _ = await _http_request(host, port, "GET", path, use_tls=tls)
                         if st > 0 and _MARKER in body:
+                            # Double-check with different marker
+                            confirm_marker = "VULNSCAN_CMDv_8y4l0"
+                            confirm_payload = payload.replace(_MARKER, confirm_marker)
+                            c_path = f"{endpoint}?{param}={urllib.parse.quote(confirm_payload)}" if "%" not in confirm_payload else f"{endpoint}?{param}={confirm_payload}"
+                            c_st, c_body, _ = await _http_request(host, port, "GET", c_path, use_tls=tls)
+                            if c_st == 0 or confirm_marker not in c_body:
+                                continue
                             fp = stable_fingerprint(target, META.plugin_id, "bypass", endpoint, param)
                             findings.append(Finding(
                                 severity="critical",

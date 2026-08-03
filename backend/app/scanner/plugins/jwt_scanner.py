@@ -28,13 +28,35 @@ META = PluginMeta(
 
 # ── Common weak HMAC signing keys ───────────────────────────────────────
 _WEAK_SECRETS = [
-    "secret", "password", "123456", "key", "jwt_secret",
-    "changeme", "test", "default", "admin", "supersecret",
-    "mysecret", "jwt", "token", "qwerty", "abc123",
-    "letmein", "pass", "1234", "12345678", "password123",
-    "secret123", "HS256_SECRET", "your-secret-key", "your_secret",
-    "my-secret", "my_secret", "jwt-secret", "jwt_key",
-    "JWT_SECRET", "SECRET_KEY", "app_secret", "application_secret",
+    # Generic weak passwords
+    "secret", "password", "123456", "key", "changeme", "test",
+    "default", "admin", "qwerty", "abc123", "letmein", "pass",
+    "1234", "12345678", "password123", "secret123", "welcome",
+    "monkey", "master", "login", "passw0rd", "iloveyou",
+    # JWT / token specific
+    "jwt_secret", "jwt-secret", "jwt_key", "jwt-key", "jwt",
+    "token", "token_secret", "auth_secret", "signing_key",
+    "HS256_SECRET", "hs256-secret", "hmac_secret", "hmac-key",
+    # App / framework defaults
+    "SECRET_KEY", "secret_key", "SECRET", "APP_SECRET", "app_secret",
+    "application_secret", "my-secret", "my_secret", "mysecret",
+    "your-secret-key", "your_secret", "your-secret",
+    "supersecret", "super_secret", "super-secret",
+    # Framework-specific defaults
+    "django-insecure-secret", "flask-secret", "laravel_key",
+    "rails_secret", "express_secret", "spring_secret",
+    "AllYourBase", "keyboard cat", "shhhhh", "s3cr3t",
+    # Environment variable defaults
+    "dev-secret", "dev-secret-CHANGE-ME", "development",
+    "changeit", "please-change-me", "replace-me",
+    "your-256-bit-secret", "my-256-bit-secret",
+    # Common company/project placeholders
+    "company_secret", "project_secret", "api_secret", "api-secret",
+    "private_key", "private-key", "signing-key", "auth-key",
+    "access_secret", "refresh_secret", "session_secret",
+    # Numeric / simple patterns
+    "123456789", "1234567890", "111111", "000000", "12345",
+    "123123", "654321", "password1", "p@ssw0rd",
 ]
 
 # ── Endpoints likely to return JWT tokens ───────────────────────────────

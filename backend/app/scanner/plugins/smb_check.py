@@ -274,29 +274,94 @@ async def _check_null_session(host: str, timeout: float = 5.0) -> dict:
     return result
 
 
+class _NBSTATProtocol(asyncio.DatagramProtocol):
+    """UDP protocol handler that captures the first datagram received."""
+
+    def __init__(self):
+        self.data = None
+        self.received = asyncio.Event()
+
+    def datagram_received(self, data, addr):
+        self.data = data
+        self.received.set()
+
+    def error_received(self, exc):
+        self.received.set()
+
+
+def _parse_nbstat_response(data: bytes) -> list[dict]:
+    """Parse NetBIOS NBSTAT response into list of name records."""
+    names = []
+    try:
+        # Skip header (12 bytes) + query echo (variable) to answer section
+        # Answer starts after: header(12) + query name(34) + type(2) + class(2) = 50
+        # Then answer: name(34) + type(2) + class(2) + ttl(4) + rdlength(2) = 44
+        # NBSTAT data starts at offset ~57, but we search for the name count byte
+        offset = 56  # typical offset to RDATA after NBSTAT answer header
+        if len(data) < offset + 1:
+            return names
+        name_count = data[offset]
+        offset += 1
+
+        for _ in range(min(name_count, 30)):
+            if offset + 18 > len(data):
+                break
+            # Each record: 15 bytes name + 1 byte suffix + 2 bytes flags
+            raw_name = data[offset:offset + 15].decode("ascii", errors="ignore").rstrip()
+            suffix = data[offset + 15]
+            flags = struct.unpack(">H", data[offset + 16:offset + 18])[0]
+            is_group = bool(flags & 0x8000)
+            offset += 18
+
+            # Classify by suffix byte
+            if suffix == 0x00:
+                ntype = "workgroup" if is_group else "hostname"
+            elif suffix == 0x03:
+                ntype = "messenger"
+            elif suffix == 0x20:
+                ntype = "file_server"
+            elif suffix == 0x1D:
+                ntype = "master_browser"
+            elif suffix == 0x1B:
+                ntype = "domain_master"
+            else:
+                ntype = f"0x{suffix:02x}"
+
+            names.append({"name": raw_name, "suffix": suffix, "type": ntype, "group": is_group})
+
+        # MAC address is right after the name table (6 bytes)
+        if offset + 6 <= len(data):
+            mac_bytes = data[offset:offset + 6]
+            mac = ":".join(f"{b:02x}" for b in mac_bytes)
+            if mac != "00:00:00:00:00:00":
+                names.append({"name": mac, "suffix": 0, "type": "mac_address", "group": False})
+
+    except Exception:
+        pass
+    return names
+
+
 async def _check_netbios(host: str, timeout: float = 3.0) -> dict:
     """Query NetBIOS Name Service (port 137) for hostname and domain info."""
     result = {"names": [], "error": ""}
 
     try:
-        # NetBIOS Name Query (NBSTAT)
-        # Transaction ID + Flags + Questions + Answers + Authority + Additional
+        # NetBIOS NBSTAT query for * (wildcard)
         query = b"\x01\x02"              # Transaction ID
         query += b"\x00\x00"             # Flags
         query += b"\x00\x01"             # Questions = 1
         query += b"\x00\x00\x00\x00"     # Answers, Authority, Additional = 0
-        # NBSTAT query for * (wildcard)
         query += b"\x20"                 # Name length (32 encoded)
-        query += b"\x43\x4b" * 16        # Encoded * name (CKAAAAAA...)
+        query += b"\x43\x4b" * 16        # Encoded * name
         query += b"\x00"                 # Name terminator
         query += b"\x00\x21"             # Type: NBSTAT
         query += b"\x00\x01"             # Class: IN
 
-        # Send via UDP
         loop = asyncio.get_event_loop()
-        transport, protocol = await asyncio.wait_for(
+        protocol = _NBSTATProtocol()
+        transport, _ = await asyncio.wait_for(
             loop.create_datagram_endpoint(
-                lambda: asyncio.DatagramProtocol(),
+                lambda: protocol,
                 remote_addr=(host, 137),
             ),
             timeout=timeout,
@@ -304,9 +369,16 @@ async def _check_netbios(host: str, timeout: float = 3.0) -> dict:
 
         transport.sendto(query)
 
-        # Wait for response (simplified)
-        await asyncio.sleep(1.0)
+        # Wait for response with timeout
+        try:
+            await asyncio.wait_for(protocol.received.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
+
         transport.close()
+
+        if protocol.data:
+            result["names"] = _parse_nbstat_response(protocol.data)
 
     except Exception as e:
         result["error"] = str(e)[:100]
@@ -463,33 +535,75 @@ class Check(Plugin):
                     ),
                 ))
 
-        # NetBIOS finding
-        if has_netbios and 139 in open_ports:
-            findings.append(Finding(
-                severity="medium",
-                plugin_id=META.plugin_id,
-                title="NetBIOS Session Service exposed (port 139)",
-                description=(
-                    f"NetBIOS Session Service (port 139) is accessible on {target}. "
-                    f"NetBIOS is a legacy protocol that leaks hostname and workgroup "
-                    f"information and may allow null session enumeration."
-                ),
-                evidence=f"host={target} port=139 service=netbios-ssn",
-                affected=f"{target}:139",
-                fingerprint=stable_fingerprint(target, META.plugin_id, "netbios_139"),
-                remediation=(
-                    "[MEDIUM — Legacy Protocol]\n"
-                    "Disable NetBIOS over TCP/IP if not required:\n\n"
-                    "Windows:\n"
-                    "  Network adapter > Properties > TCP/IPv4 > Advanced > WINS >\n"
-                    "  Select 'Disable NetBIOS over TCP/IP'\n\n"
-                    "Linux (Samba):\n"
-                    "  [global]\n"
-                    "  disable netbios = yes\n"
-                    "  smb ports = 445\n\n"
-                    "Firewall: Block ports 137-139 from untrusted networks."
-                ),
-            ))
+        # NetBIOS finding — probe port 137 for NBSTAT data
+        if has_netbios:
+            nb_result = await _check_netbios(target)
+            nb_names = nb_result.get("names", [])
+
+            if nb_names:
+                # Extract hostname, workgroup, MAC from parsed records
+                hostname = next((n["name"] for n in nb_names if n["type"] == "hostname"), "")
+                workgroup = next((n["name"] for n in nb_names if n["type"] == "workgroup"), "")
+                mac = next((n["name"] for n in nb_names if n["type"] == "mac_address"), "")
+                file_server = any(n["type"] == "file_server" for n in nb_names)
+
+                name_list = ", ".join(f"{n['name']} ({n['type']})" for n in nb_names if n["type"] != "mac_address")
+                evidence_parts = [f"host={target}", f"port=137", f"hostname={hostname}"]
+                if workgroup:
+                    evidence_parts.append(f"workgroup={workgroup}")
+                if mac:
+                    evidence_parts.append(f"mac={mac}")
+                evidence_parts.append(f"names=[{name_list}]")
+
+                findings.append(Finding(
+                    severity="medium",
+                    plugin_id=META.plugin_id,
+                    title=f"NetBIOS information disclosure: {hostname}" + (f" ({workgroup})" if workgroup else ""),
+                    description=(
+                        f"NetBIOS Name Service (port 137) on {target} reveals system information. "
+                        f"Hostname: {hostname or 'unknown'}, Workgroup/Domain: {workgroup or 'unknown'}, "
+                        f"MAC: {mac or 'unknown'}. "
+                        f"{'File server service is active. ' if file_server else ''}"
+                        f"This information aids attacker reconnaissance."
+                    ),
+                    evidence=" ".join(evidence_parts),
+                    affected=f"{target}:137",
+                    fingerprint=stable_fingerprint(target, META.plugin_id, "netbios_nbstat"),
+                    confidence=0.90,
+                    remediation=(
+                        "[MEDIUM — NetBIOS Information Disclosure]\n"
+                        "Disable NetBIOS over TCP/IP if not required:\n\n"
+                        "Windows:\n"
+                        "  Network adapter > Properties > TCP/IPv4 > Advanced > WINS >\n"
+                        "  Select 'Disable NetBIOS over TCP/IP'\n\n"
+                        "Linux (Samba):\n"
+                        "  [global]\n"
+                        "  disable netbios = yes\n"
+                        "  smb ports = 445\n\n"
+                        "Firewall: Block ports 137-139 from untrusted networks."
+                    ),
+                    references=["https://attack.mitre.org/techniques/T1016/001/"],
+                ))
+            elif 139 in open_ports:
+                # Port 139 open but NBSTAT didn't return data
+                findings.append(Finding(
+                    severity="medium",
+                    plugin_id=META.plugin_id,
+                    title="NetBIOS Session Service exposed (port 139)",
+                    description=(
+                        f"NetBIOS Session Service (port 139) is accessible on {target}. "
+                        f"NetBIOS is a legacy protocol that may leak hostname and workgroup "
+                        f"information."
+                    ),
+                    evidence=f"host={target} port=139 service=netbios-ssn",
+                    affected=f"{target}:139",
+                    fingerprint=stable_fingerprint(target, META.plugin_id, "netbios_139"),
+                    remediation=(
+                        "[MEDIUM — Legacy Protocol]\n"
+                        "Disable NetBIOS over TCP/IP if not required.\n"
+                        "Firewall: Block ports 137-139 from untrusted networks."
+                    ),
+                ))
 
         return PluginResult(
             findings=findings,

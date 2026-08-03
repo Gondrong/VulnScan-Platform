@@ -25,6 +25,7 @@ no data exfiltration, no exploitation. All tests are safe for production
 use and only check for vulnerability indicators in responses.
 """
 import asyncio
+import html as _html_mod
 import re
 import time
 import urllib.parse
@@ -774,7 +775,8 @@ class Check(Plugin):
                     r = await _safe_get(client, test_url)
                     if r is None:
                         continue
-                    if payload in r.text:
+                    # Check payload is reflected AND not HTML-encoded
+                    if payload in r.text and _html_mod.escape(payload) not in r.text:
                         findings.append(Finding(
                             severity="high",
                             plugin_id=META.plugin_id,
@@ -815,7 +817,7 @@ class Check(Plugin):
                     r = await _safe_get(client, url)
                     if r is None:
                         continue
-                    if payload in r.text:
+                    if payload in r.text and _html_mod.escape(payload) not in r.text:
                         findings.append(Finding(
                             severity="high",
                             plugin_id=META.plugin_id,
@@ -1069,6 +1071,12 @@ class Check(Plugin):
             if form.action_url in checked:
                 continue
             checked.add(form.action_url)
+
+            # Skip API/REST endpoints — they use token auth (Bearer/API key),
+            # not cookies, so CSRF is not applicable
+            action_path = urlparse(form.action_url).path or ""
+            if any(seg in action_path.lower() for seg in ("/api/", "/api-", "/graphql", "/rest/")):
+                continue
 
             if not form.has_csrf_token:
                 path = urlparse(form.action_url).path or "/"

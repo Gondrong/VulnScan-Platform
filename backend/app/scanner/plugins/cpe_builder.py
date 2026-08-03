@@ -25,7 +25,7 @@ def mk(vendor, product, version=None, conf=0.7, source=""):
 # ── Server header patterns ────────────────────────────────────────────────────
 # Each entry: (regex, vendor, product, confidence)
 _SERVER_PATTERNS = [
-    (r"\bnginx\/([0-9][0-9A-Za-z.\-+~]+)", "f5", "nginx", 0.85),
+    (r"\bnginx\/([0-9][0-9A-Za-z.\-+~]+)", "nginx", "nginx", 0.85),
     (r"\bapache\/([0-9][0-9A-Za-z.\-+~]+)", "apache", "http_server", 0.80),
     (r"\bapache[- ]httpd\/([0-9][0-9A-Za-z.\-+~]+)", "apache", "http_server", 0.80),
     (r"\bMicrosoft-IIS\/([0-9.]+)", "microsoft", "internet_information_services", 0.90),
@@ -98,10 +98,10 @@ _DEEP_NAME_TO_CPE = {
     "drupal": ("drupal", "drupal"),
     "joomla": ("joomla", "joomla\\!"),
     "apache": ("apache", "http_server"),
-    "nginx": ("f5", "nginx"),
+    "nginx": ("nginx", "nginx"),
     "iis": ("microsoft", "internet_information_services"),
     "php": ("php", "php"),
-    "spring_boot": ("pivotal_software", "spring_boot"),
+    "spring_boot": ("vmware", "spring_boot"),
     "nextjs": ("vercel", "next.js"),
     "tomcat": ("apache", "tomcat"),
     "asp.net": ("microsoft", "asp.net"),
