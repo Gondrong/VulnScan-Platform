@@ -32,6 +32,7 @@ export default defineConfig({
       "/reports":       proxyOpts,
       "/events":        proxyOpts,
       "/threat-intel":  proxyOpts,
+      "/analytics":     proxyOpts,
     },
   },
   build: {
