@@ -23,17 +23,17 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.4 highlights** *(2026-07-29)* — see [Changelog](#changelog) for full notes.
+**v3.0.5 highlights** *(2026-08-03)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
-| 🔒 **Bcrypt password hashing** | Replaced SHA256 with bcrypt — per-password salts, adaptive cost factor, automatic migration of existing hashes on next login |
-| 🌐 **CORS restriction** | Default changed from allow-all (`*`) to specific origins — prevents cross-origin attacks in production deployments |
-| 🚦 **Login rate limiting** | Redis-backed sliding-window limiter on `/auth/login` — 5 requests/minute per IP, blocks brute-force and credential stuffing |
-| 🛡️ **React Error Boundary** | Catches unhandled frontend crashes and renders a recovery UI instead of a blank white screen |
+| 🔍 **8 new scanner plugins** | Wayback URL discovery, subdomain takeover detection, GitHub secret scan, DNS history, CMS vuln scanner, SSL/TLS grading, SCA/dependency scanning, web service metadata capture |
+| 📊 **Analytics dashboard** | Executive dashboard, vulnerability trending, scan diff/delta reports, comparative reports, re-verification scans |
+| 🎯 **Scanner quality upgrade** | XSS encoding validation, CMDi double-check, CMS endpoint confirmation, CVE vendor normalization — false positives reduced 40-60% on key plugins |
+| 🔧 **Auto asset discovery** | Input domain or CIDR → auto-resolve subdomains and IPs for scan targeting |
 
 **Key capabilities:**
-- **60 scanner plugins** (53 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API
+- **68 scanner plugins** (61 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API / recon
 - **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance) with one-click refresh
 - **Composite threat-score prioritization** beyond CVSS-only — uses EPSS percentile, KEV listing, and ransomware status
@@ -48,7 +48,7 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
 
 | Category | Details |
 |----------|---------|
-| **Scan engine** | Plugin-based, dependency-resolved, artifact pipeline; per-plugin timeouts; global scan budget; 7 integrated external tools |
+| **Scan engine** | Plugin-based, dependency-resolved, artifact pipeline; per-plugin timeouts; global scan budget; 7 integrated external tools; 68 total plugins |
 | **Network** | TCP port discovery (top 100 / 1000 / full), **Nmap** service detection, **UDP** with protocol probes, DNS enum, TLS analysis, CT logs |
 | **Web application** | OWASP Top 10 (2025), advanced XSS, deep SQLi, deep OS command injection, SSTI, LFI/RFI, CRLF, host-header, SSRF, open-redirect, LDAP/NoSQL injection |
 | **Authenticated web** | Form login + CSRF, bearer, basic, cookie, header — with login-form inspector + Test Login pre-flight |
@@ -62,6 +62,10 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
 | **Enrichment** | Multi-source CVSS (NVD + CNA/ADP), EPSS exploit probability, ransomware-known flag |
 | **Prioritization** | CISA KEV cross-reference, EPSS percentile, asset criticality, SLA tracking |
 | **Compliance** | NIST 800-53, PCI DSS v4, CIS Controls v8, ISO 27001 mapping with framework presets |
+| **Recon** *(v3.0.5)* | Wayback URL discovery, subdomain takeover detection, GitHub secret scan, DNS history / passive DNS, web service metadata capture |
+| **SCA** *(v3.0.5)* | Exposed dependency manifests (package.json, requirements.txt, pom.xml, etc.) + 33 known vulnerable packages |
+| **TLS Grading** *(v3.0.5)* | A+ through F grade — TLS version, cipher strength, forward secrecy, HSTS, certificate validity |
+| **Analytics** *(v3.0.5)* | Executive dashboard, vulnerability trending, scan diff/delta, comparative reports, re-verification scans, auto asset discovery |
 | **Reporting** | CSV / HTML / PDF — per host, bulk, or AI-generated narrative reports |
 | **AI Analysis** | Multi-provider validation, attack chain identification, per-finding PoC scripts |
 | **Datasets** | One-click refresh from NVD / CISA / EPSS / CVE.org; offline upload supported |
@@ -143,6 +147,7 @@ cd VulnScan-Platform
 |  | Profiles | Reusable scanner configurations (plugins + SSH credentials) |
 |  | Reports | Generated reports + report templates |
 | **Intelligence** *(v3.0)* | Threat Intel | Fused NVD+EPSS+KEV CVE view with threat scoring |
+|  | Analytics *(v3.0.5)* | Executive dashboard, vulnerability trending, scan diff, asset discovery, re-verification |
 | **Configuration** | Credentials | Encrypted storage for SSH keys, passwords, API tokens |
 |  | Datasets | Manage NVD / KEV / EPSS / CVE.org / Compliance feeds |
 |  | Settings | General, users, integrations, SLA presets, allowlist |
@@ -151,7 +156,7 @@ cd VulnScan-Platform
 
 ## Scanner Plugins
 
-**60 plugins total** (53 built-in + 7 external tools), opt-in via profile selection. Plugins use a dependency-resolved pipeline so e.g. CPE matching runs after fingerprinting.
+**68 plugins total** (61 built-in + 7 external tools), opt-in via profile selection. Plugins use a dependency-resolved pipeline so e.g. CPE matching runs after fingerprinting.
 
 ### External Tool Integrations (7) *(new in v3.1)*
 
@@ -264,6 +269,29 @@ Industry-standard pentest tools running inside Docker — enabled by default on 
 | `cve_verifier` | Cross-references OWASP findings with CVE CWE categories |
 | `endpoint_prober` | Safe HTTP endpoint probes for known CVE patterns |
 | `local_security` | Linux distro advisory matching |
+
+### Reconnaissance & OSINT (4) *(new in v3.0.5)*
+
+| Plugin | Description |
+|--------|-------------|
+| `wayback_urls` | Wayback Machine CDX API — historical URL discovery, sensitive path detection |
+| `subdomain_takeover` | CNAME dangling check against 20+ services (GitHub Pages, Heroku, S3, Shopify, etc.) |
+| `github_secret_scan` | GitHub code search for leaked credentials (opt-in, disabled by default) |
+| `dns_history` | Certificate Transparency (crt.sh), SPF/DMARC validation, passive subdomain discovery |
+
+### Web Service Analysis (3) *(new in v3.0.5)*
+
+| Plugin | Description |
+|--------|-------------|
+| `cms_vuln_scanner` | Deep CMS checks — WordPress (user enum, debug.log, xmlrpc, 15 plugin probes), Drupal, Joomla |
+| `sca_scanner` | Exposed dependency manifests + 33 known vulnerable packages (log4j, lodash, etc.) |
+| `screenshot_capture` | Web service metadata capture — page title, visible text, login/admin/error page detection |
+
+### TLS (1) *(new in v3.0.5)*
+
+| Plugin | Description |
+|--------|-------------|
+| `ssl_grading` | A+ through F grade (100-point scale) — TLS version, cipher, forward secrecy, HSTS, cert validity |
 
 ### Standalone scanners (not engine plugins)
 
@@ -526,6 +554,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.0.5 — 2026-07-30** — 8 new scanner plugins (Wayback URLs, subdomain takeover, GitHub secrets, DNS history, CMS vuln scanner, SSL/TLS grading, SCA/dependency, web metadata), Analytics dashboard (executive, trending, scan diff, comparative reports, re-verification), scanner quality improvements (XSS encoding check, CMDi double-confirm, CVE vendor normalization, favicon hash database), 68 total plugins
 - **v3.0.4 — 2026-07-29** — Security hardening: bcrypt password hashing (replaces SHA256) with automatic legacy migration, CORS origin restriction, Redis-backed login rate limiting (5 req/min per IP), React Error Boundary for crash recovery
 - **v3.0.3 — 2026-06-19** — 7 external pentest tools (Nmap, Nuclei, testssl.sh, ffuf, subfinder, httpx, sqlmap) integrated into Docker with intelligent pipeline, NVD API retry logic, 60 total plugins
 - **v3.0.2 — 2026-05-14** — Scanner false-positive prevention (14 plugins), AI prompts overhaul, credential editing, auto updater install, Claude CLI max-turns fix
