@@ -16,6 +16,7 @@ export function Nav({ page, setPage, onSignOut, counts = {} }) {
     { section: "Intelligence", items: [
       { id: "threat-intel", label: "Threat Intel", icon: Icons.Target, count: counts.threat_kev },
       { id: "attack-graph", label: "Attack Graph", icon: Icons.Graph },
+      { id: "analytics", label: "Analytics", icon: Icons.Activity },
     ]},
     { section: "Configuration", items: [
       { id: "credentials", label: "Credentials", icon: Icons.Key, count: counts.credentials },

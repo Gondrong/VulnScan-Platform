@@ -7,6 +7,7 @@ import { Assets, AssetDetail, Reports } from "./design/Assets.jsx";
 import { Profiles, Credentials, Datasets, Settings } from "./design/PagesOther.jsx";
 import { ThreatIntel } from "./design/ThreatIntel.jsx";
 import { AttackGraph } from "./design/AttackGraph.jsx";
+import { Analytics } from "./design/Analytics.jsx";
 import { LoginPage } from "./design/Login.jsx";
 import {
   getToken, logout as apiLogout,
@@ -67,6 +68,7 @@ export default function App() {
     if (p === "datasets")     return ["VulnScan", "Datasets"];
     if (p === "threat-intel") return ["VulnScan", "Threat Intel"];
     if (p === "attack-graph") return ["VulnScan", "Attack Graph"];
+    if (p === "analytics")    return ["VulnScan", "Analytics"];
     if (p === "settings")     return ["VulnScan", "Settings"];
     return ["VulnScan"];
   })(page);
@@ -94,6 +96,7 @@ export default function App() {
           {page === "datasets"    && <Datasets/>}
           {page === "threat-intel"&& <ThreatIntel/>}
           {page === "attack-graph"&& <AttackGraph/>}
+          {page === "analytics"  && <Analytics/>}
           {page === "settings"    && <Settings initialTab={settingsTab}/>}
         </div>
       </div>

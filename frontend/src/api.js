@@ -258,6 +258,16 @@ export const graphApi = {
   mostVulnerable:  ()       => api("/graph/most-vulnerable"),
 };
 
+// ── Analytics ────────────────────────────────────────────────────────
+export const analyticsApi = {
+  discover:     (body)             => api("/analytics/discover", { method: "POST", body }),
+  trending:     (days=30, interval="daily") => api(`/analytics/trending?days=${days}&interval=${interval}`),
+  diff:         (jobA, jobB)       => api(`/analytics/diff?job_a=${jobA}&job_b=${jobB}`),
+  executive:    ()                 => api("/analytics/executive"),
+  compare:      (jobA, jobB)       => api(`/analytics/compare?job_a=${jobA}&job_b=${jobB}`),
+  reverify:     (jobId)            => api("/analytics/reverify", { method: "POST", body: { job_id: jobId } }),
+};
+
 // ── Scan ─────────────────────────────────────────────────────────────
 export const scanApi = {
   listJobs:   ()       => api("/scan/jobs"),
