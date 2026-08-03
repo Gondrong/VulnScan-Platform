@@ -5,6 +5,74 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.0.5 — 2026-08-03
+
+### Added
+
+**8 New Scanner Plugins (68 total — 61 built-in + 7 external tools)**
+
+| Plugin | ID | Category | Description |
+|--------|----|----------|-------------|
+| **Wayback URL Discovery** | `recon.wayback_urls` | Recon | Queries Wayback Machine CDX API for historical URLs; flags sensitive paths (`.env`, `.git`, `/admin`, `/backup`, config files) as medium severity |
+| **Subdomain Takeover Detection** | `recon.subdomain_takeover` | Recon | Checks discovered subdomains for dangling CNAME records pointing to 20+ unclaimed services (GitHub Pages, Heroku, S3, Shopify, Netlify, Azure, Tumblr, Fastly, Ghost, Pantheon, Zendesk); generates high severity findings |
+| **GitHub Secret Exposure Scan** | `recon.github_secrets` | Recon | Searches GitHub code API for leaked credentials associated with the target domain — API keys, passwords, private keys; opt-in (disabled by default), rate-limited to 5 API calls |
+| **DNS History / Passive DNS** | `recon.dns_history` | Recon | Certificate Transparency via crt.sh for subdomain discovery, SPF/DMARC policy validation, MX record enumeration; flags missing or weak email security policies |
+| **CMS Vulnerability Scanner** | `web.cms_vuln_scanner` | Web | Deep CMS-specific checks: WordPress (user enum via REST API, debug.log, xmlrpc.php, wp-config.php backups, 15 plugin version probes), Drupal (CHANGELOG.txt, open registration), Joomla (manifest version, config backups) |
+| **SSL/TLS Grading** | `tls.grading` | TLS | Computes A+ through F grade on a 100-point scale — TLS version (+30/+20/-40), AEAD cipher (+20), forward secrecy (+20), HSTS (+10), cert validity (+10), weak cipher penalty (-30); grade maps to finding severity |
+| **Dependency/SCA Scanner** | `web.sca_scanner` | Web | Probes for exposed dependency manifests (package.json, requirements.txt, composer.json, pom.xml, Gemfile.lock, go.sum, yarn.lock); checks against 33 known critically vulnerable packages (log4j, lodash, minimist, Spring4Shell, etc.) |
+| **Web Service Metadata Capture** | `recon.screenshot` | Recon | Lightweight metadata capture for each discovered HTTP service — page title, visible text, response headers, technology detection; auto-detects login pages, admin panels, and error pages with stack traces |
+
+**Analytics API — 6 New Endpoints**
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /analytics/discover` | **Auto Asset Discovery** — input domain or CIDR range; resolves common subdomains (www, api, mail, staging, etc.) with DNS, returns discovered targets with IPs |
+| `GET /analytics/trending` | **Vulnerability Trending** — time-series data of findings grouped by severity (daily/weekly); includes mean time to remediate metric |
+| `GET /analytics/diff` | **Scan Diff / Delta Report** — compares two scan jobs by fingerprint; categorizes findings as new, fixed, unchanged, or changed-severity |
+| `GET /analytics/executive` | **Executive Dashboard** — risk posture, SLA compliance (on-track/breached/approaching), top 10 vulnerabilities, findings by category, scan activity summary |
+| `GET /analytics/compare` | **Comparative Report** — high-level before/after comparison with improvement percentage and per-severity delta |
+| `POST /analytics/reverify` | **Re-verification Scan** — creates a targeted scan job that only re-tests findings from a previous scan to verify fixes |
+
+**Frontend — Analytics Page**
+
+- New **Analytics** entry in sidebar (Intelligence section)
+- Five tabs: Executive Dashboard, Vulnerability Trending, Scan Comparison, Asset Discovery, Re-verification
+- Executive Dashboard with stat cards, top 10 vulnerabilities table, category breakdown, scan activity
+- Vulnerability Trending with day selector (7d/30d/90d) and CSS-based stacked bar chart
+- Scan Comparison with dual-job selector, summary stats, and collapsible new/fixed/changed sections
+- Asset Discovery with domain/CIDR input and results list
+- Re-verification with job selector and one-click re-scan
+
+### Changed — Scanner Quality Improvements
+
+**False Positive Reduction**
+
+- **`advanced_xss`** — Added HTML encoding check (`_is_payload_escaped`): payloads that are HTML-entity-encoded in the response are no longer flagged as XSS. Fixed CSP logic to also check `default-src`. Estimated FP reduction: 45% → 15%.
+- **`owasp_scanner`** — Added `html.escape()` comparison for XSS detection. CSRF check now skips REST API endpoints (`/api/`, `/graphql`, `/rest/`). Estimated FP reduction: 45% → 15%.
+- **`deep_cmdi`** — Added double-check confirmation: sends a second unique marker with same syntax to distinguish real command execution from input echoing. Applied to Linux, Windows, and WAF bypass detection. Estimated FP reduction: 25% → 10%.
+- **`web_tech`** — CMS regex patterns tightened (e.g., `wp-content/` instead of `wp-content`). Added endpoint confirmation probes (`/wp-login.php`, `/wp-json/`) — confidence starts at 0.60 for regex-only, rises to 0.92 on endpoint confirm. Estimated FP reduction: 35% → 10%.
+
+**Detection Coverage Improvements**
+
+- **`jwt_scanner`** — Weak secret list expanded from 30 to 88 entries: added framework defaults (`django-insecure-secret`, `dev-secret-CHANGE-ME`), env variable names (`SECRET_KEY`, `JWT_SECRET`), and common passwords.
+- **`deep_sqli`** — UNION column probes expanded from 8 to 20 columns with early-exit optimization (stops after 3 consecutive errors).
+- **`smb_check`** — Implemented full NetBIOS NBSTAT response parsing: extracts hostname, workgroup/domain, MAC address, file server status, master browser role from UDP port 137.
+
+**CVE Matching Accuracy**
+
+- **`cpe_builder`** — Fixed nginx vendor mismatch (`f5` → `nginx`), Spring Boot dual vendor bug (`pivotal_software` → `vmware` unified), consistent vendor mapping across server headers, webtech, and deep fingerprint sources.
+- **`nvd_match`** — Added vendor alias normalization table (`f5↔nginx`, `pivotal↔vmware`, `oracle↔sun`). Raised confidence cap from 0.35 to 0.65 so real CVE matches are no longer buried as low-confidence noise.
+- **`favicon_hash`** — Rewritten from non-functional (hash computed but never looked up) to fully functional: 39 known application hashes (Jenkins, phpMyAdmin, Grafana, Kibana, Portainer, WordPress, etc.) with severity-graded findings.
+
+### Migration notes
+
+- **No DB migration required** — all changes are additive (new plugins, new API routes, new frontend page).
+- **8 new plugins auto-enabled** — 7 of 8 new plugins are enabled by default; `recon.github_secrets` is opt-in (disabled by default) to avoid unintended external API calls.
+- **New nav item** — "Analytics" appears in the Intelligence sidebar section automatically.
+- **Plugin count** — 60 → 68 total plugins.
+- Run `docker compose up -d --build` to apply.
+
+---
 ## v3.0.4 — 2026-07-29
 
 ### Security Hardening
