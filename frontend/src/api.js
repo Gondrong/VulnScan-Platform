@@ -214,6 +214,24 @@ export const notificationPrefsApi = {
   reset: ()     => api("/settings/notifications/reset", { method: "POST" }),
 };
 
+// ── Auto AI Analysis ────────────────────────────────────────────────
+export const autoAiApi = {
+  get:    ()     => api("/settings/auto-ai"),
+  update: (body) => api("/settings/auto-ai", { method: "PUT", body }),
+};
+
+// ── SLA Breach Alert ────────────────────────────────────────────────
+export const slaAlertApi = {
+  get:    ()     => api("/settings/sla-alert"),
+  update: (body) => api("/settings/sla-alert", { method: "PUT", body }),
+};
+
+// ── Auto Report Generation ──────────────────────────────────────────
+export const autoReportApi = {
+  get:    () => api("/settings/auto-report"),
+  update: (body) => api("/settings/auto-report", { method: "PUT", body }),
+};
+
 // ── Events (live activity) ───────────────────────────────────────────
 export const eventsApi = {
   recent:  (limit = 20) => api(`/events/recent?limit=${limit}`),
