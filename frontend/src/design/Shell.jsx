@@ -2,7 +2,7 @@ import React, { useState, useEffect, Fragment } from "react";
 import { Icons } from "./icons.jsx";
 import { eventsApi, getUser } from "../api.js";
 
-export function Nav({ page, setPage, onSignOut, counts = {} }) {
+export function Nav({ page, setPage, onSignOut, counts = {}, version = "" }) {
   const NAV_ITEMS = [
     { section: "Overview", items: [
       { id: "dashboard", label: "Dashboard", icon: Icons.Dashboard },
@@ -29,7 +29,7 @@ export function Nav({ page, setPage, onSignOut, counts = {} }) {
     <aside className="nav">
       <div className="nav-brand">
         <div className="nav-logo">V</div>
-        <div className="nav-name">VulnScan<span className="ver">v3.0.5</span></div>
+        <div className="nav-name">VulnScan<span className="ver">{version ? `v${version}` : ""}</span></div>
       </div>
       <div className="nav-search">
         <span className="icon"><Icons.Search size={14}/></span>

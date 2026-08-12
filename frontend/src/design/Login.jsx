@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Icons } from "./icons.jsx";
 import { login as apiLogin, eventsApi } from "../api.js";
 
-export function LoginPage({ onLogin }) {
+export function LoginPage({ onLogin, version = "" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -33,7 +33,7 @@ export function LoginPage({ onLogin }) {
           <div className="nav-logo" style={{width: 36, height: 36, fontSize: 15}}>V</div>
           <div>
             <div style={{fontSize: 16, fontWeight: 600, color: "var(--text-0)", letterSpacing: "-0.01em"}}>
-              VulnScan <span style={{color: "var(--text-3)", fontWeight: 400, fontSize: 12, marginLeft: 4}}>v3.0.5</span>
+              VulnScan <span style={{color: "var(--text-3)", fontWeight: 400, fontSize: 12, marginLeft: 4}}>{version ? `v${version}` : ""}</span>
             </div>
             <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 1}}>Risk Based Vulnerability Management — Security operations console</div>
           </div>
