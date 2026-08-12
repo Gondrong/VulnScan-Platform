@@ -23,17 +23,17 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.5 highlights** *(2026-08-03)* — see [Changelog](#changelog) for full notes.
+**v3.0.6 highlights** *(2026-08-12)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
-| 🔍 **8 new scanner plugins** | Wayback URL discovery, subdomain takeover detection, GitHub secret scan, DNS history, CMS vuln scanner, SSL/TLS grading, SCA/dependency scanning, web service metadata capture |
-| 📊 **Analytics dashboard** | Executive dashboard, vulnerability trending, scan diff/delta reports, comparative reports, re-verification scans |
-| 🎯 **Scanner quality upgrade** | XSS encoding validation, CMDi double-check, CMS endpoint confirmation, CVE vendor normalization — false positives reduced 40-60% on key plugins |
-| 🔧 **Auto asset discovery** | Input domain or CIDR → auto-resolve subdomains and IPs for scan targeting |
+| 🧠 **CVE.org fallback matcher** | Catch CVEs before NVD publishes CPE data — detection coverage 49% → 75% |
+| 🛡️ **CIS Benchmark scanner** | 53 server hardening checks (Linux + Docker + Nginx) via SSH |
+| ⚡ **7 automation features** | Auto AI analysis, auto report, SLA breach alerts, database backup, update check — all configurable |
+| 📊 **Analytics dashboard** | Executive dashboard, vulnerability trending, scan diff, comparative reports |
 
 **Key capabilities:**
-- **68 scanner plugins** (61 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API / recon
+- **71 scanner plugins** (64 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API / recon / audit
 - **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance) with one-click refresh
 - **Composite threat-score prioritization** beyond CVSS-only — uses EPSS percentile, KEV listing, and ransomware status
@@ -48,7 +48,7 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
 
 | Category | Details |
 |----------|---------|
-| **Scan engine** | Plugin-based, dependency-resolved, artifact pipeline; per-plugin timeouts; global scan budget; 7 integrated external tools; 68 total plugins |
+| **Scan engine** | Plugin-based, dependency-resolved, artifact pipeline; per-plugin timeouts; global scan budget; 7 integrated external tools; 70 total plugins |
 | **Network** | TCP port discovery (top 100 / 1000 / full), **Nmap** service detection, **UDP** with protocol probes, DNS enum, TLS analysis, CT logs |
 | **Web application** | OWASP Top 10 (2025), advanced XSS, deep SQLi, deep OS command injection, SSTI, LFI/RFI, CRLF, host-header, SSRF, open-redirect, LDAP/NoSQL injection |
 | **Authenticated web** | Form login + CSRF, bearer, basic, cookie, header — with login-form inspector + Test Login pre-flight |
@@ -156,7 +156,7 @@ cd VulnScan-Platform
 
 ## Scanner Plugins
 
-**68 plugins total** (61 built-in + 7 external tools), opt-in via profile selection. Plugins use a dependency-resolved pipeline so e.g. CPE matching runs after fingerprinting.
+**71 plugins total** (64 built-in + 7 external tools), opt-in via profile selection. Plugins use a dependency-resolved pipeline so e.g. CPE matching runs after fingerprinting.
 
 ### External Tool Integrations (7) *(new in v3.1)*
 
@@ -292,6 +292,19 @@ Industry-standard pentest tools running inside Docker — enabled by default on 
 | Plugin | Description |
 |--------|-------------|
 | `ssl_grading` | A+ through F grade (100-point scale) — TLS version, cipher, forward secrecy, HSTS, cert validity |
+
+### Server Hardening Audit (1) *(new in v3.0.6)*
+
+| Plugin | Description |
+|--------|-------------|
+| `cis_benchmark` | CIS Benchmark audit via SSH — 40 Linux OS + 7 Docker + 6 Nginx checks (opt-in, requires SSH credentials) |
+| `sca_server` | Server-side SCA via SSH — OS package audit, runtime version check, dependency file scanning (opt-in) |
+
+### CVE Matching Fallback (1) *(new in v3.0.6)*
+
+| Plugin | Description |
+|--------|-------------|
+| `cveorg_match` | CVE.org affected-product matcher — catches CVEs before NVD publishes CPE data |
 
 ### Standalone scanners (not engine plugins)
 
@@ -554,6 +567,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.0.6 — 2026-08-12** — CVE.org fallback matcher (detection coverage 49%→75%), CIS Benchmark scanner (53 checks), server-side SCA (OS packages + dependencies via SSH), 7 automation features (auto AI, auto report, SLA alerts, DB backup, update check), 71 total plugins
 - **v3.0.5 — 2026-08-03** — 8 new scanner plugins (Wayback URLs, subdomain takeover, GitHub secrets, DNS history, CMS vuln scanner, SSL/TLS grading, SCA/dependency, web metadata), Analytics dashboard (executive, trending, scan diff, comparative reports, re-verification), scanner quality improvements (XSS encoding check, CMDi double-confirm, CVE vendor normalization, favicon hash database), 68 total plugins
 - **v3.0.4 — 2026-07-29** — Security hardening: bcrypt password hashing (replaces SHA256) with automatic legacy migration, CORS origin restriction, Redis-backed login rate limiting (5 req/min per IP), React Error Boundary for crash recovery
 - **v3.0.3 — 2026-06-19** — 7 external pentest tools (Nmap, Nuclei, testssl.sh, ffuf, subfinder, httpx, sqlmap) integrated into Docker with intelligent pipeline, NVD API retry logic, 60 total plugins

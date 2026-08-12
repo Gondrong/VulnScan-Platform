@@ -5,6 +5,84 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.0.6 — 2026-08-12
+
+### Added
+
+**CVE.org Fallback Matcher — Catch CVEs Before NVD Does**
+
+- New `cveorg_match` plugin: detects CVEs using CVE.org `affected` vendor/product/version data as fallback when NVD has not yet published CPE match criteria.
+- Worker `_fetch_one` updated to extract and store `affected` field from CVE.org API responses.
+- Vendor alias normalization for fuzzy matching (WordPress.org → wordpress, Automattic → wordpress, Apache Software Foundation → apache).
+- **Impact:** CVE detection coverage increased from 49.4% to 74.7% — catches new CVEs within hours of publication instead of waiting days/weeks for NVD.
+
+**CIS Benchmark Scanner (53 checks)**
+
+- New `audit.cis_benchmark` plugin — SSH-based server hardening audit against CIS Benchmarks.
+- **Linux OS (40 checks):** filesystem hardening, dangerous services, network parameters, firewall, logging/audit, authentication policies, file permissions, system maintenance.
+- **Docker Host (7 checks):** privileged containers, socket mounts, ICC, content trust, rootless mode. Only runs if Docker is detected.
+- **Nginx (6 checks):** non-root user, server_tokens, TLS protocols, HSTS, access/error logging. Only runs if Nginx is detected.
+- Opt-in (disabled by default) — requires SSH credentials.
+- Summary finding: "CIS Benchmark: X/Y checks passed (Z%)" with severity scaled by pass rate.
+
+**Server-side SCA (Dependency Audit)**
+
+- New `audit.sca_server` plugin — SSH-based software composition analysis.
+- **OS package audit:** scans `dpkg -l` / `rpm -qa` against 12 known vulnerable packages (OpenSSL, sudo, curl, polkit, Apache, nginx, etc.).
+- **Runtime detection:** checks installed versions of Node.js, Python, Java, PHP, Ruby, Go.
+- **Dependency file scanning:** finds and parses `package.json`, `requirements.txt`, `composer.json`, `Gemfile.lock`, `pom.xml`, `go.sum` across `/opt`, `/srv`, `/var/www`, `/home`, `/app`.
+- **Vulnerability matching:** 45+ known vulnerable packages across Node.js (lodash, minimist, express, axios), Python (Django, Flask, Jinja2, requests), PHP (Laravel, Guzzle, PHPMailer), Ruby (Rails, Nokogiri), Java (log4j, Spring, Jackson, commons-text).
+- Opt-in (disabled by default) — requires SSH credentials.
+
+**Automation Suite — 7 Features**
+
+| Feature | Trigger | Configurable |
+|---------|---------|:------------:|
+| **Auto AI Analysis** | After scan completes | Settings → Auto AI (provider, mode) |
+| **Scan status `analyzing`** | While AI runs | Automatic — yellow badge in UI |
+| **Stale AI detection** | >15 min stuck | Automatic — scheduler checks every 60s |
+| **Auto Report Generation** | After scan completes | Settings → Auto Report (ON/OFF) |
+| **SLA Breach Alert** | Findings exceed SLA deadline | Settings → SLA Alert (ON/OFF, interval) |
+| **Database Backup** | Every 24 hours | Automatic — pg_dump, retain 7 backups |
+| **Auto Update Check** | Every 24 hours | Automatic — notifies via integrations |
+
+**Settings UI — 3 New Panels**
+
+- **Settings → Auto AI** — toggle + provider selector + mode (validate/full/full_exploit)
+- **Settings → Auto Report** — toggle auto PDF generation
+- **Settings → SLA Alert** — toggle + interval selector (15m to 24h), de-duplicated alerts
+
+**Frontend**
+
+- `analyzing` status badge (yellow, animated) in job list — shows "AI analyzing" while AI runs
+- Job list auto-refreshes during `analyzing` state
+- Version displayed dynamically from `/healthz` API — no more hardcoded version strings
+
+### Changed
+
+- **CVE.org refresh timeout** increased from 3600s to 7200s (2 hours) to prevent timeout on large fetches.
+- **CVE.org fetch rate** increased from 5 to 10 req/s with 8 workers (was 5) for faster refresh.
+- **SLA Breach Alert** is now configurable and disabled by default (was always-on in initial implementation).
+
+### Fixed
+
+- CVE.org CVSS refresh timeout error (`Task exceeded maximum timeout value 3600 seconds`).
+- AI analysis stuck in `queued` status after worker restart — stale detection auto-recovers within 15 minutes.
+- Scan job stuck in `analyzing` status when AI fails — auto-restored to `done`.
+- Frontend Analytics page field name mismatches (executive dashboard, trending chart, discovery, scan diff).
+- Frontend trending bar chart now shows severity counts inside bars and in legend.
+
+### Migration notes
+
+- **No DB migration required** — all changes are additive.
+- **3 new plugins:** `cveorg_match` (enabled by default), `cis_benchmark` and `sca_server` (opt-in, require SSH).
+- **Plugin count:** 68 → 71.
+- **Automation features default OFF** — Auto AI, Auto Report, and SLA Alert must be enabled in Settings.
+- **Database backup** runs automatically — backups saved to `/data/backups/` inside the container.
+- **CVE.org backfill recommended** — run "Refresh All" from Datasets to populate `affected` data for existing CVEs.
+- Run `docker compose up -d --build` to apply.
+
+---
 ## v3.0.5 — 2026-08-03
 
 ### Added
