@@ -22,6 +22,29 @@ def _update_progress(db, analysis: models.AiAnalysis, progress: dict) -> None:
     db.commit()
 
 
+def _finalize_job_after_ai(db, job_id: int) -> None:
+    """If the scan job is in 'analyzing' state, move it back to 'done'.
+
+    Only transitions if no other AI analyses are still queued/running
+    for this job (in case multiple analyses were triggered).
+    """
+    try:
+        job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
+        if not job or job.status != "analyzing":
+            return
+        # Check if any other analysis for this job is still pending
+        still_running = db.query(models.AiAnalysis).filter(
+            models.AiAnalysis.job_id == job_id,
+            models.AiAnalysis.status.in_(["queued", "running"]),
+        ).count()
+        if still_running == 0:
+            job.status = "done"
+            db.commit()
+            logger.info("Job #%d status: analyzing -> done (AI complete)", job_id)
+    except Exception as e:
+        logger.warning("Failed to finalize job #%d after AI: %s", job_id, e)
+
+
 def _serialize_finding_from_db(f: models.Finding) -> dict:
     """Convert a DB Finding model to a dict for prompt building."""
     return {
@@ -208,6 +231,9 @@ def run_analysis(analysis_id: int) -> None:
         _update_progress(db, analysis, {"pct": 100, "step": "Complete"})
         db.commit()
 
+        # If scan job is in "analyzing" state, move it to "done"
+        _finalize_job_after_ai(db, analysis.job_id)
+
         logger.info(
             "AI analysis #%d complete: provider=%s mode=%s tokens=%d duration=%.1fs findings=%d",
             analysis_id, analysis.provider, analysis.mode,
@@ -221,6 +247,8 @@ def run_analysis(analysis_id: int) -> None:
             analysis.error = str(e)[:2000]
             analysis.finished_at = datetime.now(timezone.utc)
             db.commit()
+            # Also finalize job on failure so it doesn't stay stuck in "analyzing"
+            _finalize_job_after_ai(db, analysis.job_id)
         except Exception:
             db.rollback()
     finally:
