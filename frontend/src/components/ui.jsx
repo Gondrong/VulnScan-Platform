@@ -26,15 +26,18 @@ export function StatusDot({ status }) {
   const dotCls = {
     running: "dot-running", done: "dot-done",
     failed: "dot-failed", queued: "dot-queued",
+    analyzing: "dot-running",
   }[status] || "dot-queued";
   const color = {
     running: "var(--accent)", done: "var(--low)",
     failed: "var(--critical)", queued: "var(--text-dim)",
+    analyzing: "var(--medium, #d4a838)",
   }[status] || "var(--text-dim)";
+  const label = status === "analyzing" ? "AI analyzing" : status;
   return (
     <div className="status-dot">
       <div className={`dot ${dotCls}`} />
-      <span style={{ color, fontFamily: "var(--font-mono)", fontSize: "0.7rem" }}>{status}</span>
+      <span style={{ color, fontFamily: "var(--font-mono)", fontSize: "0.7rem" }}>{label}</span>
     </div>
   );
 }
