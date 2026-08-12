@@ -22,6 +22,7 @@ _BUILTIN_PLUGINS = [
     "favicon_hash",
     "cpe_builder",
     "nvd_match",
+    "cveorg_match",
     "endpoint_prober",
     "cms_match",
     "cisa_kev",
@@ -78,6 +79,10 @@ _BUILTIN_PLUGINS = [
     "subdomain_takeover",       # subdomain takeover detection
     "github_secret_scan",       # GitHub secret/credential leak scan (opt-in)
     "dns_history",              # DNS history & passive intelligence (CT, SPF, DMARC)
+    "cms_vuln_scanner",         # CMS-specific checks (WordPress, Drupal, Joomla)
+    "ssl_grading",              # SSL/TLS A+ to F grading
+    "sca_scanner",              # SCA/dependency scanning (exposed manifests + known vulns)
+    "screenshot_capture",       # web service metadata capture
     # External tool integrations
     "subfinder_external",       # passive subdomain enum (early recon)
     "httpx_external",           # HTTP probing (after subfinder + nmap)
@@ -85,6 +90,9 @@ _BUILTIN_PLUGINS = [
     "testssl_external",         # deep TLS audit (after nmap finds TLS ports)
     "nuclei_external",          # template-based vuln scanning
     "sqlmap_external",          # advanced SQL injection testing (last — needs URLs)
+    # Tier 8 — CIS Benchmark auditing (opt-in, requires SSH)
+    "cis_benchmark",            # CIS Benchmark server hardening audit
+    "sca_server",               # Server-side SCA dependency audit via SSH
 ]
 
 
