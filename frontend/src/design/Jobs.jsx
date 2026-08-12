@@ -52,7 +52,7 @@ export function Jobs({ openJob }) {
   // Auto-refresh every 2s if any job is running/queued; do one final refresh
   // shortly after the last active job completes so the UI catches the transition.
   useEffect(() => {
-    const hasActive = jobs.some(j => j.status === "running" || j.status === "queued");
+    const hasActive = jobs.some(j => ["running", "queued", "analyzing"].includes(j.status));
     if (!hasActive) {
       const t = setTimeout(refresh, 1500); // catch-up refresh after activity ends
       return () => clearTimeout(t);

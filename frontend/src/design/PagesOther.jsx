@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Icons, Status } from "./icons.jsx";
-import { scanApi, credentialsApi, datasetsApi, settingsApi, integrationsApi, aiApi, slaApi, threatIntelApi, notificationPrefsApi, canEdit, isAdmin } from "../api.js";
+import { scanApi, credentialsApi, datasetsApi, settingsApi, integrationsApi, aiApi, slaApi, threatIntelApi, notificationPrefsApi, autoAiApi, slaAlertApi, autoReportApi, canEdit, isAdmin } from "../api.js";
 
 function countPluginSelection(json) {
   try {
@@ -608,6 +608,9 @@ export function Settings({ initialTab }) {
     { id: "general", label: "General", icon: Icons.Settings },
     { id: "sla", label: "SLA policies", icon: Icons.Clock, minRole: "analyst" },
     { id: "ai", label: "AI providers", icon: Icons.Brain, minRole: "admin" },
+    { id: "auto-ai", label: "Auto AI", icon: Icons.Activity, minRole: "analyst" },
+    { id: "auto-report", label: "Auto Report", icon: Icons.FileText, minRole: "analyst" },
+    { id: "sla-alert", label: "SLA Alert", icon: Icons.Bell, minRole: "analyst" },
     { id: "integrations", label: "Integrations", icon: Icons.Layers, minRole: "admin" },
     { id: "notifications", label: "Notifications", icon: Icons.Bell, minRole: "analyst" },
     { id: "users", label: "Users & RBAC", icon: Icons.Lock, minRole: "admin" },
@@ -658,11 +661,244 @@ export function Settings({ initialTab }) {
           )}
           {active === "sla" && <SLAPolicies/>}
           {active === "ai" && <AIProvidersPanel/>}
+          {active === "auto-ai" && <AutoAIPanel/>}
+          {active === "auto-report" && <AutoReportPanel/>}
+          {active === "sla-alert" && <SLAAlertPanel/>}
           {active === "integrations" && <IntegrationsPanel/>}
           {active === "notifications" && <NotificationPrefsPanel/>}
           {active === "users" && <UsersPanel/>}
           {active === "system" && <SystemPanel/>}
         </div>
+      </div>
+    </>
+  );
+}
+
+function AutoAIPanel() {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    autoAiApi.get()
+      .then(d => setConfig(d))
+      .catch(() => setConfig({ enabled: false, provider: "", mode: "validate", available_providers: [] }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async (updates) => {
+    setSaving(true); setMsg("");
+    try {
+      const r = await autoAiApi.update(updates);
+      setConfig(prev => ({ ...prev, ...r }));
+      setMsg("Saved");
+      setTimeout(() => setMsg(""), 2000);
+    } catch (e) { setMsg(e.message || "Failed to save"); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="card-body" style={{padding: 24, color: "var(--text-3)"}}>Loading...</div>;
+
+  const providers = config?.available_providers || [];
+
+  return (
+    <>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Auto AI Analysis</div>
+          <div className="card-sub" style={{marginTop: 0}}>Automatically run AI analysis when a scan completes.</div>
+        </div>
+      </div>
+      <div className="card-body" style={{display: "flex", flexDirection: "column", gap: 18}}>
+        {/* Enable toggle */}
+        <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+          <div>
+            <div style={{fontWeight: 600, fontSize: 14, color: "var(--text-0)"}}>Enable Auto AI</div>
+            <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 2}}>
+              AI analysis will run automatically after each completed scan
+            </div>
+          </div>
+          <button
+            className={config?.enabled ? "btn btn-primary" : "btn"}
+            style={{minWidth: 70}}
+            onClick={() => save({ enabled: !config?.enabled })}
+            disabled={saving}
+          >
+            {config?.enabled ? "ON" : "OFF"}
+          </button>
+        </div>
+
+        {config?.enabled && (
+          <>
+            {/* Provider select */}
+            <div>
+              <label className="form-label">AI Provider</label>
+              <select className="form-input"
+                value={config?.provider || ""}
+                onChange={e => save({ provider: e.target.value })}
+                disabled={saving}
+              >
+                <option value="">Auto-detect (prefer Claude CLI)</option>
+                {providers.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.model})</option>
+                ))}
+              </select>
+              <div className="form-help" style={{fontSize: 11, color: "var(--text-3)", marginTop: 4}}>
+                {providers.length === 0
+                  ? "No AI providers configured. Add one in AI providers tab first."
+                  : `${providers.length} provider(s) available`
+                }
+              </div>
+            </div>
+
+            {/* Mode select */}
+            <div>
+              <label className="form-label">Analysis Mode</label>
+              <select className="form-input"
+                value={config?.mode || "validate"}
+                onChange={e => save({ mode: e.target.value })}
+                disabled={saving}
+              >
+                <option value="validate">Validate - Classify findings as true/false positive</option>
+                <option value="full">Full Analysis - Executive summary + attack chains + remediation</option>
+                <option value="full_exploit">Full + PoC - Full analysis + proof-of-concept scripts</option>
+              </select>
+            </div>
+
+            {/* Info box */}
+            <div style={{
+              padding: "12px 16px", borderRadius: 8,
+              background: "var(--surface-1)", fontSize: 12, color: "var(--text-2)", lineHeight: 1.6,
+            }}>
+              When enabled, every completed scan with findings will automatically trigger AI analysis
+              using the selected provider and mode. Results appear in the scan detail under the AI Analysis tab.
+            </div>
+          </>
+        )}
+
+        {msg && (
+          <div style={{fontSize: 12, color: msg === "Saved" ? "var(--low, #2ecc71)" : "var(--critical, #e74c3c)"}}>
+            {msg}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function AutoReportPanel() {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    autoReportApi.get()
+      .then(d => setConfig(d))
+      .catch(() => setConfig({ enabled: false, format: "pdf" }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async (updates) => {
+    setSaving(true); setMsg("");
+    try {
+      const r = await autoReportApi.update(updates);
+      setConfig(prev => ({ ...prev, ...r }));
+      setMsg("Saved"); setTimeout(() => setMsg(""), 2000);
+    } catch (e) { setMsg(e.message || "Failed"); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="card-body" style={{padding: 24, color: "var(--text-3)"}}>Loading...</div>;
+
+  return (
+    <>
+      <div className="card-head">
+        <div><div className="card-title">Auto Report Generation</div>
+        <div className="card-sub" style={{marginTop: 0}}>Automatically generate PDF reports after scans complete.</div></div>
+      </div>
+      <div className="card-body" style={{display: "flex", flexDirection: "column", gap: 18}}>
+        <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+          <div>
+            <div style={{fontWeight: 600, fontSize: 14, color: "var(--text-0)"}}>Enable Auto Report</div>
+            <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 2}}>PDF report saved to /data/reports/ after each scan completes</div>
+          </div>
+          <button className={config?.enabled ? "btn btn-primary" : "btn"} style={{minWidth: 70}}
+            onClick={() => save({ enabled: !config?.enabled })} disabled={saving}>
+            {config?.enabled ? "ON" : "OFF"}
+          </button>
+        </div>
+        {msg && <div style={{fontSize: 12, color: msg === "Saved" ? "var(--low, #2ecc71)" : "var(--critical, #e74c3c)"}}>{msg}</div>}
+      </div>
+    </>
+  );
+}
+
+function SLAAlertPanel() {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    slaAlertApi.get()
+      .then(d => setConfig(d))
+      .catch(() => setConfig({ enabled: false, interval_minutes: 60 }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async (updates) => {
+    setSaving(true); setMsg("");
+    try {
+      const r = await slaAlertApi.update(updates);
+      setConfig(prev => ({ ...prev, ...r }));
+      setMsg("Saved"); setTimeout(() => setMsg(""), 2000);
+    } catch (e) { setMsg(e.message || "Failed"); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="card-body" style={{padding: 24, color: "var(--text-3)"}}>Loading...</div>;
+
+  return (
+    <>
+      <div className="card-head">
+        <div><div className="card-title">SLA Breach Alert</div>
+        <div className="card-sub" style={{marginTop: 0}}>Send notifications when findings exceed their SLA deadline.</div></div>
+      </div>
+      <div className="card-body" style={{display: "flex", flexDirection: "column", gap: 18}}>
+        <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+          <div>
+            <div style={{fontWeight: 600, fontSize: 14, color: "var(--text-0)"}}>Enable SLA Alerts</div>
+            <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 2}}>
+              Notify via Slack, Teams, Email, or Webhook when findings breach SLA
+            </div>
+          </div>
+          <button className={config?.enabled ? "btn btn-primary" : "btn"} style={{minWidth: 70}}
+            onClick={() => save({ enabled: !config?.enabled })} disabled={saving}>
+            {config?.enabled ? "ON" : "OFF"}
+          </button>
+        </div>
+        {config?.enabled && (
+          <div>
+            <label className="form-label">Check interval (minutes)</label>
+            <select className="form-input"
+              value={config?.interval_minutes || 60}
+              onChange={e => save({ interval_minutes: parseInt(e.target.value) })}
+              disabled={saving}>
+              <option value={15}>Every 15 minutes</option>
+              <option value={30}>Every 30 minutes</option>
+              <option value={60}>Every 1 hour</option>
+              <option value={360}>Every 6 hours</option>
+              <option value={1440}>Every 24 hours</option>
+            </select>
+            <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 4}}>
+              Alerts are de-duplicated — each finding is only alerted once per 24 hours.
+              Make sure integrations (Slack, Email, etc.) are configured in the Integrations tab.
+            </div>
+          </div>
+        )}
+        {msg && <div style={{fontSize: 12, color: msg === "Saved" ? "var(--low, #2ecc71)" : "var(--critical, #e74c3c)"}}>{msg}</div>}
       </div>
     </>
   );
