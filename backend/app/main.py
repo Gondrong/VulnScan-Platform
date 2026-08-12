@@ -263,14 +263,28 @@ import threading as _threading
 
 def _schedule_loop():
     """Background thread that checks for due scan schedules every 60s."""
+    import os
+    import subprocess
     import time
+    import json as _json
+    from pathlib import Path
     from redis import Redis
     from rq import Queue
     from app.worker_tasks import run_scan_job
 
     logger.info("Scheduler started")
+
+    # Counters for time-gated features
+    _sla_check_counter = 0       # run every 60 ticks  (60 min)
+    _backup_counter = 0          # run every 1440 ticks (24 hours)
+    _update_check_counter = 0    # run every 1440 ticks (24 hours)
+
     while True:
         time.sleep(60)
+        _sla_check_counter += 1
+        _backup_counter += 1
+        _update_check_counter += 1
+
         try:
             db = SessionLocal()
             now_utc = datetime.now(timezone.utc)
@@ -320,6 +334,306 @@ def _schedule_loop():
                 except Exception as e:
                     logger.warning("Schedule #%d failed: %s", sched.id, e)
                     db.rollback()
+            # ── Stale AI analysis detection ────────────────────────────
+            # If an AI analysis has been queued/running for more than 15
+            # minutes, mark it as failed and restore the scan job to "done".
+            stale_cutoff = now_utc - timedelta(minutes=15)
+            stale_analyses = (
+                db.query(models.AiAnalysis)
+                .filter(
+                    models.AiAnalysis.status.in_(["queued", "running"]),
+                    models.AiAnalysis.created_at < stale_cutoff,
+                )
+                .all()
+            )
+            for sa in stale_analyses:
+                try:
+                    sa.status = "failed"
+                    sa.error = "Timed out — analysis was stuck for over 15 minutes"
+                    sa.finished_at = now_utc
+                    db.commit()
+                    # Restore job status if stuck in "analyzing"
+                    stuck_job = db.query(models.ScanJob).filter(
+                        models.ScanJob.id == sa.job_id,
+                        models.ScanJob.status == "analyzing",
+                    ).first()
+                    if stuck_job:
+                        stuck_job.status = "done"
+                        db.commit()
+                        logger.info("Stale AI #%d for job #%d: failed + job -> done", sa.id, sa.job_id)
+                    else:
+                        logger.info("Stale AI #%d for job #%d: failed", sa.id, sa.job_id)
+                except Exception as e2:
+                    logger.warning("Failed to clean stale AI #%d: %s", sa.id, e2)
+                    db.rollback()
+
+            # ── Feature 1: Auto Report Generation ─────────────────────────
+            # Generate PDF reports for scan jobs that finished in the last 5 min
+            # when the workspace has auto_report enabled.
+            try:
+                from app.api.routes_settings import _get_setting
+                five_min_ago = now_utc - timedelta(minutes=5)
+                recent_done_jobs = (
+                    db.query(models.ScanJob)
+                    .filter(
+                        models.ScanJob.status == "done",
+                        models.ScanJob.finished_at >= five_min_ago,
+                        models.ScanJob.finished_at <= now_utc,
+                    )
+                    .all()
+                )
+                for rj in recent_done_jobs:
+                    try:
+                        auto_cfg = _get_setting(
+                            db, rj.workspace_id, "auto_report",
+                            {"enabled": False, "format": "pdf"},
+                        )
+                        if not auto_cfg.get("enabled"):
+                            continue
+                        report_dir = Path("/data/reports")
+                        report_dir.mkdir(parents=True, exist_ok=True)
+                        report_path = report_dir / f"vulnscan-auto-{rj.id}.pdf"
+                        if report_path.exists():
+                            continue
+                        # Gather findings for this job
+                        findings = (
+                            db.query(models.Finding)
+                            .filter(models.Finding.job_id == rj.id)
+                            .all()
+                        )
+                        # Use default template
+                        template = {
+                            "name": "Auto-generated",
+                            "sections": ["summary", "severity", "findings", "remediation"],
+                        }
+                        from app.api.routes_reports import _as_pdf
+                        pdf_bytes = _as_pdf(rj, findings, template)
+                        report_path.write_bytes(pdf_bytes)
+                        logger.info(
+                            "Auto-report generated for job #%d → %s (%d bytes)",
+                            rj.id, report_path, len(pdf_bytes),
+                        )
+                    except Exception as e_rpt:
+                        logger.warning("Auto-report for job #%d failed: %s", rj.id, e_rpt)
+            except Exception as e_feat1:
+                logger.warning("Auto-report feature error: %s", e_feat1)
+
+            # ── Feature 2: SLA Breach Alert ───────────────────────────────
+            # Check periodically for open findings that have exceeded their
+            # SLA deadline.  Configurable per-workspace via /settings/sla-alert.
+            # Default: disabled. Enable in Settings → SLA Alert.
+            try:
+                if _sla_check_counter >= 60:
+                    _sla_check_counter = 0
+
+                    # Get workspaces that have SLA alerts enabled
+                    enabled_ws_ids = []
+                    for ws_obj in db.query(models.Workspace).all():
+                        sla_cfg = _get_setting(
+                            db, ws_obj.id, "sla_breach_alert",
+                            {"enabled": False},
+                        )
+                        if sla_cfg.get("enabled"):
+                            enabled_ws_ids.append(ws_obj.id)
+
+                    if enabled_ws_ids:
+                        open_findings = (
+                            db.query(models.Finding)
+                            .filter(
+                                models.Finding.status == "open",
+                                models.Finding.sla_days.isnot(None),
+                                models.Finding.workspace_id.in_(enabled_ws_ids),
+                            )
+                            .all()
+                        )
+                        if open_findings:
+                            r = Redis.from_url(settings.REDIS_URL)
+                            from app.scanner.notifier import (
+                                send_slack_notification,
+                                send_teams_notification,
+                                send_email_notification,
+                                send_webhook_notification,
+                            )
+                            for f in open_findings:
+                                try:
+                                    days_open = (now_utc - f.opened_at).days if f.opened_at else 0
+                                    if days_open <= f.sla_days:
+                                        continue
+                                    redis_key = f"sla_alert:{f.id}"
+                                    if r.exists(redis_key):
+                                        continue
+                                    r.setex(redis_key, 86400, "1")
+                                    msg_text = (
+                                        f"SLA BREACH: Finding #{f.id} \"{f.title}\" "
+                                        f"(severity={f.severity}) has been open for "
+                                        f"{days_open} days (SLA limit: {f.sla_days} days)"
+                                    )
+                                    integrations = (
+                                        db.query(models.Integration)
+                                        .filter(
+                                            models.Integration.workspace_id == f.workspace_id,
+                                            models.Integration.enabled == True,
+                                        )
+                                        .all()
+                                    )
+                                    for integ in integrations:
+                                        try:
+                                            cfg = _json.loads(integ.config_json or "{}")
+                                            if integ.provider == "slack":
+                                                send_slack_notification(cfg, msg_text)
+                                            elif integ.provider == "teams":
+                                                send_teams_notification(cfg, {"title": "SLA Breach", "text": msg_text})
+                                            elif integ.provider == "email":
+                                                send_email_notification(cfg, f"VulnScan SLA Breach — Finding #{f.id}", msg_text)
+                                            elif integ.provider == "webhook":
+                                                send_webhook_notification(cfg, {
+                                                    "event": "sla_breach", "finding_id": f.id,
+                                                    "title": f.title, "severity": f.severity,
+                                                    "days_open": days_open, "sla_days": f.sla_days,
+                                                })
+                                        except Exception as e_integ:
+                                            logger.warning("SLA alert (%s) finding #%d: %s", integ.provider, f.id, e_integ)
+                                    logger.info(
+                                        "SLA breach alert sent for finding #%d (%d days > %d SLA)",
+                                        f.id, days_open, f.sla_days,
+                                    )
+                                except Exception as e_f:
+                                    logger.warning("SLA check for finding #%d failed: %s", f.id, e_f)
+            except Exception as e_feat2:
+                logger.warning("SLA breach alert feature error: %s", e_feat2)
+
+            # ── Feature 3: Database Backup ────────────────────────────────
+            # Run pg_dump every 1440 ticks (≈24 hours), keep last 7 backups.
+            try:
+                if _backup_counter >= 1440:
+                    _backup_counter = 0
+                    backup_dir = Path("/data/backups")
+                    backup_dir.mkdir(parents=True, exist_ok=True)
+                    date_str = now_utc.strftime("%Y%m%d-%H%M%S")
+                    backup_file = backup_dir / f"vulnscan-{date_str}.sql.gz"
+
+                    # Parse DATABASE_URL for pg_dump connection params
+                    db_url = settings.DATABASE_URL
+                    env = os.environ.copy()
+                    # DATABASE_URL format: postgresql://user:pass@host:port/dbname
+                    import re as _re
+                    m = _re.match(
+                        r"postgresql(?:\+\w+)?://([^:]+):([^@]+)@([^:/]+)(?::(\d+))?/(.+)",
+                        db_url,
+                    )
+                    if m:
+                        pg_user, pg_pass, pg_host, pg_port, pg_db = m.groups()
+                        pg_port = pg_port or "5432"
+                        env["PGPASSWORD"] = pg_pass
+                        cmd = (
+                            f"pg_dump -h {pg_host} -p {pg_port} -U {pg_user} -d {pg_db} "
+                            f"| gzip > {backup_file}"
+                        )
+                    else:
+                        # Fallback to default container names
+                        env["PGPASSWORD"] = "app"
+                        cmd = f"pg_dump -h db -U app -d app | gzip > {backup_file}"
+
+                    result = subprocess.run(
+                        cmd, shell=True, env=env,
+                        capture_output=True, text=True, timeout=600,
+                    )
+                    if result.returncode == 0:
+                        logger.info("Database backup created: %s", backup_file)
+                    else:
+                        logger.warning(
+                            "Database backup failed (rc=%d): %s",
+                            result.returncode, result.stderr[:500],
+                        )
+
+                    # Rotate: keep only the last 7 backups
+                    existing = sorted(backup_dir.glob("vulnscan-*.sql.gz"))
+                    if len(existing) > 7:
+                        for old in existing[:-7]:
+                            try:
+                                old.unlink()
+                                logger.info("Deleted old backup: %s", old.name)
+                            except Exception as e_del:
+                                logger.warning("Failed to delete old backup %s: %s", old.name, e_del)
+            except Exception as e_feat3:
+                logger.warning("Database backup feature error: %s", e_feat3)
+
+            # ── Feature 4: Auto Update Check ─────────────────────────────
+            # Check GitHub for new releases every 1440 ticks (≈24 hours).
+            # If update available, send notification via configured integrations.
+            try:
+                if _update_check_counter >= 1440:
+                    _update_check_counter = 0
+                    import urllib.request
+                    current = settings.PLATFORM_VERSION
+                    repo = settings.GITHUB_REPO
+                    try:
+                        url = f"https://api.github.com/repos/{repo}/releases/latest"
+                        req = urllib.request.Request(url, headers={
+                            "Accept": "application/vnd.github+json",
+                            "User-Agent": "VulnScan-Platform",
+                        })
+                        with urllib.request.urlopen(req, timeout=15) as resp:
+                            release = _json.loads(resp.read().decode())
+
+                        latest_tag = release.get("tag_name", "")
+                        latest_ver = latest_tag.lstrip("vV")
+
+                        def _vt(v):
+                            try: return tuple(int(x) for x in v.split("."))
+                            except: return (0, 0, 0)
+
+                        if _vt(latest_ver) > _vt(current):
+                            # Clear cached check so UI also picks it up
+                            try:
+                                r_upd = Redis.from_url(settings.REDIS_URL)
+                                r_upd.delete("update_check_cache")
+                            except Exception:
+                                pass
+
+                            msg = (
+                                f"VulnScan update available: v{current} → v{latest_ver}\n"
+                                f"Release: {release.get('name', latest_tag)}\n"
+                                f"Update from Settings → System or run: git pull && docker compose up -d --build"
+                            )
+                            logger.info("Update available: v%s → v%s", current, latest_ver)
+
+                            # Notify via all enabled integrations (all workspaces)
+                            from app.scanner.notifier import (
+                                send_slack_notification,
+                                send_teams_notification,
+                                send_email_notification,
+                                send_webhook_notification,
+                            )
+                            all_integrations = (
+                                db.query(models.Integration)
+                                .filter(models.Integration.enabled == True)
+                                .all()
+                            )
+                            for integ in all_integrations:
+                                try:
+                                    cfg = _json.loads(integ.config_json or "{}")
+                                    if integ.provider == "slack":
+                                        send_slack_notification(cfg, msg)
+                                    elif integ.provider == "teams":
+                                        send_teams_notification(cfg, {"title": "VulnScan Update Available", "text": msg})
+                                    elif integ.provider == "email":
+                                        send_email_notification(cfg, "VulnScan Update Available", msg)
+                                    elif integ.provider == "webhook":
+                                        send_webhook_notification(cfg, {
+                                            "event": "update_available",
+                                            "current": current,
+                                            "latest": latest_ver,
+                                        })
+                                except Exception:
+                                    pass
+                        else:
+                            logger.debug("Update check: v%s is latest", current)
+                    except Exception as e_gh:
+                        logger.debug("Update check failed: %s", e_gh)
+            except Exception as e_feat4:
+                logger.warning("Update check feature error: %s", e_feat4)
+
             db.close()
         except Exception as e:
             logger.warning("Scheduler tick error: %s", e)

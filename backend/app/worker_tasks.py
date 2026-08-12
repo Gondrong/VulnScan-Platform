@@ -772,6 +772,61 @@ def run_scan_job(job_id: int) -> None:
                 except Exception as e:
                     logger.warning("Failed to run integration %s for job #%d: %s", integ.provider, job_id, e)
 
+        # ── Auto AI Analysis ─────────────────────────────────────────────
+        # If workspace has auto_ai_analysis enabled, queue AI analysis
+        # immediately after scan completes (only if findings exist).
+        try:
+            auto_ai = _get_setting(db, ws_id, "auto_ai_analysis", {})
+            if auto_ai.get("enabled") and saved_count > 0:
+                ai_provider = auto_ai.get("provider", "")
+                ai_mode = auto_ai.get("mode", "validate")
+
+                # Resolve provider — if not set, pick first available
+                if not ai_provider:
+                    available = settings.available_ai_providers()
+                    # Prefer claude_cli, then claude_api, then any
+                    for pref in ["claude_cli", "claude_api", "azure_openai", "gemini"]:
+                        if any(p["id"] == pref for p in available):
+                            ai_provider = pref
+                            break
+                    if not ai_provider and available:
+                        ai_provider = available[0]["id"]
+
+                if ai_provider:
+                    # Check if analysis doesn't already exist for this job
+                    existing_ai = db.query(models.AiAnalysis).filter(
+                        models.AiAnalysis.job_id == job_id,
+                        models.AiAnalysis.status.in_(["queued", "running"]),
+                    ).first()
+                    if not existing_ai:
+                        analysis = models.AiAnalysis(
+                            workspace_id=ws_id,
+                            job_id=job_id,
+                            provider=ai_provider,
+                            mode=ai_mode,
+                            status="queued",
+                            progress_json=json.dumps({"pct": 0, "step": "Auto-queued after scan..."}),
+                        )
+                        db.add(analysis)
+                        db.commit()
+                        db.refresh(analysis)
+
+                        ai_q = Queue("ai", connection=Redis.from_url(settings.REDIS_URL))
+                        ai_q.enqueue(run_ai_analysis, analysis.id, job_timeout=settings.AI_ANALYSIS_TIMEOUT)
+
+                        # Set job status to "analyzing" so UI shows AI is running
+                        job.status = "analyzing"
+                        db.commit()
+
+                        logger.info(
+                            "Auto AI analysis #%d queued for job #%d (provider=%s, mode=%s) — status=analyzing",
+                            analysis.id, job_id, ai_provider, ai_mode,
+                        )
+                else:
+                    logger.info("Auto AI analysis enabled but no provider available — skipped")
+        except Exception as e:
+            logger.warning("Auto AI analysis failed to queue for job #%d: %s", job_id, e)
+
     except Exception as e:
         tb = traceback.format_exc()
         logger.exception("Unhandled error in run_scan_job #%d: %s", job_id, e)
@@ -1130,11 +1185,32 @@ def _ds_refresh_cvedetails(nvd_path, on_progress=None):
                                 adp_score = float(v["baseScore"]); break
                         if adp_score: break
                     if adp_score: break
+                # Extract affected products (vendor, product, version ranges)
+                affected = []
+                for aff in containers.get("cna", {}).get("affected", []):
+                    vendor = (aff.get("vendor") or "").strip().lower()
+                    product = (aff.get("product") or "").strip().lower()
+                    if not vendor or not product:
+                        continue
+                    for ver in aff.get("versions", []):
+                        entry = {"vendor": vendor, "product": product}
+                        if ver.get("lessThan"):
+                            entry["lessThan"] = ver["lessThan"]
+                        if ver.get("lessThanOrEqual"):
+                            entry["lessThanOrEqual"] = ver["lessThanOrEqual"]
+                        if ver.get("version") and ver["version"] != "0":
+                            entry["versionStart"] = ver["version"]
+                        if entry.get("lessThan") or entry.get("lessThanOrEqual"):
+                            affected.append(entry)
+
+                result = {}
                 if cna_score or adp_score:
                     best = max(filter(None, [cna_score, adp_score]))
                     sev = "critical" if best >= 9 else "high" if best >= 7 else "medium" if best >= 4 else "low" if best > 0 else "info"
-                    return cve_id, {"cvss": best, "severity": sev, "cna_cvss": cna_score, "adp_cvss": adp_score}
-                return cve_id, None
+                    result = {"cvss": best, "severity": sev, "cna_cvss": cna_score, "adp_cvss": adp_score}
+                if affected:
+                    result["affected"] = affected
+                return cve_id, result if result else None
             except _requests.exceptions.RequestException as e:
                 logger.warning("  CVE.org %s attempt %d: %s", cve_id, attempt + 1, e)
                 if attempt < 2:
