@@ -22,6 +22,14 @@ export default function App() {
   const [openedAsset, setOpenedAsset] = useState(null);
   const [drawerFinding, setDrawerFinding] = useState(null);
   const [counts, setCounts] = useState({});
+  const [platformVersion, setPlatformVersion] = useState("");
+
+  // Fetch version from backend (no auth needed) — single source of truth
+  useEffect(() => {
+    fetch("/healthz").then(r => r.json())
+      .then(d => setPlatformVersion(d.version || ""))
+      .catch(() => {});
+  }, []);
 
   const refreshCounts = useCallback(async () => {
     if (!getToken()) return;
@@ -55,7 +63,7 @@ export default function App() {
   }, [authed, refreshCounts]);
 
   if (!authed) {
-    return <LoginPage onLogin={() => setAuthed(true)}/>;
+    return <LoginPage onLogin={() => setAuthed(true)} version={platformVersion}/>;
   }
 
   const crumbs = ((p) => {
@@ -77,7 +85,7 @@ export default function App() {
 
   return (
     <div className="shell" data-screen-label={page}>
-      <Nav page={page} setPage={setPageWrap} counts={counts} onSignOut={() => {
+      <Nav page={page} setPage={setPageWrap} counts={counts} version={platformVersion} onSignOut={() => {
         apiLogout();
         setAuthed(false);
       }}/>
