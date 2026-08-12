@@ -317,7 +317,7 @@ def refresh_datasets(
         raise HTTPException(409, "A dataset refresh is already running")
 
     q = Queue("datasets", connection=r)
-    q.enqueue(run_dataset_refresh, ws, kinds, job_timeout=3600)
+    q.enqueue(run_dataset_refresh, ws, kinds, job_timeout=7200)
     return {"status": "queued", "kinds": kinds or list(_VALID_KINDS)}
 
 

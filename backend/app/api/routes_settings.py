@@ -599,3 +599,128 @@ def reset_notification_prefs(
 ):
     _set_setting(db, user["ws"], "notification_preferences", DEFAULT_NOTIFICATION_PREFS)
     return DEFAULT_NOTIFICATION_PREFS
+
+
+# ── Auto AI Analysis ─────────────────────────────────────────────────────
+
+DEFAULT_AUTO_AI = {
+    "enabled": False,
+    "provider": "",       # empty = auto-detect (prefer claude_cli)
+    "mode": "validate",   # validate | full | full_exploit
+}
+
+
+@router.get("/auto-ai")
+def get_auto_ai(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Return auto AI analysis configuration."""
+    config = _get_setting(db, user["ws"], "auto_ai_analysis", DEFAULT_AUTO_AI)
+    # Also return available providers for the UI
+    from app.core.config import settings as app_settings
+    config["available_providers"] = app_settings.available_ai_providers()
+    return config
+
+
+class AutoAIUpdate(BaseModel):
+    enabled: bool | None = None
+    provider: str | None = None
+    mode: str | None = None
+
+
+@router.put("/auto-ai")
+def put_auto_ai(
+    body: AutoAIUpdate,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Update auto AI analysis configuration."""
+    current = _get_setting(db, user["ws"], "auto_ai_analysis", DEFAULT_AUTO_AI)
+    incoming = body.dict(exclude_unset=True)
+
+    if "mode" in incoming and incoming["mode"] not in ("validate", "full", "full_exploit"):
+        raise HTTPException(400, "Mode must be: validate, full, or full_exploit")
+
+    current.update(incoming)
+    _set_setting(db, user["ws"], "auto_ai_analysis", current)
+    logger.info("Auto AI analysis updated by %s: %s", user.get("sub", "?"), current)
+    return current
+
+
+# ── SLA Breach Alert ──────────────────────────────────────────────────────
+
+DEFAULT_SLA_ALERT = {
+    "enabled": False,
+    "interval_minutes": 60,
+}
+
+
+@router.get("/sla-alert")
+def get_sla_alert(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    return _get_setting(db, user["ws"], "sla_breach_alert", DEFAULT_SLA_ALERT)
+
+
+class SLAAlertUpdate(BaseModel):
+    enabled: bool | None = None
+    interval_minutes: int | None = None
+
+
+@router.put("/sla-alert")
+def put_sla_alert(
+    body: SLAAlertUpdate,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    current = _get_setting(db, user["ws"], "sla_breach_alert", DEFAULT_SLA_ALERT)
+    incoming = body.dict(exclude_unset=True)
+    if "interval_minutes" in incoming and incoming["interval_minutes"] < 15:
+        raise HTTPException(400, "Interval must be at least 15 minutes")
+    current.update(incoming)
+    _set_setting(db, user["ws"], "sla_breach_alert", current)
+    logger.info("SLA breach alert updated by %s: %s", user.get("sub", "?"), current)
+    return current
+
+
+# ── Auto Report Generation ─────────────────────────────────────────────────
+
+DEFAULT_AUTO_REPORT = {
+    "enabled": False,
+    "format": "pdf",
+}
+
+
+@router.get("/auto-report")
+def get_auto_report(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Return auto report generation configuration."""
+    return _get_setting(db, user["ws"], "auto_report", DEFAULT_AUTO_REPORT)
+
+
+class AutoReportUpdate(BaseModel):
+    enabled: bool | None = None
+    format: str | None = None
+
+
+@router.put("/auto-report")
+def put_auto_report(
+    body: AutoReportUpdate,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Update auto report generation configuration."""
+    current = _get_setting(db, user["ws"], "auto_report", DEFAULT_AUTO_REPORT)
+    incoming = body.dict(exclude_unset=True)
+
+    if "format" in incoming and incoming["format"] not in ("pdf",):
+        raise HTTPException(400, "Format must be: pdf")
+
+    current.update(incoming)
+    _set_setting(db, user["ws"], "auto_report", current)
+    logger.info("Auto report config updated by %s: %s", user.get("sub", "?"), current)
+    return current
