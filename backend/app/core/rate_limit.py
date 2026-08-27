@@ -20,15 +20,26 @@ from typing import Callable
 from fastapi import Depends, HTTPException, Request
 
 from app.core.config import settings
+from app.core.net import client_ip
 
 logger = logging.getLogger("vulnscan.ratelimit")
 
 
-def _get_redis():
-    """Lazy Redis connection (best-effort — degrades gracefully)."""
-    import redis as _redis
+_client = None
 
-    return _redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+def _get_redis():
+    """Lazily-built, cached Redis client (best-effort — degrades gracefully).
+
+    Building a fresh client per request creates a new connection pool each
+    time and never closes it.
+    """
+    global _client
+    if _client is None:
+        import redis as _redis
+
+        _client = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+    return _client
 
 
 def rate_limit(
@@ -43,40 +54,46 @@ def rate_limit(
     """
 
     def _dependency(request: Request):
-        client_ip = (
-            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-            or (request.client.host if request.client else "unknown")
-        )
-        redis_key = f"{key_prefix}:{request.url.path}:{client_ip}"
+        ip = client_ip(request)
+        redis_key = f"{key_prefix}:{request.url.path}:{ip}"
         now = time.time()
         window_start = now - window_seconds
 
         try:
             r = _get_redis()
             pipe = r.pipeline()
-            # Remove expired entries
+            # Drop entries that have aged out of the window, then count.
             pipe.zremrangebyscore(redis_key, "-inf", window_start)
-            # Count remaining entries in the window
             pipe.zcard(redis_key)
-            # Add current request
-            pipe.zadd(redis_key, {str(now): now})
-            # Set key expiry so it auto-cleans
-            pipe.expire(redis_key, window_seconds + 10)
-            results = pipe.execute()
-            request_count = results[1]
+            request_count = pipe.execute()[1]
 
             if request_count >= max_requests:
-                retry_after = int(window_seconds - (now - window_start))
+                # Deliberately do NOT record this attempt. Counting rejected
+                # requests keeps the window permanently topped up for as long
+                # as the client keeps retrying, turning a 60-second throttle
+                # into an indefinite lockout — which is exactly how a slow
+                # login turns into "cannot log in at all".
+                oldest = r.zrange(redis_key, 0, 0, withscores=True)
+                if oldest:
+                    retry_after = max(1, int(window_seconds - (now - oldest[0][1])) + 1)
+                else:
+                    retry_after = window_seconds
                 logger.warning(
-                    "Rate limit exceeded for %s on %s (%d/%d in %ds)",
-                    client_ip, request.url.path, request_count,
-                    max_requests, window_seconds,
+                    "Rate limit exceeded for %s on %s (%d/%d in %ds), retry in %ds",
+                    ip, request.url.path, request_count,
+                    max_requests, window_seconds, retry_after,
                 )
                 raise HTTPException(
                     status_code=429,
                     detail=f"Too many requests. Try again in {retry_after}s.",
                     headers={"Retry-After": str(retry_after)},
                 )
+
+            # Allowed — now record it.
+            pipe = r.pipeline()
+            pipe.zadd(redis_key, {str(now): now})
+            pipe.expire(redis_key, window_seconds + 10)
+            pipe.execute()
         except HTTPException:
             raise
         except Exception as e:
