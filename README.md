@@ -27,14 +27,14 @@ VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform bu
 
 | | |
 |---|---|
-| 🧠 **CVE.org fallback matcher** | Catch CVEs before NVD publishes CPE data — detection coverage 49% → 75% |
-| 🛡️ **CIS Benchmark scanner** | 53 server hardening checks (Linux + Docker + Nginx) via SSH |
-| ⚡ **7 automation features** | Auto AI analysis, auto report, SLA breach alerts, database backup, update check — all configurable |
-| 📊 **Analytics dashboard** | Executive dashboard, vulnerability trending, scan diff, comparative reports |
+| 🧠 **Two-stage AI analysis** | New `validate_then_exploit` mode — validate every finding, drop the false positives, then build attack chains and PoCs only on what survived. Verdict coverage 20/91 → 76/76 on a comparable scan |
+| 🔁 **Scans finish again** | The engine's per-plugin timeout is now actually enforceable: blocking socket calls no longer freeze the event loop, and the progress writer no longer stalls a scan when the DB pool drains. Same target that used to die at 70–88% with zero findings saved now completes 68/69 plugins in 320s |
+| ⚙️ **Automation that runs** | Auto AI analysis had been failing on every scan (an unimported name), leaving each queued analysis to be mislabelled a timeout. Fixed, along with the Neo4j graph writer that had never been populated from a scan |
+| 🔐 **Auth hardening** | Per-client rate limiting behind a reverse proxy (forged `X-Forwarded-For` no longer bypasses it), an end to self-perpetuating login lockouts, and login latency down from 23–30s to 0.29s |
 
 **Key capabilities:**
 - **71 scanner plugins** (64 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API / recon / audit
-- **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation
+- **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation — optionally two-staged, so exploit work is spent only on findings that survived validation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance) with one-click refresh
 - **Composite threat-score prioritization** beyond CVSS-only — uses EPSS percentile, KEV listing, and ransomware status
 - **Compliance mapping** to NIST 800-53, PCI DSS v4, CIS Controls v8, ISO 27001
