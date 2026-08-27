@@ -58,8 +58,12 @@ services:
     volumes:
       - ./data:/data
       - ./backend:/app
-      # Claude CLI auth — same mount as worker so available_ai_providers() can probe it
-      - /root/.claude:/root/.claude
+      # Claude CLI auth — same mount as worker so available_ai_providers() can probe it.
+      # CLAUDE_CONFIG_DIR must point at the .claude directory of the user that
+      # actually ran `claude login`. It is NOT always root's: a non-root install
+      # lives under that user's home (e.g. /home/ubuntu/.claude), and mounting
+      # /root/.claude then silently hands the container a stale/empty profile.
+      - ${CLAUDE_PROFILE_DIR:-./data/claude-config}:/root/.claude
     ports:
       - "${BACKEND_PORT:-8888}:8888"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8888 --reload
@@ -88,7 +92,7 @@ services:
       - ./data:/data
       - ./backend:/app
       - ./scripts:/scripts
-      - /root/.claude:/root/.claude
+      - ${CLAUDE_PROFILE_DIR:-./data/claude-config}:/root/.claude
     command: >
       sh -c 'for i in $$(seq 1 $${SCAN_WORKERS:-1}); do
         rq worker --url $${REDIS_URL:-redis://redis:6379/0} scans &
@@ -108,8 +112,11 @@ services:
       - ./data:/data
       - ./backend:/app
       - ./scripts:/scripts
-      - /root/.claude:/root/.claude
-    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} ai
+      - ${CLAUDE_PROFILE_DIR:-./data/claude-config}:/root/.claude
+    command: >
+      sh -c 'for i in $$(seq 1 $${AI_WORKERS:-2}); do
+        rq worker --url $${REDIS_URL:-redis://redis:6379/0} ai &
+      done; wait'
     restart: unless-stopped
 
   worker-data:
