@@ -227,5 +227,9 @@ class AiAnalysis(Base):
     token_usage: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Set when a worker actually picks the analysis up. The stale-analysis
+    # watchdog measures from here, not from created_at — otherwise an analysis
+    # still waiting behind a busy queue gets failed before it ever runs.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
