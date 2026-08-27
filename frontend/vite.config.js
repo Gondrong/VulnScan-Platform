@@ -9,7 +9,10 @@ const apiTarget =
   process.env.VITE_API_URL ||
   "http://backend:8888";  // works inside the docker network; falls back to localhost outside
 
-const proxyOpts = { target: apiTarget, changeOrigin: true };
+// xfwd adds X-Forwarded-For/-Host/-Proto. Without it the backend sees every
+// request as coming from this container, so all users share one rate-limit
+// bucket and last_login_ip is always the proxy's address.
+const proxyOpts = { target: apiTarget, changeOrigin: true, xfwd: true };
 
 export default defineConfig({
   plugins: [react()],
