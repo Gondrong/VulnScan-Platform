@@ -23,7 +23,7 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.6 highlights** *(2026-08-12)* — see [Changelog](#changelog) for full notes.
+**v3.1.0 highlights** *(2026-08-27)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
@@ -435,6 +435,7 @@ VulnScan integrates with multiple AI providers for intelligent vulnerability ana
 | **Validate** | Classifies each finding as True Positive / False Positive / Needs Manual |
 | **Full Analysis** | Executive summary, attack chain identification, remediation priority |
 | **Full + PoC** | Full analysis + proof-of-concept exploit scripts for confirmed findings |
+| **Validate then PoC** *(new in v3.1)* | Two stages in one job: validate every finding, drop the confirmed false positives, then run the full + PoC analysis only on what survived. Stage-1 verdicts are kept for every finding, so the UI still explains what was dropped and why |
 
 ### Per-Finding PoC Generation
 
@@ -536,12 +537,22 @@ All integrations support **per-provider Test buttons** that send a real test mes
 | `DATABASE_URL` | PostgreSQL connection | `postgresql+psycopg2://app:app@db:5432/app` |
 | `REDIS_URL` | Redis connection | `redis://redis:6379/0` |
 | `SCAN_BUDGET_SECONDS` | Max wall-clock duration per scan | `900` (15 min) |
-| `SCAN_TIMEOUT_SECONDS` | Default per-plugin timeout | `60` |
-| `ALLOWLIST` | CIDR ranges / domain suffixes allowed for internal scans | `*` |
+| `SCAN_JOB_TIMEOUT` | RQ job timeout; must exceed the engine's worst case plus post-processing | `SCAN_BUDGET_SECONDS + 600` |
+| `SCAN_TIMEOUT_SECONDS` | Default per-request timeout | `15` |
+| `ALLOWLIST` | CIDR ranges / domain suffixes allowed for internal scans | `10.0.0.0/8,192.168.0.0/16,172.16.0.0/12,127.0.0.0/8,.internal.local,.local` |
+| `TRUSTED_PROXIES` | Reverse proxies whose `X-Forwarded-For` may be trusted. Keep to the proxy hops only — adding a client network lets any user there forge the header | `127.0.0.0/8,::1/128,172.16.0.0/12` |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_POOL_TIMEOUT` | SQLAlchemy pool sizing | `10` / `20` / `10` |
 | `NVD_API_KEY` | NVD API key (5× faster dataset refresh) | (optional) |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI key | (optional) |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint | (optional) |
 | `CLAUDE_CLI_ENABLED` | Enable Claude CLI provider | `false` |
+| `CLAUDE_PROFILE_DIR` | **Host** path holding the Claude CLI profile, bind-mounted to `/root/.claude` | `./data/claude-config` |
+| `CLAUDE_CONFIG_DIR` | The Claude CLI's own variable — must be the **container** path. Do not point it at a host path | `/root/.claude` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Token from `claude setup-token`. Leave **empty** when authenticating by profile login: a stale token overrides the profile and every call fails with 401 | (empty) |
+| `AI_WORKERS` | Parallel AI workers | `2` |
+| `AI_ANALYSIS_TIMEOUT` | RQ job timeout for one analysis | `2700` |
+| `AI_CLI_TIMEOUT` | Budget for a single provider call. `validate_then_exploit` makes two per job | `(AI_ANALYSIS_TIMEOUT - 300) / 2` |
+| `AI_STALE_AFTER_SECONDS` | Stale-analysis watchdog limit, measured from when a worker starts the job | `AI_ANALYSIS_TIMEOUT + 600` |
 | `GEMINI_API_KEY` | Google Gemini key | (optional) |
 | `BACKEND_PORT` | API server port | `8888` |
 | `FRONTEND_PORT` | Web UI port | `5173` |
@@ -554,7 +565,9 @@ For manual updates:
 
 ```bash
 git pull
-docker compose build
+# Every service that builds from ./backend has its OWN image, so building
+# `backend` alone leaves the workers on the previous build.
+docker compose build backend worker-ai worker-scan worker-data
 docker compose up -d
 # Hard-refresh the browser to bust the cached JS bundle
 ```
@@ -567,6 +580,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.1.0 — 2026-08-27** — Reliability release: auto AI analysis, Neo4j graph population and internal scans had never actually worked (undefined names, blocking socket calls defeating per-plugin timeouts, a transaction held across the whole scan that let startup DDL freeze the app). New two-stage `validate_then_exploit` analysis mode, trusted-proxy client IP resolution, login latency 23–30s → 0.29s, `python-multipart` CVE-2024-53981
 - **v3.0.6 — 2026-08-12** — CVE.org fallback matcher (detection coverage 49%→75%), CIS Benchmark scanner (53 checks), server-side SCA (OS packages + dependencies via SSH), 7 automation features (auto AI, auto report, SLA alerts, DB backup, update check), 71 total plugins
 - **v3.0.5 — 2026-08-03** — 8 new scanner plugins (Wayback URLs, subdomain takeover, GitHub secrets, DNS history, CMS vuln scanner, SSL/TLS grading, SCA/dependency, web metadata), Analytics dashboard (executive, trending, scan diff, comparative reports, re-verification), scanner quality improvements (XSS encoding check, CMDi double-confirm, CVE vendor normalization, favicon hash database), 68 total plugins
 - **v3.0.4 — 2026-07-29** — Security hardening: bcrypt password hashing (replaces SHA256) with automatic legacy migration, CORS origin restriction, Redis-backed login rate limiting (5 req/min per IP), React Error Boundary for crash recovery
