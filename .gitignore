@@ -43,6 +43,8 @@ Thumbs.db
 
 # Claude
 .claude/
+# Container-only Claude CLI profile — holds OAuth credentials, never commit
+data/claude-config/
 
 # Update system
 data/update-trigger.json
