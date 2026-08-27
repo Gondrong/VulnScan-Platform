@@ -384,14 +384,16 @@ def trigger_update(user=Depends(require_role("admin"))):
         raise HTTPException(409, "Update already triggered — waiting for host updater to process")
 
     if os.path.exists(result_path):
+        status = None
         try:
             with open(result_path) as f:
                 status = json.load(f)
-            if status.get("status") == "updating":
-                raise HTTPException(409, f"Update in progress: {status.get('message', '...')}")
-        except (json.JSONDecodeError, HTTPException):
-            if isinstance(status, dict) and status.get("status") == "updating":
-                raise
+        except (OSError, json.JSONDecodeError) as exc:
+            # Corrupt or unreadable result file — treat it as "no update in
+            # progress" instead of blocking the trigger.
+            logger.warning("Ignoring unreadable %s: %s", result_path, exc)
+        if isinstance(status, dict) and status.get("status") == "updating":
+            raise HTTPException(409, f"Update in progress: {status.get('message', '...')}")
 
     # Write trigger file
     trigger_data = {
@@ -639,8 +641,9 @@ def put_auto_ai(
     current = _get_setting(db, user["ws"], "auto_ai_analysis", DEFAULT_AUTO_AI)
     incoming = body.dict(exclude_unset=True)
 
-    if "mode" in incoming and incoming["mode"] not in ("validate", "full", "full_exploit"):
-        raise HTTPException(400, "Mode must be: validate, full, or full_exploit")
+    _valid_modes = ("validate", "full", "full_exploit", "validate_then_exploit")
+    if "mode" in incoming and incoming["mode"] not in _valid_modes:
+        raise HTTPException(400, f"Mode must be one of: {', '.join(_valid_modes)}")
 
     current.update(incoming)
     _set_setting(db, user["ws"], "auto_ai_analysis", current)

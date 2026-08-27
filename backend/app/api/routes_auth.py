@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import create_token, require_auth
 from app.core.config import settings
 from app.core.geoip import resolve as geoip_resolve
+from app.core.net import client_ip
 from app.core.password import verify_password, needs_rehash, hash_password
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
@@ -38,9 +39,9 @@ def login(
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
     user.last_login_at = datetime.now(timezone.utc)
-    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host
-    user.last_login_ip = client_ip
-    user.last_login_location = geoip_resolve(client_ip)
+    ip = client_ip(request)
+    user.last_login_ip = ip
+    user.last_login_location = geoip_resolve(ip)
     db.commit()
     token = create_token({"sub": user.email, "uid": user.id, "role": user.role, "ws": user.workspace_id})
     return {"token": token, "role": user.role, "workspace_id": user.workspace_id}

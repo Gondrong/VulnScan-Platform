@@ -306,7 +306,7 @@ def create_job(
     try:
         q = Queue("scans", connection=_redis())
         # RQ timeout = scan budget + 300s headroom for post-processing & DB writes
-        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        rq_timeout = settings.SCAN_JOB_TIMEOUT
         q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
         logger.info("Enqueued scan job #%d target=%s type=%s timeout=%ds", job.id, target, scan_type, rq_timeout)
     except Exception as e:
@@ -621,7 +621,7 @@ def rescan_job(
 
     try:
         q = Queue("scans", connection=_redis())
-        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        rq_timeout = settings.SCAN_JOB_TIMEOUT
         q.enqueue(run_scan_job, new_job.id, job_timeout=rq_timeout)
         logger.info("Rescan enqueued: job #%d (from #%d) target=%s", new_job.id, job_id, original.target)
     except Exception as e:

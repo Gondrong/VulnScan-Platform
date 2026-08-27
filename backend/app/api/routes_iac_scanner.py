@@ -141,7 +141,7 @@ async def create_iac_scan_job(
         from app.worker_tasks import run_scan_job
         q.enqueue(
             run_scan_job, job.id,
-            job_timeout=settings.SCAN_BUDGET_SECONDS + 300,
+            job_timeout=settings.SCAN_JOB_TIMEOUT,
         )
         logger.info(
             "IaC scan job #%d queued: filename=%s kinds=%s size=%d",

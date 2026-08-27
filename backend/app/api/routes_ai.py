@@ -18,7 +18,7 @@ logger = logging.getLogger("vulnscan.api.ai")
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
-VALID_MODES = {"validate", "full", "full_exploit"}
+VALID_MODES = {"validate", "full", "full_exploit", "validate_then_exploit"}
 
 
 def _redis():
