@@ -5,6 +5,135 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.1.0 — 2026-08-27
+
+Reliability release. Several features turned out to have never worked in
+production: auto AI analysis raised `NameError` on every scan, the Neo4j graph
+was never populated, and internal scans were killed at 70–88% before saving a
+single finding. All silent — the failures were swallowed at `debug` level or
+mislabelled by the stale-analysis watchdog.
+
+### Added
+
+**Two-Stage AI Analysis — `validate_then_exploit`**
+
+- New analysis mode: run `validate` over all findings first, drop the confirmed
+  false positives, then run `full_exploit` only on what survived. Attack chains
+  and PoCs are no longer built on top of false positives.
+- Stage 1 verdicts are preserved for *every* finding, so the UI can still
+  explain why something was dropped.
+- Skips stage 2 entirely when every finding is refuted.
+- Degrades to a plain `full_exploit` run if stage 1's response cannot be parsed —
+  findings are never silently dropped.
+- **Impact:** verdict coverage rose from 20/91 to 76/76 on a comparable scan, at
+  roughly 2.4× the tokens.
+
+**`app/core/net.py` — client IP resolution behind proxies**
+
+- `X-Forwarded-For` is honoured only when the request actually arrived from a
+  proxy listed in the new `TRUSTED_PROXIES` setting; the chain is walked from the
+  right, discarding trusted hops. Malformed entries are ignored.
+- The bundled Vite proxy now sets `xfwd: true`, so per-client rate limiting works.
+
+**Configurable timeout hierarchies**
+
+- AI: `AI_CLI_TIMEOUT` < `AI_ANALYSIS_TIMEOUT` < `AI_STALE_AFTER_SECONDS`, order
+  enforced at load time and sized for the two calls the new mode makes.
+- Scan: `SCAN_JOB_TIMEOUT` replaces `SCAN_BUDGET_SECONDS + 300`, which had been
+  copy-pasted into six modules.
+- `AI_WORKERS` runs AI workers in parallel; the single serial worker meant queued
+  analyses were failed by the watchdog before they ever started.
+- `scan_jobs.started_at` / `ai_analyses.started_at`: the watchdog now measures
+  running time instead of time-since-created.
+
+### Fixed
+
+**Features that had never run**
+
+- `worker_tasks.py` used `Queue`, `Redis`, `settings` and `severity` without
+  importing them. Auto AI analysis raised `NameError` on every scan (warning
+  level), leaving an `ai_analyses` row stuck at `queued`; the Neo4j
+  `upsert_finding` call failed at `debug` level, so the attack graph was never
+  populated from a scan.
+- Claude CLI ran with `--max-turns 5` and no tool restrictions, so the model
+  spent its turns on tool calls and exited with `Error: Reached max turns` on
+  **stdout with return code 0**. Tools are now disabled for what is a plain
+  text-in/text-out completion.
+- `run_analysis`'s error handler touched `analysis` before it was bound and
+  committed on a failed transaction, so failures were never recorded.
+
+**Scans killed at 70–88%**
+
+- The progress callback opened a DB session per plugin transition (~142 per
+  scan) on the event loop; once the pool drained, each call blocked for
+  `pool_timeout` and the failure was swallowed at `debug` level. Now throttled
+  and run off the loop.
+- `run_scan_job` held a transaction for the whole scan: reading `job`/`prof`
+  after the earlier commit made SQLAlchemy re-open one to refresh the expired
+  objects. Startup DDL then queued behind it, and a queued ACCESS EXCLUSIVE lock
+  blocks every later reader — freezing the application.
+- Startup migrations now `SET lock_timeout` so idempotent DDL gives up instead of
+  blocking the world.
+- `ssl_grading` and `tls_basic` called blocking sockets inline inside `async def`,
+  which froze the event loop and made the engine's `asyncio.wait_for` unable to
+  fire its per-plugin timeout.
+- nuclei now runs with `-duc`; it was contacting GitHub for template updates on
+  every run.
+
+**Authentication and rate limiting**
+
+- The rate limiter recorded rejected requests and refreshed the key's TTL, so a
+  60-second throttle became an indefinite lockout for as long as a client kept
+  retrying. `Retry-After` always computed to `0`.
+- A new Redis client was built per request and never closed.
+- The DB engine had no pool configuration: 5 + 10 connections with a 30-second
+  `pool_timeout`, so an exhausted pool made requests hang for 30 seconds.
+- The audit middleware performed a synchronous DB write inside async middleware,
+  blocking the event loop and holding a pool connection on every mutating request.
+
+**Other**
+
+- The scheduler leaked a DB connection per failing tick (`db.close()` was inside
+  `try`, not `finally`).
+- `get_provider()` leaked a session when its lookup raised, logging at `debug`.
+- `trigger_update` raised `UnboundLocalError` on a corrupt `update-result.json`.
+- `_update_progress` now logs; a lock-blocked commit previously went silent.
+- `_two_stage` metadata reported findings *submitted* rather than *assessed*,
+  overstating coverage when the prompt truncated.
+
+### Security
+
+- `python-multipart` 0.0.9 → 0.0.20 (CVE-2024-53981).
+- `cryptography` 42.0.8 → 44.0.1.
+- `paramiko` 3.4.0 → 3.5.1.
+- Claude CLI pinned to v2 (a v2-written profile is unreadable by a v1 CLI).
+- `.env` is no longer tracked by git. **Rotate every credential that was in it.**
+- 2,500 generated files (`.pyc`, `node_modules/`, `dist/`, `.bak`) untracked.
+
+### Upgrade notes
+
+- **`.env`:** `CLAUDE_CONFIG_DIR` is the Claude CLI's *own* variable and must be
+  the container path (`/root/.claude`). Use the new `CLAUDE_PROFILE_DIR` for the
+  host path. Leave `CLAUDE_CODE_OAUTH_TOKEN` empty when authenticating by profile
+  login — a stale token overrides the profile and every call fails with 401.
+- New optional settings: `TRUSTED_PROXIES`, `AI_WORKERS`, `AI_CLI_TIMEOUT`,
+  `AI_STALE_AFTER_SECONDS`, `SCAN_JOB_TIMEOUT`, `DB_POOL_SIZE`,
+  `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`. All have defaults.
+- Rebuild every service that builds from `./backend` — each worker has its own
+  image, so `docker compose build backend` alone is not enough:
+  `docker compose build backend worker-ai worker-scan worker-data`.
+- `started_at` columns are added by the startup migrations; no manual step.
+
+### Known limitations
+
+- `MAX_FULL_DETAIL` (30) + `MAX_SUMMARY` (50) caps prompts at 80 findings, so a
+  100-finding scan sends only 80 to the AI and the remaining 20 are promoted by
+  the `needs_manual` default without ever being assessed. `_two_stage.not_assessed`
+  now reports this. Batching is the fix and is not in this release.
+- `scan_jobs` has no stale-job watchdog: a work-horse killed by RQ cannot write
+  its own status, so such a job stays `running` in the UI.
+
+---
 ## v3.0.6 — 2026-08-12
 
 ### Added
