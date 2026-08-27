@@ -763,6 +763,7 @@ function AutoAIPanel() {
                 <option value="validate">Validate - Classify findings as true/false positive</option>
                 <option value="full">Full Analysis - Executive summary + attack chains + remediation</option>
                 <option value="full_exploit">Full + PoC - Full analysis + proof-of-concept scripts</option>
+                <option value="validate_then_exploit">Validate then PoC - Validate first, deep analysis only on confirmed findings</option>
               </select>
             </div>
 
