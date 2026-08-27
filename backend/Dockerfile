@@ -72,12 +72,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI
-# IMPORTANT: pin to the v1.x line — it's a Node.js script and runs on any CPU.
-# v2.x switched to a Bun-bundled standalone binary that segfaults on CPUs lacking
-# AVX/AVX2 (older bare-metal servers, low-spec VMs). Override at build time with
-#   docker compose build --build-arg CLAUDE_CLI_VERSION=2 backend worker
-# if your host has AVX2 and you want the newer CLI.
-ARG CLAUDE_CLI_VERSION=1
+# The CLI version here must match the one that wrote the profile mounted at
+# /root/.claude (see CLAUDE_CONFIG_DIR): a v2-written credentials file is not
+# readable by a v1 CLI, which then fails every call with
+# "Invalid API key · Please run /login".
+#
+# v2.x ships as a Bun-bundled standalone binary that segfaults on CPUs lacking
+# AVX/AVX2 (older bare-metal servers, low-spec VMs). Check the host first with
+#   grep -o avx2 /proc/cpuinfo | head -1
+# and if it comes back empty, build the Node.js-based v1 line instead:
+#   docker compose build --build-arg CLAUDE_CLI_VERSION=1 backend worker-ai
+# — and then log in with that same v1 CLI so the profile formats match.
+ARG CLAUDE_CLI_VERSION=2
 WORKDIR /tmp
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}
 
