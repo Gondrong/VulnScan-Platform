@@ -4,10 +4,12 @@ from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
+from sqlalchemy import and_, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.net import client_ip
 from app.db import models
 from app.db.session import Base, SessionLocal, engine
 from app.api.routes_auth import router as auth_router
@@ -133,9 +135,21 @@ def _run_migrations(db: Session) -> None:
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
         """,
+        # Track when a worker actually starts an AI analysis, so the stale
+        # watchdog can measure running time instead of time-since-created.
+        """
+        ALTER TABLE ai_analyses
+            ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+        """,
     ]
     for sql in migrations:
         try:
+            # DDL needs ACCESS EXCLUSIVE, and a *queued* ACCESS EXCLUSIVE lock
+            # blocks every later reader of the table — one long-running
+            # transaction elsewhere is enough to freeze the whole application
+            # behind a no-op "ADD COLUMN IF NOT EXISTS". Give up quickly
+            # instead: these migrations are idempotent and retried next boot.
+            db.execute(text("SET LOCAL lock_timeout = '3s'"))
             db.execute(text(sql.strip()))
             db.commit()
         except Exception as exc:
@@ -149,6 +163,15 @@ def startup() -> None:
 
     db: Session = SessionLocal()
     try:
+        # Same reasoning as inside _run_migrations: never let idempotent DDL
+        # queue for an exclusive lock, because a queued ACCESS EXCLUSIVE lock
+        # blocks every subsequent reader of that table.
+        try:
+            db.execute(text("SET lock_timeout = '3s'"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
         _run_migrations(db)
 
         # Add scan_schedules table migration
@@ -285,6 +308,7 @@ def _schedule_loop():
         _backup_counter += 1
         _update_check_counter += 1
 
+        db = None
         try:
             db = SessionLocal()
             now_utc = datetime.now(timezone.utc)
@@ -310,7 +334,7 @@ def _schedule_loop():
                     db.refresh(job)
 
                     q = Queue("scans", connection=Redis.from_url(settings.REDIS_URL))
-                    rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+                    rq_timeout = settings.SCAN_JOB_TIMEOUT
                     q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
 
                     sched.last_run_at = now_utc
@@ -335,21 +359,46 @@ def _schedule_loop():
                     logger.warning("Schedule #%d failed: %s", sched.id, e)
                     db.rollback()
             # ── Stale AI analysis detection ────────────────────────────
-            # If an AI analysis has been queued/running for more than 15
-            # minutes, mark it as failed and restore the scan job to "done".
-            stale_cutoff = now_utc - timedelta(minutes=15)
+            # Fail an analysis only once it has genuinely overrun. Time is
+            # measured from started_at (when a worker picked it up), because
+            # an analysis sitting behind a busy queue has not consumed any of
+            # its budget yet — measuring from created_at used to fail those
+            # before they ever ran. Analyses that never start still get a
+            # much longer grace period so a dead worker is eventually noticed.
+            run_cutoff = now_utc - timedelta(seconds=settings.AI_STALE_AFTER_SECONDS)
+            queue_cutoff = now_utc - timedelta(seconds=settings.AI_STALE_AFTER_SECONDS * 4)
             stale_analyses = (
                 db.query(models.AiAnalysis)
                 .filter(
                     models.AiAnalysis.status.in_(["queued", "running"]),
-                    models.AiAnalysis.created_at < stale_cutoff,
+                    or_(
+                        and_(
+                            models.AiAnalysis.started_at.isnot(None),
+                            models.AiAnalysis.started_at < run_cutoff,
+                        ),
+                        and_(
+                            models.AiAnalysis.started_at.is_(None),
+                            models.AiAnalysis.created_at < queue_cutoff,
+                        ),
+                    ),
                 )
                 .all()
             )
             for sa in stale_analyses:
                 try:
+                    if sa.started_at:
+                        waited = int((now_utc - sa.started_at).total_seconds())
+                        sa.error = (
+                            f"Timed out — analysis ran for {waited}s without "
+                            f"finishing (limit {settings.AI_STALE_AFTER_SECONDS}s)"
+                        )
+                    else:
+                        waited = int((now_utc - sa.created_at).total_seconds())
+                        sa.error = (
+                            f"Timed out — never picked up by an AI worker after "
+                            f"{waited}s. Check that the worker-ai container is running."
+                        )
                     sa.status = "failed"
-                    sa.error = "Timed out — analysis was stuck for over 15 minutes"
                     sa.finished_at = now_utc
                     db.commit()
                     # Restore job status if stuck in "analyzing"
@@ -634,9 +683,17 @@ def _schedule_loop():
             except Exception as e_feat4:
                 logger.warning("Update check feature error: %s", e_feat4)
 
-            db.close()
         except Exception as e:
             logger.warning("Scheduler tick error: %s", e)
+        finally:
+            # Always return the connection to the pool — a tick that raises
+            # before this point would otherwise leak one session per minute
+            # and exhaust the SQLAlchemy pool.
+            if db is not None:
+                try:
+                    db.close()
+                except Exception as e_close:
+                    logger.warning("Scheduler session close failed: %s", e_close)
 
 @app.on_event("startup")
 def start_scheduler():
@@ -644,28 +701,41 @@ def start_scheduler():
     t.start()
 
 
+def _write_audit(method: str, path: str, ip: str, ua: str) -> None:
+    """Blocking audit write — must run off the event loop."""
+    db: Session = SessionLocal()
+    try:
+        db.add(
+            models.AuditLog(
+                workspace_id=0,
+                actor_email="",
+                action=f"{method} {path}",
+                resource="",
+                ip=ip,
+                user_agent=ua,
+            )
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Audit log write failed: %s", exc)
+    finally:
+        db.close()
+
+
 @app.middleware("http")
 async def audit_mw(request: Request, call_next):
     response = await call_next(request)
     try:
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            db: Session = SessionLocal()
-            try:
-                ip = request.client.host if request.client else ""
-                ua = request.headers.get("User-Agent", "")
-                db.add(
-                    models.AuditLog(
-                        workspace_id=0,
-                        actor_email="",
-                        action=f"{request.method} {request.url.path}",
-                        resource="",
-                        ip=ip,
-                        user_agent=ua,
-                    )
-                )
-                db.commit()
-            finally:
-                db.close()
+            # Run in a worker thread: a synchronous commit here blocks the
+            # whole event loop, and it also holds a pool connection on the
+            # critical path of every mutating request.
+            ip = client_ip(request)
+            ua = request.headers.get("User-Agent", "")
+            await run_in_threadpool(
+                _write_audit, request.method, request.url.path, ip, ua,
+            )
     except Exception:
         pass
     return response

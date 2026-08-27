@@ -3,12 +3,16 @@ import asyncio
 import json
 import logging
 import re
+import time
 import traceback
 from datetime import datetime, timezone
 
+from redis import Redis
+from rq import Queue
 from sqlalchemy.orm import Session
 
 from app.compliance.mapper import map_compliance_by_cve_or_category
+from app.core.config import settings
 from app.cve.dataset_loader import load_json
 from app.db import models
 from app.db.session import SessionLocal
@@ -218,12 +222,55 @@ def run_scan_job(job_id: int) -> None:
                 job_id, _job_web_auth.get("type"), _job_web_auth.get("credential_id"),
             )
 
+        # Everything the scan needs is now in plain Python values. Close the
+        # transaction before the long-running scan starts.
+        #
+        # Reading `prof`/`job` attributes after the earlier commit made
+        # SQLAlchemy silently re-open a transaction to refresh the expired
+        # objects, and that transaction then sat "idle in transaction" for the
+        # entire scan while holding locks on profiles/scan_jobs. Any DDL that
+        # came along (the startup migrations run ALTER TABLE scan_jobs) queued
+        # behind it, and in PostgreSQL a queued ACCESS EXCLUSIVE lock blocks
+        # every subsequent reader — freezing the whole application.
+        _job_target = job.target
+        _job_pk = job.id
+        db.commit()
+
         # Progress callback - updates meta_json so frontend can poll
         # Uses a SEPARATE db session to avoid corrupting the main session
         _scan_start = datetime.now(timezone.utc)
         _plugin_log = []
+        _last_progress_write = [0.0]
+        # A "running" tick closer than this to the previous write is dropped.
+        # Terminal ticks always get through, so the UI never misses a final state.
+        PROGRESS_MIN_INTERVAL = 2.0
 
-        def _progress(step, total, plugin_id, plugin_name, status):
+        def _write_progress(progress_json: str) -> None:
+            """Blocking DB write — must run off the event loop."""
+            progress_db = None
+            try:
+                progress_db = SessionLocal()
+                progress_db.query(models.ScanJob).filter(
+                    models.ScanJob.id == job_id
+                ).update({"meta_json": progress_json})
+                progress_db.commit()
+            except Exception as exc:
+                # Warning, not debug: a pool timeout here is exactly what made
+                # scans silently overrun their budget.
+                logger.warning("Progress update failed for job #%d: %s", job_id, exc)
+                if progress_db:
+                    try:
+                        progress_db.rollback()
+                    except Exception:
+                        pass
+            finally:
+                if progress_db:
+                    try:
+                        progress_db.close()
+                    except Exception:
+                        pass
+
+        async def _progress(step, total, plugin_id, plugin_name, status):
             elapsed = (datetime.now(timezone.utc) - _scan_start).total_seconds()
             entry = {"plugin_id": plugin_id, "name": plugin_name, "status": status, "t": round(elapsed, 1)}
             # Update log (replace if same plugin, append if new)
@@ -246,27 +293,15 @@ def run_scan_job(job_id: int) -> None:
                 }
             })
 
-            # Use a separate session so failures don't corrupt the main session
-            progress_db = None
-            try:
-                progress_db = SessionLocal()
-                progress_db.query(models.ScanJob).filter(
-                    models.ScanJob.id == job_id
-                ).update({"meta_json": progress_json})
-                progress_db.commit()
-            except Exception as exc:
-                logger.debug("Progress update failed for job #%d: %s", job_id, exc)
-                if progress_db:
-                    try:
-                        progress_db.rollback()
-                    except Exception:
-                        pass
-            finally:
-                if progress_db:
-                    try:
-                        progress_db.close()
-                    except Exception:
-                        pass
+            # Opening a session per plugin transition (~138 per scan) on the
+            # event loop is what let a drained pool stall a scan for minutes at
+            # a time: each call blocked for pool_timeout seconds and the failure
+            # was swallowed at debug level. Throttle, and write off the loop.
+            now_m = time.monotonic()
+            if status == "running" and (now_m - _last_progress_write[0]) < PROGRESS_MIN_INTERVAL:
+                return
+            _last_progress_write[0] = now_m
+            await asyncio.to_thread(_write_progress, progress_json)
 
         try:
             if scan_type == "api":
@@ -282,7 +317,7 @@ def run_scan_job(job_id: int) -> None:
                 iac_checker = IacScannerCheck()
                 findings = _run_async(iac_checker.run_standalone(iac_config, progress_callback=_progress))
             else:
-                findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress, job_id=job.id))
+                findings = _run_async(scan_target(_job_target, profile, ws_id, scan_type, progress_callback=_progress, job_id=_job_pk))
         except Exception as e:
             tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)
@@ -581,7 +616,7 @@ def run_scan_job(job_id: int) -> None:
                         risk_score=risk,
                         fingerprint=getattr(f, "fingerprint", ""),
                         title=getattr(f, "title", ""),
-                        severity=severity,
+                        severity=sev,
                         compliance_ids=compliance_ids,
                     )
                 except Exception as e:
