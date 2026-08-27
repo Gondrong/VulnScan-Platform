@@ -127,6 +127,9 @@ class Check(Plugin):
             "-bulk-size", "25",
             "-concurrency", "25",
             "-no-interactsh",          # disable OOB testing (needs external server)
+            "-duc",                    # no template update check: it reaches out
+                                       # to GitHub on every run and can stall for
+                                       # minutes before the scan even starts
         ]
 
         # Severity filter — default to critical,high,medium for speed

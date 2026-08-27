@@ -1,3 +1,4 @@
+import asyncio
 import re
 import urllib.parse
 
@@ -50,7 +51,9 @@ class Check(Plugin):
             timeout = max(timeout, 10.0)
 
         try:
-            info = tls_handshake(hostname, p, timeout)
+            # Blocking socket handshake — off the event loop, otherwise the
+            # engine's per-plugin asyncio timeout cannot fire.
+            info = await asyncio.to_thread(tls_handshake, hostname, p, timeout)
             findings = []
 
             tls_version = info.get("tls_version", "")
