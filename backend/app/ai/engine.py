@@ -17,7 +17,14 @@ logger = logging.getLogger("vulnscan.ai.engine")
 
 
 def _update_progress(db, analysis: models.AiAnalysis, progress: dict) -> None:
-    """Update the progress_json field and commit."""
+    """Update the progress_json field and commit.
+
+    Also logs the step. The DB write is the only progress signal the UI gets,
+    so if this commit ever blocks on a lock the analysis goes completely silent
+    — the log line is what makes such a stall visible.
+    """
+    logger.info("AI analysis #%s progress: %s%% %s",
+                analysis.id, progress.get("pct"), progress.get("step"))
     analysis.progress_json = json.dumps(progress)
     db.commit()
 
@@ -117,17 +124,106 @@ def _extract_json(text: str) -> dict:
     }
 
 
+# Two-stage mode: run `validate` first, then `full_exploit` on only the findings
+# that survived. Cheaper than full_exploit over everything, and more accurate —
+# attack chains and PoCs no longer get built on top of false positives.
+TWO_STAGE_MODE = "validate_then_exploit"
+
+# Verdicts that graduate from stage 1 into stage 2. Only findings the model
+# actively refuted are dropped; "needs_manual" ones are exactly the cases that
+# benefit most from a deeper look, so they go through.
+STAGE2_VERDICTS = {"true_positive", "needs_manual"}
+
+
+def _run_two_stage(db, analysis, provider, findings_data: list[dict],
+                   target: str) -> tuple[dict, int]:
+    """Run validate → filter → full_exploit. Returns (result, tokens_used)."""
+    total = len(findings_data)
+
+    # ── Stage 1: validate everything ────────────────────────────────────
+    _update_progress(db, analysis, {
+        "pct": 25,
+        "step": f"Stage 1/2 — validating {total} findings...",
+    })
+    sys1, usr1 = build_prompt(mode="validate", findings=findings_data, target=target)
+    resp1 = provider.generate(sys1, usr1)
+    stage1 = _validate_result(_extract_json(resp1.content), "validate")
+    validations = stage1.get("finding_validations") or {}
+
+    # A stage-1 response we could not parse leaves `validations` empty, which
+    # defaults every finding to "needs_manual" — i.e. it degrades to a plain
+    # full_exploit run rather than silently dropping findings.
+    kept = [
+        f for f in findings_data
+        if str((validations.get(str(f["id"])) or {}).get("verdict", "needs_manual"))
+        in STAGE2_VERDICTS
+    ]
+    dropped = total - len(kept)
+    logger.info(
+        "AI analysis #%d stage 1: %d findings validated, %d promoted, %d refuted",
+        analysis.id, total, len(kept), dropped,
+    )
+
+    # `total` is how many findings were *submitted*, not how many the model
+    # actually saw: build_prompt truncates to MAX_FULL_DETAIL + MAX_SUMMARY.
+    # Report both, otherwise this metadata overstates coverage — a 100-finding
+    # scan submits 100 but only 80 ever reach the prompt, and the remaining 20
+    # are promoted purely by the "needs_manual" default.
+    stage_meta = {
+        "validated": total,
+        "verdicts_returned": len(validations),
+        "not_assessed": max(0, total - len(validations)),
+        "promoted": len(kept),
+        "skipped_false_positive": dropped,
+    }
+
+    # ── Everything refuted: no point paying for stage 2 ─────────────────
+    if not kept:
+        result = dict(stage1)
+        result["executive_summary"] = (
+            f"All {total} findings were classified as false positives during "
+            f"validation, so no exploit analysis was performed."
+        )
+        result.setdefault("attack_chains", [])
+        result.setdefault("remediation_priority", [])
+        result.setdefault("poc_results", {})
+        result["_two_stage"] = stage_meta
+        return result, resp1.tokens_used
+
+    # ── Stage 2: deep analysis on survivors only ────────────────────────
+    _update_progress(db, analysis, {
+        "pct": 60,
+        "step": (
+            f"Stage 2/2 — exploit analysis on {len(kept)} confirmed "
+            f"({dropped} false positives skipped)..."
+        ),
+    })
+    sys2, usr2 = build_prompt(mode="full_exploit", findings=kept, target=target)
+    resp2 = provider.generate(sys2, usr2)
+    stage2 = _validate_result(_extract_json(resp2.content), "full_exploit")
+
+    # Merge: stage 2 drives the output, but stage 1's verdicts are kept for
+    # *every* finding so the UI can still explain what was dropped and why.
+    result = dict(stage2)
+    result["finding_validations"] = {
+        **validations,
+        **(stage2.get("finding_validations") or {}),
+    }
+    result["_two_stage"] = stage_meta
+    return result, resp1.tokens_used + resp2.tokens_used
+
+
 def _validate_result(result: dict, mode: str) -> dict:
     """Validate and normalize the AI result structure."""
     # Ensure required keys exist
     if mode == "validate":
         result.setdefault("finding_validations", {})
-    elif mode in ("full", "full_exploit"):
+    elif mode in ("full", "full_exploit", TWO_STAGE_MODE):
         result.setdefault("executive_summary", "Analysis completed.")
         result.setdefault("attack_chains", [])
         result.setdefault("finding_validations", {})
         result.setdefault("remediation_priority", [])
-    if mode == "full_exploit":
+    if mode in ("full_exploit", TWO_STAGE_MODE):
         result.setdefault("poc_results", {})
 
     # Normalize finding_validations keys to strings
@@ -154,6 +250,7 @@ def run_analysis(analysis_id: int) -> None:
     RQ task entry point — runs AI analysis on scan findings.
     """
     db = SessionLocal()
+    analysis = None
     try:
         analysis = db.query(models.AiAnalysis).filter(
             models.AiAnalysis.id == analysis_id
@@ -163,6 +260,9 @@ def run_analysis(analysis_id: int) -> None:
             return
 
         analysis.status = "running"
+        # Stamp the moment a worker actually picks this up — the stale-analysis
+        # watchdog measures its timeout from here, not from created_at.
+        analysis.started_at = datetime.now(timezone.utc)
         _update_progress(db, analysis, {"pct": 5, "step": "Loading findings..."})
 
         # Load findings
@@ -191,40 +291,45 @@ def run_analysis(analysis_id: int) -> None:
         # Serialize findings
         findings_data = [_serialize_finding_from_db(f) for f in findings]
 
-        # Build prompts
-        system_prompt, user_prompt = build_prompt(
-            mode=analysis.mode,
-            findings=findings_data,
-            target=target,
-        )
-
-        _update_progress(db, analysis, {
-            "pct": 20,
-            "step": f"Sending to {analysis.provider}...",
-        })
-
-        # Call AI provider
         provider = get_provider(analysis.provider, workspace_id=analysis.workspace_id)
         start_time = time.time()
-        response = provider.generate(system_prompt, user_prompt)
+
+        if analysis.mode == TWO_STAGE_MODE:
+            result, tokens_used = _run_two_stage(
+                db, analysis, provider, findings_data, target,
+            )
+            _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
+        else:
+            system_prompt, user_prompt = build_prompt(
+                mode=analysis.mode,
+                findings=findings_data,
+                target=target,
+            )
+
+            _update_progress(db, analysis, {
+                "pct": 20,
+                "step": f"Sending to {analysis.provider}...",
+            })
+
+            response = provider.generate(system_prompt, user_prompt)
+
+            _update_progress(db, analysis, {
+                "pct": 80,
+                "step": "Parsing response...",
+            })
+
+            logger.debug(
+                "AI raw response (analysis #%d, len=%d): %.500s",
+                analysis_id, len(response.content), response.content,
+            )
+            result = _validate_result(_extract_json(response.content), analysis.mode)
+            tokens_used = response.tokens_used
+
         duration = time.time() - start_time
-
-        _update_progress(db, analysis, {
-            "pct": 80,
-            "step": "Parsing response...",
-        })
-
-        # Parse response
-        logger.debug(
-            "AI raw response (analysis #%d, len=%d): %.500s",
-            analysis_id, len(response.content), response.content,
-        )
-        result = _extract_json(response.content)
-        result = _validate_result(result, analysis.mode)
 
         # Store results
         analysis.result_json = json.dumps(result)
-        analysis.token_usage = response.tokens_used
+        analysis.token_usage = tokens_used
         analysis.duration_seconds = round(duration, 2)
         analysis.status = "done"
         analysis.finished_at = datetime.now(timezone.utc)
@@ -237,19 +342,42 @@ def run_analysis(analysis_id: int) -> None:
         logger.info(
             "AI analysis #%d complete: provider=%s mode=%s tokens=%d duration=%.1fs findings=%d",
             analysis_id, analysis.provider, analysis.mode,
-            response.tokens_used, duration, len(findings),
+            tokens_used, duration, len(findings),
         )
 
     except Exception as e:
         logger.exception("AI analysis #%d failed: %s", analysis_id, e)
+        # Record the failure so it shows up in the UI. Two things made the
+        # naive version of this silently do nothing:
+        #   * the failure may happen *before* `analysis` is loaded, so touching
+        #     it raises UnboundLocalError inside the handler;
+        #   * a DB-level error leaves the session in a failed transaction, so
+        #     the commit fails too.
+        # Either way the row stayed "queued" with no error, and the stale
+        # watchdog later mislabelled it as a 15-minute timeout — which is why
+        # these failures were undebuggable.
         try:
-            analysis.status = "failed"
-            analysis.error = str(e)[:2000]
-            analysis.finished_at = datetime.now(timezone.utc)
-            db.commit()
-            # Also finalize job on failure so it doesn't stay stuck in "analyzing"
-            _finalize_job_after_ai(db, analysis.job_id)
+            db.rollback()
+            if analysis is None:
+                analysis = db.query(models.AiAnalysis).filter(
+                    models.AiAnalysis.id == analysis_id
+                ).first()
+            if analysis is None:
+                logger.error(
+                    "AI analysis #%d failed and the row could not be loaded to "
+                    "record the error", analysis_id,
+                )
+            else:
+                analysis.status = "failed"
+                analysis.error = str(e)[:2000]
+                analysis.finished_at = datetime.now(timezone.utc)
+                db.commit()
+                # Also finalize job on failure so it doesn't stay stuck in "analyzing"
+                _finalize_job_after_ai(db, analysis.job_id)
         except Exception:
+            logger.exception(
+                "AI analysis #%d: could not persist the failure state", analysis_id,
+            )
             db.rollback()
     finally:
         db.close()

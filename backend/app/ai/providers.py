@@ -63,16 +63,35 @@ class AzureOpenAIProvider(AiProvider):
 
 
 class ClaudeCLIProvider(AiProvider):
-    """Claude CLI — uses locally installed claude command via subprocess."""
+    """Claude CLI — uses locally installed claude command via subprocess.
+
+    This is a plain text-in / text-out completion, so the CLI must NOT enter
+    its agentic tool loop. Left to its own devices the model answers a security
+    analysis prompt by first reaching for Bash/Read/Grep to go look at the
+    target, burns every available turn on tool calls, and then exits with
+    ``Error: Reached max turns (N)`` on **stdout with returncode 0** — no
+    analysis at all. Disabling the tools forces a direct single-shot answer.
+    """
     name = "claude_cli"
 
-    def __init__(self, cli_path: str, model: str):
+    _DISALLOWED_TOOLS = [
+        "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+        "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
+    ]
+
+    def __init__(self, cli_path: str, model: str, timeout: int | None = None):
+        from app.core.config import settings as _s
+
         self.cli_path = cli_path
         self.model = model
+        self.timeout = timeout or _s.AI_CLI_TIMEOUT
 
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: int = 8192) -> AiResponse:
-        logger.info("Claude CLI: sending request via subprocess (model=%s)", self.model)
+        logger.info(
+            "Claude CLI: sending request via subprocess (model=%s, timeout=%ds)",
+            self.model, self.timeout,
+        )
 
         # Build the combined prompt (system + user)
         combined = f"{system_prompt}\n\n---\n\n{user_prompt}"
@@ -81,7 +100,8 @@ class ClaudeCLIProvider(AiProvider):
             self.cli_path,
             "--print",
             "--model", self.model,
-            "--max-turns", "5",
+            "--max-turns", "1",
+            "--disallowed-tools", *self._DISALLOWED_TOOLS,
         ]
 
         try:
@@ -90,10 +110,14 @@ class ClaudeCLIProvider(AiProvider):
                 input=combined,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=self.timeout,
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError("Claude CLI timed out after 600 seconds")
+            raise RuntimeError(
+                f"Claude CLI timed out after {self.timeout} seconds. "
+                f"Raise AI_CLI_TIMEOUT (and AI_ANALYSIS_TIMEOUT with it) or "
+                f"analyse fewer findings per run."
+            )
 
         if proc.returncode != 0:
             stderr = proc.stderr[:500] if proc.stderr else "no stderr"
@@ -101,9 +125,20 @@ class ClaudeCLIProvider(AiProvider):
 
         content = proc.stdout.strip()
         if not content:
-            raise RuntimeError("Claude CLI returned empty response")
+            stderr = (proc.stderr or "").strip()[:500]
+            raise RuntimeError(
+                f"Claude CLI returned empty response (rc=0). stderr: {stderr or 'none'}"
+            )
 
-        # Detect CLI error messages that arrive on stdout with rc=0
+        # The CLI reports several fatal conditions on stdout with returncode 0,
+        # so a plain rc check is not enough to tell success from failure.
+        if "Reached max turns" in content and len(content) < 200:
+            raise RuntimeError(
+                f"Claude CLI exhausted its turn budget without answering "
+                f"({content}). The CLI ran agentically instead of replying "
+                f"directly — check that --disallowed-tools is still accepted "
+                f"by the installed CLI version."
+            )
         if content.startswith("Error:") and len(content) < 200:
             raise RuntimeError(f"Claude CLI error: {content}")
 
@@ -445,23 +480,24 @@ def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvi
             from app.db.session import SessionLocal
             from app.db import models as m
             db = SessionLocal()
-            cfg = (
-                db.query(m.AiProviderConfig)
-                .filter(
-                    m.AiProviderConfig.workspace_id == workspace_id,
-                    m.AiProviderConfig.provider_type == provider_name,
-                    m.AiProviderConfig.enabled == True,
+            try:
+                cfg = (
+                    db.query(m.AiProviderConfig)
+                    .filter(
+                        m.AiProviderConfig.workspace_id == workspace_id,
+                        m.AiProviderConfig.provider_type == provider_name,
+                        m.AiProviderConfig.enabled == True,
+                    )
+                    .order_by(m.AiProviderConfig.id.desc())
+                    .first()
                 )
-                .order_by(m.AiProviderConfig.id.desc())
-                .first()
-            )
-            if cfg:
-                provider = get_provider_from_db_config(cfg)
+                if cfg:
+                    return get_provider_from_db_config(cfg)
+            finally:
+                # Without this the session leaks whenever the query raises.
                 db.close()
-                return provider
-            db.close()
         except Exception as e:
-            logger.debug("DB provider lookup failed for %s: %s", provider_name, e)
+            logger.warning("DB provider lookup failed for %s: %s", provider_name, e)
 
     # 2. Fall back to env-configured providers
     if provider_name == "azure_openai":
