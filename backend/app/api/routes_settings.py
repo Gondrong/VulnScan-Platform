@@ -619,9 +619,33 @@ def get_auto_ai(
 ):
     """Return auto AI analysis configuration."""
     config = _get_setting(db, user["ws"], "auto_ai_analysis", DEFAULT_AUTO_AI)
-    # Also return available providers for the UI
+    # Providers offered to the UI. `available_ai_providers()` only knows about
+    # env-configured ones, so anything added through Settings > AI Providers
+    # (OpenRouter, a local LLM, …) has to be merged in here — otherwise it can
+    # never be picked for post-scan analysis.
     from app.core.config import settings as app_settings
-    config["available_providers"] = app_settings.available_ai_providers()
+    env_providers = app_settings.available_ai_providers()
+
+    # One entry per row, addressed by row id — two OpenRouter models must both
+    # be selectable, not collapse into a single "openai_compat" option.
+    from app.ai.providers import DB_PROVIDER_PREFIX
+    db_providers = []
+    for r in (
+        db.query(models.AiProviderConfig)
+        .filter(
+            models.AiProviderConfig.workspace_id == user["ws"],
+            models.AiProviderConfig.enabled == True,
+        )
+        .order_by(models.AiProviderConfig.id)
+        .all()
+    ):
+        db_providers.append({
+            "id": f"{DB_PROVIDER_PREFIX}{r.id}",
+            "name": r.name,
+            "model": r.model,
+        })
+
+    config["available_providers"] = db_providers + env_providers
     return config
 
 

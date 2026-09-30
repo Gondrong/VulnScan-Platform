@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import models
+from app.ai.providers import DB_PROVIDER_PREFIX
 from app.core.config import settings
 from app.api.deps import get_db, require_role
 
@@ -30,6 +31,23 @@ def _redis():
 # ─────────────────────────────────────────────────────────────────────────
 
 _VALID_PROVIDER_TYPES = {"openai", "claude_api", "gemini", "azure_openai", "openai_compat"}
+
+# The OpenAI SDK appends the route itself, so `endpoint` must be the BASE url.
+# Pasting the full chat-completions URL from a provider's docs is an easy
+# mistake and fails with a bare 404 from a doubled path
+# (…/v1/chat/completions/chat/completions), which says nothing about the cause.
+_ENDPOINT_SUFFIXES = ("/chat/completions", "/completions", "/responses")
+
+
+def _normalize_endpoint(url: str | None) -> str | None:
+    if not url:
+        return url
+    cleaned = url.strip().rstrip("/")
+    for suffix in _ENDPOINT_SUFFIXES:
+        if cleaned.lower().endswith(suffix):
+            cleaned = cleaned[: -len(suffix)].rstrip("/")
+            break
+    return cleaned or None
 
 
 @router.get("/providers")
@@ -55,6 +73,10 @@ def list_providers(
         seen_types.add(r.provider_type)
         providers.append({
             "id": r.id,
+            # `id` is the DB row id — the Test/Enable/Delete buttons need it.
+            # `key` is what /ai/analyze and auto_ai_analysis.provider accept.
+            # Row-addressed so two providers of the same type stay distinct.
+            "key": f"{DB_PROVIDER_PREFIX}{r.id}",
             "provider_type": r.provider_type,
             "name": r.name,
             "model": r.model,
@@ -69,6 +91,7 @@ def list_providers(
             seen_types.add(ep["id"])
             providers.append({
                 "id": ep["id"],
+                "key": ep["id"],
                 "provider_type": ep["id"],
                 "name": ep["name"],
                 "model": ep["model"],
@@ -83,6 +106,7 @@ def list_providers(
             seen_types.add(cli["id"])
             providers.append({
                 "id": cli["id"],
+                "key": cli["id"],
                 "provider_type": cli["id"],
                 "name": cli["name"],
                 "model": cli["model"],
@@ -110,7 +134,7 @@ def create_provider(
     name = (body.get("name") or "").strip()
     model = (body.get("model") or "").strip()
     api_key = (body.get("api_key") or "").strip()
-    endpoint = (body.get("endpoint") or "").strip() or None
+    endpoint = _normalize_endpoint(body.get("endpoint"))
     extra = body.get("extra") or {}
 
     if not name:
@@ -165,7 +189,7 @@ def update_provider(
     if "api_key" in body and body["api_key"]:
         row.api_key_enc = encrypt_str(body["api_key"].strip())
     if "endpoint" in body:
-        row.endpoint = body["endpoint"].strip() or None
+        row.endpoint = _normalize_endpoint(body["endpoint"])
     if "enabled" in body:
         row.enabled = bool(body["enabled"])
     if "extra" in body:
@@ -252,11 +276,13 @@ def start_analysis(
     # Validate provider is available (DB + env + CLI)
     from app.ai.providers import detect_cli_providers
     available = set()
-    # DB providers
+    # DB providers: both the row-addressed key and the bare type, so settings
+    # saved before row-addressing existed keep working.
     for r in db.query(models.AiProviderConfig).filter(
         models.AiProviderConfig.workspace_id == user["ws"],
         models.AiProviderConfig.enabled == True,
     ).all():
+        available.add(f"{DB_PROVIDER_PREFIX}{r.id}")
         available.add(r.provider_type)
     # Env providers
     for p in settings.available_ai_providers():
