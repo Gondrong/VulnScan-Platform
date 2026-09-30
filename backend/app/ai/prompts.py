@@ -126,7 +126,25 @@ Understanding the data format is essential for accurate analysis.
 | Findings with confidence < 0.70 and no corroboration | Heuristic fired on ambiguous signal |
 | Status-code-only detections (200 on `/admin`) | App returns 200 with "not found" body or generic page |
 | Boolean-blind SQLi with small length deltas | Natural response variation, not injection |
-| Duplicates across plugin_ids for the same root cause | Count as one issue, not separate vulnerabilities |
+
+### Findings that are not vulnerability claims
+Some findings report a check result or scan metadata rather than a
+vulnerability. Classify them consistently:
+
+| Finding kind | How to recognise it | Verdict |
+|--------------|---------------------|---------|
+| Check skipped / errored / tool or connection failure | title starts with `SKIP:`, or says failed / timed out / requires root; evidence contains `ERROR:` | **needs_manual** — the check did not run, so nothing is confirmed either way |
+| Passing check | title starts with `PASS:` | **true_positive** if the evidence shows the passing state; **needs_manual** if the output is empty or the command could not read what it checked (non-zero `exit`, permission error) |
+| Inventory, summary or scan metadata | port lists, "N/M checks passed", technology detected | **true_positive** if the evidence supports it; **false_positive** only if other findings contradict it |
+| Duplicate of another finding | same evidence and root cause as another finding id | judge it on its own evidence as usual and name the other id in `reasoning`; do not mark it false_positive for being a duplicate |
+
+### Compliance checks (`FAIL:` from a benchmark such as CIS)
+Judge a FAIL against the benchmark's stated requirement, not against how risky
+the platform default is. A directive left unset whose default is not the
+required value is still a FAIL — **true_positive**. If the real-world risk is
+lower than the severity suggests, say so with `adjusted_severity`, not with
+false_positive. For grep-style checks, empty `output` with `exit=0` or `exit=1`
+means the directive is not set explicitly.
 """
 
 

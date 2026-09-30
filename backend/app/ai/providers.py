@@ -7,7 +7,7 @@ import json
 import logging
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger("vulnscan.ai")
@@ -23,6 +23,9 @@ class AiResponse:
     content: str          # Raw text response
     tokens_used: int      # Total tokens (prompt + completion)
     model: str            # Model identifier used
+    # Per-call diagnostics (finish_reason, token split, upstream provider…),
+    # stored with the analysis result — worker logs do not survive a redeploy.
+    meta: dict = field(default_factory=dict)
 
 
 class EmptyResponseError(RuntimeError):
@@ -291,14 +294,20 @@ class OpenAIProvider(AiProvider):
         # OpenRouter returns the reasoning trace as a non-standard field.
         reasoning = getattr(message, "reasoning", None) or \
             (getattr(message, "model_extra", None) or {}).get("reasoning") or ""
+        # OpenRouter routes one model id to different upstream hosts, which can
+        # behave very differently (GLM's reasoning length varied 10x between
+        # runs). It reports the host as a non-standard top-level "provider".
+        upstream = getattr(resp, "provider", None) or \
+            (getattr(resp, "model_extra", None) or {}).get("provider") or ""
+        served_model = getattr(resp, "model", "") or ""
 
         logger.info(
-            "OpenAI: received %d tokens (model=%s finish_reason=%s prompt=%d "
-            "completion=%d reasoning_tokens=%d reasoning_chars=%d content_chars=%d "
-            "max_tokens=%d)",
-            tokens, self.model_name, finish_reason, prompt_tokens,
-            completion_tokens, reasoning_tokens, len(reasoning), len(content),
-            max_tokens,
+            "OpenAI: received %d tokens (model=%s served=%s upstream=%s "
+            "finish_reason=%s prompt=%d completion=%d reasoning_tokens=%d "
+            "reasoning_chars=%d content_chars=%d max_tokens=%d)",
+            tokens, self.model_name, served_model, upstream or "-", finish_reason,
+            prompt_tokens, completion_tokens, reasoning_tokens, len(reasoning),
+            len(content), max_tokens,
         )
         # A length-truncated answer is as unusable as an empty one: the JSON is
         # cut mid-object and parses to nothing, yet looks like a normal reply.
@@ -310,7 +319,17 @@ class OpenAIProvider(AiProvider):
                 f"{max_tokens}, reasoning_tokens={reasoning_tokens})",
                 finish_reason=finish_reason, tokens_used=tokens,
             )
-        return AiResponse(content=content, tokens_used=tokens, model=self.model_name)
+        return AiResponse(
+            content=content, tokens_used=tokens, model=self.model_name,
+            meta={
+                "finish_reason": finish_reason,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                "upstream_provider": upstream,
+                "served_model": served_model,
+            },
+        )
 
 
 # ── CLI auto-detection ─────────────────────────────────────────────────────

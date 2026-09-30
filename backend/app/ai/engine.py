@@ -161,6 +161,7 @@ def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
     tokens = 0
     assessed = 0
     failed: list[dict] = []
+    stats: list[dict] = []
 
     for i, batch in enumerate(batches):
         # Never start a call that cannot finish inside the job budget — being
@@ -206,6 +207,7 @@ def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
                     break
         if resp is None:
             continue
+        stats.append({"batch": i + 1, "findings": len(batch), **(resp.meta or {})})
         _merge_result(merged, _validate_result(_extract_json(resp.content), mode))
         tokens += resp.tokens_used
         assessed += len(batch)
@@ -220,6 +222,7 @@ def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
         )
     result = _validate_result(merged, mode)
     result["_failed_batches"] = failed
+    result["_batch_stats"] = stats
     return result, tokens, assessed
 
 
@@ -280,6 +283,7 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
         "batch_size": settings.AI_BATCH_SIZE,
         "max_tokens": settings.AI_MAX_TOKENS,
         "stage1_failed_batches": stage1.pop("_failed_batches", []),
+        "stage1_batches": stage1.pop("_batch_stats", []),
     }
 
     # ── Everything refuted: no point paying for stage 2 ─────────────────
@@ -306,6 +310,7 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
     )
     stage_meta["deep_analysed"] = assessed2
     stage_meta["stage2_failed_batches"] = stage2.pop("_failed_batches", [])
+    stage_meta["stage2_batches"] = stage2.pop("_batch_stats", [])
 
     # Merge: stage 2 drives the output, but stage 1's verdicts are kept for
     # *every* finding so the UI can still explain what was dropped and why.
@@ -417,6 +422,7 @@ def run_analysis(analysis_id: int) -> None:
                 "batch_size": settings.AI_BATCH_SIZE,
                 "max_tokens": settings.AI_MAX_TOKENS,
                 "failed_batches": result.pop("_failed_batches", []),
+                "batches": result.pop("_batch_stats", []),
             }
         _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
 
