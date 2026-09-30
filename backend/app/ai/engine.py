@@ -8,6 +8,7 @@ import re
 import time
 from datetime import datetime, timezone
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.db import models
 from app.ai.providers import get_provider
@@ -124,6 +125,65 @@ def _extract_json(text: str) -> dict:
     }
 
 
+# ── Batched analysis ──────────────────────────────────────────────────────
+# build_prompt() truncates: the first MAX_FULL_DETAIL findings are sent with
+# full detail, the next MAX_SUMMARY as title-only summaries, and anything past
+# that is dropped. On a 100-finding scan that means 50 findings get judged on
+# their title alone and 20 are never seen at all. Sending findings in batches of
+# MAX_FULL_DETAIL keeps every finding at full detail and loses none.
+
+# Per-finding maps are merged; cross-finding narratives are concatenated.
+_MERGE_DICT_KEYS = ("finding_validations", "poc_results")
+_MERGE_LIST_KEYS = ("attack_chains", "remediation_priority")
+
+
+def _merge_result(dst: dict, src: dict) -> None:
+    """Fold one batch's result into the accumulated result."""
+    for k in _MERGE_DICT_KEYS:
+        if isinstance(src.get(k), dict) and src[k]:
+            dst.setdefault(k, {}).update(src[k])
+    for k in _MERGE_LIST_KEYS:
+        if isinstance(src.get(k), list) and src[k]:
+            dst.setdefault(k, []).extend(src[k])
+    summary = (src.get("executive_summary") or "").strip()
+    if summary:
+        prev = (dst.get("executive_summary") or "").strip()
+        dst["executive_summary"] = f"{prev}\n\n{summary}" if prev else summary
+
+
+def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
+                 target: str, pct_from: int, pct_to: int,
+                 deadline: float | None, label: str) -> tuple[dict, int, int]:
+    """Run `mode` over every finding, in batches. Returns (result, tokens, assessed)."""
+    size = max(1, settings.AI_BATCH_SIZE)
+    batches = [findings_data[i:i + size] for i in range(0, len(findings_data), size)]
+    merged: dict = {}
+    tokens = 0
+    assessed = 0
+
+    for i, batch in enumerate(batches):
+        # Never start a call that cannot finish inside the job budget — being
+        # SIGKILLed by RQ mid-call loses everything collected so far.
+        if deadline is not None and time.monotonic() + settings.AI_CLI_TIMEOUT > deadline:
+            logger.warning(
+                "AI analysis #%s: stopping %s after %d/%d batches — not enough "
+                "budget left for another call", analysis.id, label, i, len(batches),
+            )
+            break
+
+        pct = pct_from + (pct_to - pct_from) * i // max(1, len(batches))
+        _update_progress(db, analysis, {
+            "pct": pct,
+            "step": f"{label} — batch {i + 1}/{len(batches)} ({len(batch)} findings)...",
+        })
+        resp = provider.generate(*build_prompt(mode=mode, findings=batch, target=target))
+        _merge_result(merged, _validate_result(_extract_json(resp.content), mode))
+        tokens += resp.tokens_used
+        assessed += len(batch)
+
+    return _validate_result(merged, mode), tokens, assessed
+
+
 # Two-stage mode: run `validate` first, then `full_exploit` on only the findings
 # that survived. Cheaper than full_exploit over everything, and more accurate —
 # attack chains and PoCs no longer get built on top of false positives.
@@ -136,18 +196,16 @@ STAGE2_VERDICTS = {"true_positive", "needs_manual"}
 
 
 def _run_two_stage(db, analysis, provider, findings_data: list[dict],
-                   target: str) -> tuple[dict, int]:
+                   target: str, deadline: float | None = None) -> tuple[dict, int]:
     """Run validate → filter → full_exploit. Returns (result, tokens_used)."""
     total = len(findings_data)
 
     # ── Stage 1: validate everything ────────────────────────────────────
-    _update_progress(db, analysis, {
-        "pct": 25,
-        "step": f"Stage 1/2 — validating {total} findings...",
-    })
-    sys1, usr1 = build_prompt(mode="validate", findings=findings_data, target=target)
-    resp1 = provider.generate(sys1, usr1)
-    stage1 = _validate_result(_extract_json(resp1.content), "validate")
+    stage1, tokens1, assessed1 = _run_batched(
+        db, analysis, provider, "validate", findings_data, target,
+        pct_from=10, pct_to=50, deadline=deadline,
+        label=f"Stage 1/2 — validating {total} findings",
+    )
     validations = stage1.get("finding_validations") or {}
 
     # A stage-1 response we could not parse leaves `validations` empty, which
@@ -171,10 +229,12 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
     # are promoted purely by the "needs_manual" default.
     stage_meta = {
         "validated": total,
+        "submitted_to_model": assessed1,
         "verdicts_returned": len(validations),
         "not_assessed": max(0, total - len(validations)),
         "promoted": len(kept),
         "skipped_false_positive": dropped,
+        "batch_size": settings.AI_BATCH_SIZE,
     }
 
     # ── Everything refuted: no point paying for stage 2 ─────────────────
@@ -188,19 +248,18 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
         result.setdefault("remediation_priority", [])
         result.setdefault("poc_results", {})
         result["_two_stage"] = stage_meta
-        return result, resp1.tokens_used
+        return result, tokens1
 
     # ── Stage 2: deep analysis on survivors only ────────────────────────
-    _update_progress(db, analysis, {
-        "pct": 60,
-        "step": (
+    stage2, tokens2, assessed2 = _run_batched(
+        db, analysis, provider, "full_exploit", kept, target,
+        pct_from=55, pct_to=90, deadline=deadline,
+        label=(
             f"Stage 2/2 — exploit analysis on {len(kept)} confirmed "
-            f"({dropped} false positives skipped)..."
+            f"({dropped} false positives skipped)"
         ),
-    })
-    sys2, usr2 = build_prompt(mode="full_exploit", findings=kept, target=target)
-    resp2 = provider.generate(sys2, usr2)
-    stage2 = _validate_result(_extract_json(resp2.content), "full_exploit")
+    )
+    stage_meta["deep_analysed"] = assessed2
 
     # Merge: stage 2 drives the output, but stage 1's verdicts are kept for
     # *every* finding so the UI can still explain what was dropped and why.
@@ -210,7 +269,7 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
         **(stage2.get("finding_validations") or {}),
     }
     result["_two_stage"] = stage_meta
-    return result, resp1.tokens_used + resp2.tokens_used
+    return result, tokens1 + tokens2
 
 
 def _validate_result(result: dict, mode: str) -> dict:
@@ -293,37 +352,25 @@ def run_analysis(analysis_id: int) -> None:
 
         provider = get_provider(analysis.provider, workspace_id=analysis.workspace_id)
         start_time = time.time()
+        # Leave headroom for parsing and the DB writes that follow the last call.
+        deadline = time.monotonic() + max(60, settings.AI_ANALYSIS_TIMEOUT - 240)
 
         if analysis.mode == TWO_STAGE_MODE:
             result, tokens_used = _run_two_stage(
-                db, analysis, provider, findings_data, target,
+                db, analysis, provider, findings_data, target, deadline=deadline,
             )
-            _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
         else:
-            system_prompt, user_prompt = build_prompt(
-                mode=analysis.mode,
-                findings=findings_data,
-                target=target,
+            result, tokens_used, assessed = _run_batched(
+                db, analysis, provider, analysis.mode, findings_data, target,
+                pct_from=20, pct_to=85, deadline=deadline,
+                label=f"Analysing {len(findings_data)} findings",
             )
-
-            _update_progress(db, analysis, {
-                "pct": 20,
-                "step": f"Sending to {analysis.provider}...",
-            })
-
-            response = provider.generate(system_prompt, user_prompt)
-
-            _update_progress(db, analysis, {
-                "pct": 80,
-                "step": "Parsing response...",
-            })
-
-            logger.debug(
-                "AI raw response (analysis #%d, len=%d): %.500s",
-                analysis_id, len(response.content), response.content,
-            )
-            result = _validate_result(_extract_json(response.content), analysis.mode)
-            tokens_used = response.tokens_used
+            result["_batching"] = {
+                "total": len(findings_data),
+                "submitted_to_model": assessed,
+                "batch_size": settings.AI_BATCH_SIZE,
+            }
+        _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
 
         duration = time.time() - start_time
 

@@ -12,6 +12,10 @@ from typing import Any
 
 logger = logging.getLogger("vulnscan.ai")
 
+# Prefix that addresses one specific ai_provider_configs row, so two providers
+# of the same type (two OpenRouter models, say) stay distinguishable.
+DB_PROVIDER_PREFIX = "db:"
+
 
 @dataclass
 class AiResponse:
@@ -467,27 +471,52 @@ def get_provider_from_db_config(cfg) -> AiProvider:
 def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvider:
     """Factory — returns an AI provider instance.
 
+    `provider_name` is either:
+      * "db:<row id>" — one specific provider added via Settings > AI Providers
+      * a provider type ("claude_cli", "gemini", "openai_compat", …)
+
     Resolution order:
       1. DB (per-workspace config added via Settings UI)
       2. Env vars (.env / docker-compose)
       3. Auto-detected CLI tools on the system PATH
+
+    A bare type is kept working for settings saved before row-addressing
+    existed, but it cannot distinguish two rows of the same type — it resolves
+    to the most recently added one.
     """
     from app.core.config import settings
 
     # 1. Check DB for workspace-specific provider config
     if workspace_id is not None:
+        row_id = None
+        if isinstance(provider_name, str) and provider_name.startswith(DB_PROVIDER_PREFIX):
+            try:
+                row_id = int(provider_name[len(DB_PROVIDER_PREFIX):])
+            except ValueError:
+                raise ValueError(f"Malformed provider reference: {provider_name}")
+
         try:
             from app.db.session import SessionLocal
             from app.db import models as m
             db = SessionLocal()
             try:
+                q = db.query(m.AiProviderConfig).filter(
+                    # Always scope to the workspace: a row id must never reach
+                    # across tenants.
+                    m.AiProviderConfig.workspace_id == workspace_id,
+                    m.AiProviderConfig.enabled == True,
+                )
+                if row_id is not None:
+                    cfg = q.filter(m.AiProviderConfig.id == row_id).first()
+                    if cfg is None:
+                        raise ValueError(
+                            f"AI provider #{row_id} not found, disabled, or not in "
+                            f"this workspace"
+                        )
+                    return get_provider_from_db_config(cfg)
+
                 cfg = (
-                    db.query(m.AiProviderConfig)
-                    .filter(
-                        m.AiProviderConfig.workspace_id == workspace_id,
-                        m.AiProviderConfig.provider_type == provider_name,
-                        m.AiProviderConfig.enabled == True,
-                    )
+                    q.filter(m.AiProviderConfig.provider_type == provider_name)
                     .order_by(m.AiProviderConfig.id.desc())
                     .first()
                 )
@@ -496,6 +525,8 @@ def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvi
             finally:
                 # Without this the session leaks whenever the query raises.
                 db.close()
+        except ValueError:
+            raise
         except Exception as e:
             logger.warning("DB provider lookup failed for %s: %s", provider_name, e)
 
