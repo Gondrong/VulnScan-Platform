@@ -5,7 +5,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
-## v3.1.0 — 2026-08-27
+## v3.1.0 — 2026-09-29
 
 Reliability release. Several features turned out to have never worked in
 production: auto AI analysis raised `NameError` on every scan, the Neo4j graph
@@ -27,6 +27,46 @@ mislabelled by the stale-analysis watchdog.
   findings are never silently dropped.
 - **Impact:** verdict coverage rose from 20/91 to 76/76 on a comparable scan, at
   roughly 2.4× the tokens.
+
+**Batched analysis — every finding actually reaches the model**
+
+- Findings are now sent in batches of `AI_BATCH_SIZE` (default 30, matching
+  `prompts.MAX_FULL_DETAIL`) instead of one oversized prompt.
+- Applies to both stages and to the single-stage `validate` / `full` /
+  `full_exploit` modes. Per-finding maps are merged, cross-finding narratives
+  concatenated.
+- The loop refuses to start a batch that cannot finish inside the job budget,
+  so an overrun degrades to a partial-but-saved result instead of an RQ
+  SIGKILL that loses everything.
+- **Impact:** on a 96-finding scan, verdict coverage went from 80 to 96 — and
+  detected false positives went from 1–3 to 21, because the findings that used
+  to arrive as bare titles now carry their evidence.
+
+**OpenRouter, and multiple providers of the same type**
+
+- OpenRouter is a first-class entry in Add provider: endpoint prefilled,
+  `vendor/model` ID format signposted. Stored as `openai_compat`.
+- Providers added through the UI are addressed by row (`db:<id>`), so two
+  OpenRouter models (or an OpenRouter plus a local LLM) are both selectable.
+  Bare provider types still resolve, for settings saved before this.
+- A "Default for auto-analysis" dropdown in Settings > AI Providers writes the
+  same `auto_ai_analysis.provider` setting the Auto AI panel edits — one value,
+  two views. It deliberately does not touch `enabled`.
+
+**Stale-scan watchdog**
+
+- RQ SIGKILLs a work-horse that overruns `SCAN_JOB_TIMEOUT`, and a SIGKILLed
+  process runs no Python — `run_scan_job`'s own error handler never fires, so
+  the row sat at `running` forever. The UI showed such scans as in-progress
+  indefinitely while the Failed tab stayed empty.
+- The scheduler now closes them out, measuring from the new
+  `scan_jobs.started_at` so a job still waiting in the queue is never touched.
+  Threshold `SCAN_STALE_AFTER_SECONDS`, which must exceed `SCAN_JOB_TIMEOUT`.
+- Queued-but-never-claimed jobs get a distinct message pointing at the worker
+  container rather than at a timeout.
+- The recorded progress is preserved, not overwritten: the failure reads
+  "Scan stopped responding at 68% (step 47/69, plugin ext.ffuf)". No new UI —
+  it flows into the existing `error_info` rendering.
 
 **`app/core/net.py` — client IP resolution behind proxies**
 
@@ -80,6 +120,32 @@ mislabelled by the stale-analysis watchdog.
 - nuclei now runs with `-duc`; it was contacting GitHub for template updates on
   every run.
 
+**AI providers configured through the UI could never be used**
+
+- `/ai/providers` returned the DB row id as the option value while
+  `/ai/analyze` validated against `provider_type`, so picking any UI-added
+  provider failed with a bare HTTP 400.
+- The Auto AI Analysis dropdown was built from env vars only and never read
+  `ai_provider_configs`, so such providers could not be selected for post-scan
+  analysis at all.
+- Two providers of the same type collapsed into one option and resolved to
+  whichever was added last; the other was unreachable.
+- An endpoint pasted straight from a provider's docs
+  (`…/v1/chat/completions`) produced a doubled path and a bare 404. Endpoints
+  are now normalised to the base URL on save.
+
+**Prompt truncation silently discarded findings**
+
+- `build_prompt` sent the first 30 findings in full, the next 50 as
+  title-only summaries with no evidence, and dropped the rest. On a
+  100-finding scan that meant 50 findings judged on their title and 20 never
+  seen. Batching removes both limits.
+- `_two_stage` metadata reported findings *submitted* rather than *assessed*.
+  It now carries `submitted_to_model`, `verdicts_returned`, `not_assessed`,
+  `deep_analysed` and `batch_size`.
+- `AI_CLI_TIMEOUT` is no longer derived from an assumed two calls per job; it
+  is a per-call cap, with the job budget enforced by the batch deadline.
+
 **Authentication and rate limiting**
 
 - The rate limiter recorded rejected requests and refreshed the key's TTL, so a
@@ -117,8 +183,12 @@ mislabelled by the stale-analysis watchdog.
   host path. Leave `CLAUDE_CODE_OAUTH_TOKEN` empty when authenticating by profile
   login — a stale token overrides the profile and every call fails with 401.
 - New optional settings: `TRUSTED_PROXIES`, `AI_WORKERS`, `AI_CLI_TIMEOUT`,
-  `AI_STALE_AFTER_SECONDS`, `SCAN_JOB_TIMEOUT`, `DB_POOL_SIZE`,
-  `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`. All have defaults.
+  `AI_STALE_AFTER_SECONDS`, `SCAN_JOB_TIMEOUT`, `SCAN_STALE_AFTER_SECONDS`,
+  `AI_BATCH_SIZE`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`.
+  All have defaults.
+- Batching raises token use: a 96-finding two-stage analysis went from ~16k
+  tokens in 2 calls to ~33k in 7. Raising `AI_BATCH_SIZE` above 30 without also
+  raising `prompts.MAX_FULL_DETAIL` re-introduces title-only findings.
 - Rebuild every service that builds from `./backend` — each worker has its own
   image, so `docker compose build backend` alone is not enough:
   `docker compose build backend worker-ai worker-scan worker-data`.
@@ -126,12 +196,10 @@ mislabelled by the stale-analysis watchdog.
 
 ### Known limitations
 
-- `MAX_FULL_DETAIL` (30) + `MAX_SUMMARY` (50) caps prompts at 80 findings, so a
-  100-finding scan sends only 80 to the AI and the remaining 20 are promoted by
-  the `needs_manual` default without ever being assessed. `_two_stage.not_assessed`
-  now reports this. Batching is the fix and is not in this release.
-- `scan_jobs` has no stale-job watchdog: a work-horse killed by RQ cannot write
-  its own status, so such a job stays `running` in the UI.
+- Raising `AI_BATCH_SIZE` above 30 without also raising
+  `prompts.MAX_FULL_DETAIL` re-introduces title-only findings.
+- A bare provider type (rather than `db:<id>`) resolves to the most recently
+  added row of that type — kept only for settings saved before row-addressing.
 
 ---
 ## v3.0.6 — 2026-08-12
