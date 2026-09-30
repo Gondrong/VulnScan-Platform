@@ -124,7 +124,7 @@ class Check(Plugin):
                 httpx_bin,
                 "-l", target_file,
                 "-silent",
-                "-jsonl",
+                "-json",  # JSON Lines; httpx has no -jsonl flag and exits on it
                 "-no-color",
                 "-timeout", "10",
                 "-retries", "1",
@@ -176,6 +176,20 @@ class Check(Plugin):
                 os.unlink(target_file)
             except Exception:
                 pass
+
+        # A failed run leaves stdout empty, which would otherwise be reported
+        # as "0 live HTTP services" — indistinguishable from a real result.
+        if proc.returncode != 0 and not stdout.strip():
+            err = stderr.decode("utf-8", errors="replace").strip()
+            logger.warning("httpx exited %s: %s", proc.returncode, err[:300])
+            return PluginResult(findings=[Finding(
+                plugin_id=META.plugin_id,
+                title=f"httpx failed (exit {proc.returncode})",
+                severity="info",
+                evidence=err[:300],
+                affected=target,
+                fingerprint=stable_fingerprint(target, META.plugin_id, "error"),
+            )])
 
         # Parse JSONL
         findings: list[Finding] = []
