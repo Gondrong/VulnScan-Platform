@@ -141,6 +141,11 @@ def _run_migrations(db: Session) -> None:
         ALTER TABLE ai_analyses
             ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
         """,
+        # Same for scans, so the stale-job watchdog can measure running time.
+        """
+        ALTER TABLE scan_jobs
+            ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+        """,
     ]
     for sql in migrations:
         try:
@@ -358,6 +363,82 @@ def _schedule_loop():
                 except Exception as e:
                     logger.warning("Schedule #%d failed: %s", sched.id, e)
                     db.rollback()
+            # ── Stale scan job detection ───────────────────────────────
+            # RQ SIGKILLs a work-horse that overruns SCAN_JOB_TIMEOUT. A
+            # SIGKILLed process runs no Python, so run_scan_job's own error
+            # handler never fires and the row sits at "running" forever — the
+            # UI shows it as in-progress indefinitely and the Failed tab stays
+            # empty. Only an outside observer can close these out.
+            scan_run_cutoff = now_utc - timedelta(seconds=settings.SCAN_STALE_AFTER_SECONDS)
+            scan_queue_cutoff = now_utc - timedelta(seconds=settings.SCAN_STALE_AFTER_SECONDS * 4)
+            stale_jobs = (
+                db.query(models.ScanJob)
+                .filter(
+                    models.ScanJob.status.in_(["queued", "running"]),
+                    or_(
+                        and_(
+                            models.ScanJob.started_at.isnot(None),
+                            models.ScanJob.started_at < scan_run_cutoff,
+                        ),
+                        and_(
+                            models.ScanJob.started_at.is_(None),
+                            models.ScanJob.created_at < scan_queue_cutoff,
+                        ),
+                    ),
+                )
+                .all()
+            )
+            for sj in stale_jobs:
+                try:
+                    # Keep whatever progress was recorded: the plugin it died on
+                    # is the whole diagnostic value of one of these rows.
+                    try:
+                        meta = _json.loads(sj.meta_json or "{}")
+                        if not isinstance(meta, dict):
+                            meta = {}
+                    except Exception:
+                        meta = {}
+                    progress = meta.get("progress") or {}
+                    where = ""
+                    if progress:
+                        where = (
+                            f" at {progress.get('pct', '?')}% "
+                            f"(step {progress.get('step', '?')}/{progress.get('total', '?')}, "
+                            f"plugin {progress.get('current_plugin', '?')})"
+                        )
+
+                    if sj.started_at:
+                        ran = int((now_utc - sj.started_at).total_seconds())
+                        meta["error"] = f"Scan stopped responding{where}"
+                        meta["error_type"] = "timeout"
+                        meta["error_detail"] = (
+                            f"The scan ran for {ran}s without finishing (limit "
+                            f"{settings.SCAN_STALE_AFTER_SECONDS}s) and its worker is gone. "
+                            f"The work-horse was most likely killed after exceeding "
+                            f"SCAN_JOB_TIMEOUT ({settings.SCAN_JOB_TIMEOUT}s). Raise "
+                            f"SCAN_BUDGET_SECONDS, or disable the plugin it stalled on."
+                        )
+                    else:
+                        waited = int((now_utc - sj.created_at).total_seconds())
+                        meta["error"] = "Scan was never picked up by a worker"
+                        meta["error_type"] = "queue"
+                        meta["error_detail"] = (
+                            f"The job sat queued for {waited}s without a worker claiming it. "
+                            f"Check that the worker-scan container is running."
+                        )
+
+                    sj.meta_json = _json.dumps(meta)
+                    sj.status = "failed"
+                    sj.finished_at = now_utc
+                    db.commit()
+                    logger.info(
+                        "Stale scan job #%d (%s) marked failed: %s",
+                        sj.id, sj.target, meta["error"],
+                    )
+                except Exception as e_sj:
+                    logger.warning("Failed to clean stale scan job #%d: %s", sj.id, e_sj)
+                    db.rollback()
+
             # ── Stale AI analysis detection ────────────────────────────
             # Fail an analysis only once it has genuinely overrun. Time is
             # measured from started_at (when a worker picked it up), because

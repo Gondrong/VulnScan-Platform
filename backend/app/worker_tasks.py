@@ -156,6 +156,7 @@ def run_scan_job(job_id: int) -> None:
         # API Scanner & IaC Scanner jobs don't need a profile — handle separately
         if scan_type in ("api", "iac"):
             job.status = "running"
+            job.started_at = datetime.now(timezone.utc)
             db.commit()
             logger.info("Starting %s scan job #%d target=%s", scan_type, job_id, job.target)
             prof = None
@@ -182,6 +183,9 @@ def run_scan_job(job_id: int) -> None:
                 return
 
             job.status = "running"
+            # Stamped here, not at creation: the watchdog must measure how long
+            # the job has actually been running, not how long it queued.
+            job.started_at = datetime.now(timezone.utc)
             db.commit()
             logger.info("Starting scan job #%d target=%s type=%s", job_id, job.target, scan_type)
 
