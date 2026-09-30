@@ -8,16 +8,24 @@ import re
 import time
 from datetime import datetime, timezone
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.db import models
-from app.ai.providers import get_provider
+from app.ai.providers import EmptyResponseError, get_provider
 from app.ai.prompts import build_prompt, build_poc_prompt
 
 logger = logging.getLogger("vulnscan.ai.engine")
 
 
 def _update_progress(db, analysis: models.AiAnalysis, progress: dict) -> None:
-    """Update the progress_json field and commit."""
+    """Update the progress_json field and commit.
+
+    Also logs the step. The DB write is the only progress signal the UI gets,
+    so if this commit ever blocks on a lock the analysis goes completely silent
+    — the log line is what makes such a stall visible.
+    """
+    logger.info("AI analysis #%s progress: %s%% %s",
+                analysis.id, progress.get("pct"), progress.get("step"))
     analysis.progress_json = json.dumps(progress)
     db.commit()
 
@@ -117,17 +125,210 @@ def _extract_json(text: str) -> dict:
     }
 
 
+# ── Batched analysis ──────────────────────────────────────────────────────
+# build_prompt() truncates: the first MAX_FULL_DETAIL findings are sent with
+# full detail, the next MAX_SUMMARY as title-only summaries, and anything past
+# that is dropped. On a 100-finding scan that means 50 findings get judged on
+# their title alone and 20 are never seen at all. Sending findings in batches of
+# MAX_FULL_DETAIL keeps every finding at full detail and loses none.
+
+# Per-finding maps are merged; cross-finding narratives are concatenated.
+_MERGE_DICT_KEYS = ("finding_validations", "poc_results")
+_MERGE_LIST_KEYS = ("attack_chains", "remediation_priority")
+
+
+def _merge_result(dst: dict, src: dict) -> None:
+    """Fold one batch's result into the accumulated result."""
+    for k in _MERGE_DICT_KEYS:
+        if isinstance(src.get(k), dict) and src[k]:
+            dst.setdefault(k, {}).update(src[k])
+    for k in _MERGE_LIST_KEYS:
+        if isinstance(src.get(k), list) and src[k]:
+            dst.setdefault(k, []).extend(src[k])
+    summary = (src.get("executive_summary") or "").strip()
+    if summary:
+        prev = (dst.get("executive_summary") or "").strip()
+        dst["executive_summary"] = f"{prev}\n\n{summary}" if prev else summary
+
+
+def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
+                 target: str, pct_from: int, pct_to: int,
+                 deadline: float | None, label: str) -> tuple[dict, int, int]:
+    """Run `mode` over every finding, in batches. Returns (result, tokens, assessed)."""
+    size = max(1, settings.AI_BATCH_SIZE)
+    batches = [findings_data[i:i + size] for i in range(0, len(findings_data), size)]
+    merged: dict = {}
+    tokens = 0
+    assessed = 0
+    failed: list[dict] = []
+
+    for i, batch in enumerate(batches):
+        # Never start a call that cannot finish inside the job budget — being
+        # SIGKILLed by RQ mid-call loses everything collected so far.
+        if deadline is not None and time.monotonic() + settings.AI_CLI_TIMEOUT > deadline:
+            logger.warning(
+                "AI analysis #%s: stopping %s after %d/%d batches — not enough "
+                "budget left for another call", analysis.id, label, i, len(batches),
+            )
+            break
+
+        pct = pct_from + (pct_to - pct_from) * i // max(1, len(batches))
+        _update_progress(db, analysis, {
+            "pct": pct,
+            "step": f"{label} — batch {i + 1}/{len(batches)} ({len(batch)} findings)...",
+        })
+        prompts = build_prompt(mode=mode, findings=batch, target=target)
+        resp = None
+        for attempt in (1, 2):
+            try:
+                resp = provider.generate(*prompts, max_tokens=settings.AI_MAX_TOKENS)
+                break
+            except EmptyResponseError as e:
+                # The tokens were billed even though nothing came back.
+                tokens += e.tokens_used
+                # finish_reason=length means the budget ran out; the same call
+                # again would just burn the same budget, so only retry the
+                # other cases (transient provider hiccups).
+                retry = attempt == 1 and e.finish_reason != "length"
+                logger.warning(
+                    "AI analysis #%s: %s batch %d/%d empty response (attempt %d%s): %s",
+                    analysis.id, label, i + 1, len(batches), attempt,
+                    ", retrying" if retry else "", e,
+                )
+                if not retry:
+                    failed.append({
+                        "batch": i + 1,
+                        "findings": len(batch),
+                        "finding_ids": [f["id"] for f in batch],
+                        "finish_reason": e.finish_reason,
+                        "error": str(e)[:300],
+                    })
+                    break
+        if resp is None:
+            continue
+        _merge_result(merged, _validate_result(_extract_json(resp.content), mode))
+        tokens += resp.tokens_used
+        assessed += len(batch)
+
+    # Every batch empty: fail loudly rather than report a clean-looking result
+    # (in two-stage mode, "0 refuted, all promoted") that the model never produced.
+    if batches and len(failed) == len(batches):
+        raise RuntimeError(
+            f"{label}: all {len(batches)} batches returned an empty response "
+            f"(finish_reasons: {sorted({str(f['finish_reason']) for f in failed})}). "
+            f"First error: {failed[0]['error']}"
+        )
+    result = _validate_result(merged, mode)
+    result["_failed_batches"] = failed
+    return result, tokens, assessed
+
+
+# Two-stage mode: run `validate` first, then `full_exploit` on only the findings
+# that survived. Cheaper than full_exploit over everything, and more accurate —
+# attack chains and PoCs no longer get built on top of false positives.
+TWO_STAGE_MODE = "validate_then_exploit"
+
+# Verdicts that graduate from stage 1 into stage 2. Only findings the model
+# actively refuted are dropped; "needs_manual" ones are exactly the cases that
+# benefit most from a deeper look, so they go through.
+STAGE2_VERDICTS = {"true_positive", "needs_manual"}
+
+
+def _run_two_stage(db, analysis, provider, findings_data: list[dict],
+                   target: str, deadline: float | None = None) -> tuple[dict, int]:
+    """Run validate → filter → full_exploit. Returns (result, tokens_used)."""
+    total = len(findings_data)
+
+    # ── Stage 1: validate everything ────────────────────────────────────
+    stage1, tokens1, assessed1 = _run_batched(
+        db, analysis, provider, "validate", findings_data, target,
+        pct_from=10, pct_to=50, deadline=deadline,
+        label=f"Stage 1/2 — validating {total} findings",
+    )
+    validations = stage1.get("finding_validations") or {}
+
+    # A stage-1 response we could not parse leaves `validations` empty, which
+    # defaults every finding to "needs_manual" — i.e. it degrades to a plain
+    # full_exploit run rather than silently dropping findings.
+    kept = [
+        f for f in findings_data
+        if str((validations.get(str(f["id"])) or {}).get("verdict", "needs_manual"))
+        in STAGE2_VERDICTS
+    ]
+    dropped = total - len(kept)
+    logger.info(
+        "AI analysis #%d stage 1: %d findings validated, %d promoted, %d refuted",
+        analysis.id, total, len(kept), dropped,
+    )
+
+    # `total` is how many findings were *submitted*, not how many the model
+    # actually saw: build_prompt truncates to MAX_FULL_DETAIL + MAX_SUMMARY.
+    # Report both, otherwise this metadata overstates coverage — a 100-finding
+    # scan submits 100 but only 80 ever reach the prompt, and the remaining 20
+    # are promoted purely by the "needs_manual" default.
+    # Findings with no stage-1 verdict are still promoted (never silently
+    # dropped), but listed here so they are not mistaken for "needs_manual".
+    not_assessed_ids = [f["id"] for f in findings_data if str(f["id"]) not in validations]
+    stage_meta = {
+        "validated": total,
+        "submitted_to_model": assessed1,
+        "verdicts_returned": len(validations),
+        "not_assessed": len(not_assessed_ids),
+        "not_assessed_ids": not_assessed_ids,
+        "promoted": len(kept),
+        "skipped_false_positive": dropped,
+        "batch_size": settings.AI_BATCH_SIZE,
+        "max_tokens": settings.AI_MAX_TOKENS,
+        "stage1_failed_batches": stage1.pop("_failed_batches", []),
+    }
+
+    # ── Everything refuted: no point paying for stage 2 ─────────────────
+    if not kept:
+        result = dict(stage1)
+        result["executive_summary"] = (
+            f"All {total} findings were classified as false positives during "
+            f"validation, so no exploit analysis was performed."
+        )
+        result.setdefault("attack_chains", [])
+        result.setdefault("remediation_priority", [])
+        result.setdefault("poc_results", {})
+        result["_two_stage"] = stage_meta
+        return result, tokens1
+
+    # ── Stage 2: deep analysis on survivors only ────────────────────────
+    stage2, tokens2, assessed2 = _run_batched(
+        db, analysis, provider, "full_exploit", kept, target,
+        pct_from=55, pct_to=90, deadline=deadline,
+        label=(
+            f"Stage 2/2 — exploit analysis on {len(kept)} confirmed "
+            f"({dropped} false positives skipped)"
+        ),
+    )
+    stage_meta["deep_analysed"] = assessed2
+    stage_meta["stage2_failed_batches"] = stage2.pop("_failed_batches", [])
+
+    # Merge: stage 2 drives the output, but stage 1's verdicts are kept for
+    # *every* finding so the UI can still explain what was dropped and why.
+    result = dict(stage2)
+    result["finding_validations"] = {
+        **validations,
+        **(stage2.get("finding_validations") or {}),
+    }
+    result["_two_stage"] = stage_meta
+    return result, tokens1 + tokens2
+
+
 def _validate_result(result: dict, mode: str) -> dict:
     """Validate and normalize the AI result structure."""
     # Ensure required keys exist
     if mode == "validate":
         result.setdefault("finding_validations", {})
-    elif mode in ("full", "full_exploit"):
+    elif mode in ("full", "full_exploit", TWO_STAGE_MODE):
         result.setdefault("executive_summary", "Analysis completed.")
         result.setdefault("attack_chains", [])
         result.setdefault("finding_validations", {})
         result.setdefault("remediation_priority", [])
-    if mode == "full_exploit":
+    if mode in ("full_exploit", TWO_STAGE_MODE):
         result.setdefault("poc_results", {})
 
     # Normalize finding_validations keys to strings
@@ -154,6 +355,7 @@ def run_analysis(analysis_id: int) -> None:
     RQ task entry point — runs AI analysis on scan findings.
     """
     db = SessionLocal()
+    analysis = None
     try:
         analysis = db.query(models.AiAnalysis).filter(
             models.AiAnalysis.id == analysis_id
@@ -163,6 +365,9 @@ def run_analysis(analysis_id: int) -> None:
             return
 
         analysis.status = "running"
+        # Stamp the moment a worker actually picks this up — the stale-analysis
+        # watchdog measures its timeout from here, not from created_at.
+        analysis.started_at = datetime.now(timezone.utc)
         _update_progress(db, analysis, {"pct": 5, "step": "Loading findings..."})
 
         # Load findings
@@ -191,40 +396,35 @@ def run_analysis(analysis_id: int) -> None:
         # Serialize findings
         findings_data = [_serialize_finding_from_db(f) for f in findings]
 
-        # Build prompts
-        system_prompt, user_prompt = build_prompt(
-            mode=analysis.mode,
-            findings=findings_data,
-            target=target,
-        )
-
-        _update_progress(db, analysis, {
-            "pct": 20,
-            "step": f"Sending to {analysis.provider}...",
-        })
-
-        # Call AI provider
         provider = get_provider(analysis.provider, workspace_id=analysis.workspace_id)
         start_time = time.time()
-        response = provider.generate(system_prompt, user_prompt)
+        # Leave headroom for parsing and the DB writes that follow the last call.
+        deadline = time.monotonic() + max(60, settings.AI_ANALYSIS_TIMEOUT - 240)
+
+        if analysis.mode == TWO_STAGE_MODE:
+            result, tokens_used = _run_two_stage(
+                db, analysis, provider, findings_data, target, deadline=deadline,
+            )
+        else:
+            result, tokens_used, assessed = _run_batched(
+                db, analysis, provider, analysis.mode, findings_data, target,
+                pct_from=20, pct_to=85, deadline=deadline,
+                label=f"Analysing {len(findings_data)} findings",
+            )
+            result["_batching"] = {
+                "total": len(findings_data),
+                "submitted_to_model": assessed,
+                "batch_size": settings.AI_BATCH_SIZE,
+                "max_tokens": settings.AI_MAX_TOKENS,
+                "failed_batches": result.pop("_failed_batches", []),
+            }
+        _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
+
         duration = time.time() - start_time
-
-        _update_progress(db, analysis, {
-            "pct": 80,
-            "step": "Parsing response...",
-        })
-
-        # Parse response
-        logger.debug(
-            "AI raw response (analysis #%d, len=%d): %.500s",
-            analysis_id, len(response.content), response.content,
-        )
-        result = _extract_json(response.content)
-        result = _validate_result(result, analysis.mode)
 
         # Store results
         analysis.result_json = json.dumps(result)
-        analysis.token_usage = response.tokens_used
+        analysis.token_usage = tokens_used
         analysis.duration_seconds = round(duration, 2)
         analysis.status = "done"
         analysis.finished_at = datetime.now(timezone.utc)
@@ -237,19 +437,42 @@ def run_analysis(analysis_id: int) -> None:
         logger.info(
             "AI analysis #%d complete: provider=%s mode=%s tokens=%d duration=%.1fs findings=%d",
             analysis_id, analysis.provider, analysis.mode,
-            response.tokens_used, duration, len(findings),
+            tokens_used, duration, len(findings),
         )
 
     except Exception as e:
         logger.exception("AI analysis #%d failed: %s", analysis_id, e)
+        # Record the failure so it shows up in the UI. Two things made the
+        # naive version of this silently do nothing:
+        #   * the failure may happen *before* `analysis` is loaded, so touching
+        #     it raises UnboundLocalError inside the handler;
+        #   * a DB-level error leaves the session in a failed transaction, so
+        #     the commit fails too.
+        # Either way the row stayed "queued" with no error, and the stale
+        # watchdog later mislabelled it as a 15-minute timeout — which is why
+        # these failures were undebuggable.
         try:
-            analysis.status = "failed"
-            analysis.error = str(e)[:2000]
-            analysis.finished_at = datetime.now(timezone.utc)
-            db.commit()
-            # Also finalize job on failure so it doesn't stay stuck in "analyzing"
-            _finalize_job_after_ai(db, analysis.job_id)
+            db.rollback()
+            if analysis is None:
+                analysis = db.query(models.AiAnalysis).filter(
+                    models.AiAnalysis.id == analysis_id
+                ).first()
+            if analysis is None:
+                logger.error(
+                    "AI analysis #%d failed and the row could not be loaded to "
+                    "record the error", analysis_id,
+                )
+            else:
+                analysis.status = "failed"
+                analysis.error = str(e)[:2000]
+                analysis.finished_at = datetime.now(timezone.utc)
+                db.commit()
+                # Also finalize job on failure so it doesn't stay stuck in "analyzing"
+                _finalize_job_after_ai(db, analysis.job_id)
         except Exception:
+            logger.exception(
+                "AI analysis #%d: could not persist the failure state", analysis_id,
+            )
             db.rollback()
     finally:
         db.close()

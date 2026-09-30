@@ -2,6 +2,36 @@ import os
 from pydantic import BaseModel, field_validator
 
 
+# ── AI timeout hierarchy ──────────────────────────────────────────────────
+# These three MUST stay ordered:
+#     AI_CLI_TIMEOUT  <  AI_ANALYSIS_TIMEOUT  <  AI_STALE_AFTER_SECONDS
+#
+#   AI_CLI_TIMEOUT         budget for a SINGLE provider call (CLI subprocess).
+#                          The validate_then_exploit mode makes two calls in one
+#                          job, so the default is half the job budget.
+#   AI_ANALYSIS_TIMEOUT    RQ job_timeout. RQ SIGKILLs the work horse here, so
+#                          it must exceed the provider budget — otherwise the
+#                          task dies before its except-block can record why.
+#   AI_STALE_AFTER_SECONDS the scheduler watchdog. Must exceed the RQ timeout,
+#                          or it fails analyses that are still legitimately
+#                          running (this is what produced the bogus
+#                          "stuck for over 15 minutes" errors).
+_AI_ANALYSIS_TIMEOUT = int(os.getenv("AI_ANALYSIS_TIMEOUT", "2700"))
+# Per provider call. No longer derived from "two calls per job": findings are
+# analysed in batches, so the call count varies with scan size. The engine
+# refuses to start a batch it cannot finish inside the job budget instead.
+_AI_CLI_TIMEOUT = int(os.getenv("AI_CLI_TIMEOUT", "0")) or 600
+_AI_STALE_AFTER = int(os.getenv("AI_STALE_AFTER_SECONDS", "0")) or (_AI_ANALYSIS_TIMEOUT + 600)
+
+# Self-correct a misordered configuration rather than failing scans at runtime.
+# Two calls plus overhead must still fit inside the RQ job budget.
+# At least one call plus overhead must fit, or nothing can ever run.
+if _AI_CLI_TIMEOUT + 300 > _AI_ANALYSIS_TIMEOUT:
+    _AI_CLI_TIMEOUT = max(60, _AI_ANALYSIS_TIMEOUT - 300)
+if _AI_STALE_AFTER <= _AI_ANALYSIS_TIMEOUT:
+    _AI_STALE_AFTER = _AI_ANALYSIS_TIMEOUT + 600
+
+
 class Settings(BaseModel):
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-CHANGE-ME")
     DATABASE_URL: str = os.getenv(
@@ -20,6 +50,22 @@ class Settings(BaseModel):
     # Must be LESS than RQ job_timeout to allow graceful completion.
     # Default 900s (15 min) with RQ job_timeout=1200s (20 min) gives 5 min headroom.
     SCAN_BUDGET_SECONDS: int = int(os.getenv("SCAN_BUDGET_SECONDS", "900"))
+    # RQ job_timeout for a scan. Must exceed the engine's own worst case:
+    # (budget - reserve) + one last plugin at the 20% cap + post-processing
+    # (saving findings, compliance mapping, graph upserts). RQ SIGKILLs the
+    # work-horse at this point, and a SIGKILLed scan loses every finding it
+    # had collected, so the margin is deliberately generous.
+    SCAN_JOB_TIMEOUT: int = int(os.getenv("SCAN_JOB_TIMEOUT", "0")) or (
+        int(os.getenv("SCAN_BUDGET_SECONDS", "900")) + 600
+    )
+    # Stale-scan watchdog. RQ SIGKILLs the work-horse at SCAN_JOB_TIMEOUT, and a
+    # SIGKILLed process cannot write its own status — the row would sit at
+    # "running" forever. Must exceed SCAN_JOB_TIMEOUT so a job that is still
+    # legitimately running is never touched.
+    SCAN_STALE_AFTER_SECONDS: int = int(os.getenv("SCAN_STALE_AFTER_SECONDS", "0")) or (
+        (int(os.getenv("SCAN_JOB_TIMEOUT", "0")) or
+         int(os.getenv("SCAN_BUDGET_SECONDS", "900")) + 600) + 300
+    )
     REPORTS_DIR: str = os.getenv("REPORTS_DIR", "/data/reports")
 
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -30,12 +76,24 @@ class Settings(BaseModel):
     DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
     DEFAULT_WORKSPACE: str = os.getenv("DEFAULT_WORKSPACE", "default")
 
+    # Reverse proxies whose X-Forwarded-For header may be trusted. Anything
+    # arriving from outside these ranges has its XFF ignored, because a client
+    # can set that header to whatever it likes. Defaults cover the Docker
+    # bridge networks and loopback, which is where the bundled Vite proxy and
+    # docker-proxy sit.
+    # Keep this to the actual proxy hops only. Adding a client network (e.g.
+    # 192.168.0.0/16 here) would let any LAN user forge X-Forwarded-For and
+    # rotate rate-limit buckets at will.
+    TRUSTED_PROXIES: str = os.getenv(
+        "TRUSTED_PROXIES", "127.0.0.0/8,::1/128,172.16.0.0/12"
+    )
+
     # CORS: comma-separated origins, or "*" for all (NOT recommended in production)
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:8888")
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
-    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.0.6")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.1.0")
 
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
@@ -54,7 +112,21 @@ class Settings(BaseModel):
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-    AI_ANALYSIS_TIMEOUT: int = int(os.getenv("AI_ANALYSIS_TIMEOUT", "600"))
+    AI_ANALYSIS_TIMEOUT: int = _AI_ANALYSIS_TIMEOUT
+    AI_CLI_TIMEOUT: int = _AI_CLI_TIMEOUT
+    AI_STALE_AFTER_SECONDS: int = _AI_STALE_AFTER
+
+    # Findings per provider call. Keep at or below prompts.MAX_FULL_DETAIL (30)
+    # so every finding in a batch is sent with full detail: beyond that the
+    # prompt builder degrades findings to title-only summaries, and past
+    # MAX_FULL_DETAIL + MAX_SUMMARY it drops them entirely.
+    AI_BATCH_SIZE: int = int(os.getenv("AI_BATCH_SIZE", "30"))
+
+    # Output-token budget per batch call. For reasoning models (GLM, Qwen via
+    # OpenRouter) the reasoning trace is billed against this same budget: at
+    # 8192, GLM 5.3 Flash spent 6.6k-8.6k tokens reasoning over a 30-finding
+    # validate batch and was cut off (finish_reason=length) before answering.
+    AI_MAX_TOKENS: int = int(os.getenv("AI_MAX_TOKENS", "16384"))
 
     # GeoIP — path to GeoLite2-City.mmdb for IP → City/Country resolution
     GEOIP_DB_PATH: str = os.getenv("GEOIP_DB_PATH", "/data/GeoLite2-City.mmdb")

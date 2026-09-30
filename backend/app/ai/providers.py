@@ -12,6 +12,10 @@ from typing import Any
 
 logger = logging.getLogger("vulnscan.ai")
 
+# Prefix that addresses one specific ai_provider_configs row, so two providers
+# of the same type (two OpenRouter models, say) stay distinguishable.
+DB_PROVIDER_PREFIX = "db:"
+
 
 @dataclass
 class AiResponse:
@@ -19,6 +23,22 @@ class AiResponse:
     content: str          # Raw text response
     tokens_used: int      # Total tokens (prompt + completion)
     model: str            # Model identifier used
+
+
+class EmptyResponseError(RuntimeError):
+    """The provider returned 200 OK but no usable answer (empty or truncated).
+
+    Reasoning models do this when the reasoning trace uses up max_tokens
+    before any answer is written (finish_reason == "length"). Treating it as
+    a parsed-but-empty result silently turns every finding into the default
+    verdict, so it is raised instead.
+    """
+
+    def __init__(self, message: str, finish_reason: str | None = None,
+                 tokens_used: int = 0):
+        super().__init__(message)
+        self.finish_reason = finish_reason
+        self.tokens_used = tokens_used
 
 
 class AiProvider:
@@ -63,16 +83,35 @@ class AzureOpenAIProvider(AiProvider):
 
 
 class ClaudeCLIProvider(AiProvider):
-    """Claude CLI — uses locally installed claude command via subprocess."""
+    """Claude CLI — uses locally installed claude command via subprocess.
+
+    This is a plain text-in / text-out completion, so the CLI must NOT enter
+    its agentic tool loop. Left to its own devices the model answers a security
+    analysis prompt by first reaching for Bash/Read/Grep to go look at the
+    target, burns every available turn on tool calls, and then exits with
+    ``Error: Reached max turns (N)`` on **stdout with returncode 0** — no
+    analysis at all. Disabling the tools forces a direct single-shot answer.
+    """
     name = "claude_cli"
 
-    def __init__(self, cli_path: str, model: str):
+    _DISALLOWED_TOOLS = [
+        "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+        "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
+    ]
+
+    def __init__(self, cli_path: str, model: str, timeout: int | None = None):
+        from app.core.config import settings as _s
+
         self.cli_path = cli_path
         self.model = model
+        self.timeout = timeout or _s.AI_CLI_TIMEOUT
 
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: int = 8192) -> AiResponse:
-        logger.info("Claude CLI: sending request via subprocess (model=%s)", self.model)
+        logger.info(
+            "Claude CLI: sending request via subprocess (model=%s, timeout=%ds)",
+            self.model, self.timeout,
+        )
 
         # Build the combined prompt (system + user)
         combined = f"{system_prompt}\n\n---\n\n{user_prompt}"
@@ -81,7 +120,8 @@ class ClaudeCLIProvider(AiProvider):
             self.cli_path,
             "--print",
             "--model", self.model,
-            "--max-turns", "5",
+            "--max-turns", "1",
+            "--disallowed-tools", *self._DISALLOWED_TOOLS,
         ]
 
         try:
@@ -90,10 +130,14 @@ class ClaudeCLIProvider(AiProvider):
                 input=combined,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=self.timeout,
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError("Claude CLI timed out after 600 seconds")
+            raise RuntimeError(
+                f"Claude CLI timed out after {self.timeout} seconds. "
+                f"Raise AI_CLI_TIMEOUT (and AI_ANALYSIS_TIMEOUT with it) or "
+                f"analyse fewer findings per run."
+            )
 
         if proc.returncode != 0:
             stderr = proc.stderr[:500] if proc.stderr else "no stderr"
@@ -101,9 +145,20 @@ class ClaudeCLIProvider(AiProvider):
 
         content = proc.stdout.strip()
         if not content:
-            raise RuntimeError("Claude CLI returned empty response")
+            stderr = (proc.stderr or "").strip()[:500]
+            raise RuntimeError(
+                f"Claude CLI returned empty response (rc=0). stderr: {stderr or 'none'}"
+            )
 
-        # Detect CLI error messages that arrive on stdout with rc=0
+        # The CLI reports several fatal conditions on stdout with returncode 0,
+        # so a plain rc check is not enough to tell success from failure.
+        if "Reached max turns" in content and len(content) < 200:
+            raise RuntimeError(
+                f"Claude CLI exhausted its turn budget without answering "
+                f"({content}). The CLI ran agentically instead of replying "
+                f"directly — check that --disallowed-tools is still accepted "
+                f"by the installed CLI version."
+            )
         if content.startswith("Error:") and len(content) < 200:
             raise RuntimeError(f"Claude CLI error: {content}")
 
@@ -223,10 +278,38 @@ class OpenAIProvider(AiProvider):
             response_format={"type": "json_object"},
         )
 
-        content = resp.choices[0].message.content or ""
-        tokens = resp.usage.total_tokens if resp.usage else 0
+        choice = resp.choices[0]
+        message = choice.message
+        content = message.content or ""
+        finish_reason = choice.finish_reason
+        usage = resp.usage
+        tokens = usage.total_tokens if usage else 0
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        details = getattr(usage, "completion_tokens_details", None)
+        reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0
+        # OpenRouter returns the reasoning trace as a non-standard field.
+        reasoning = getattr(message, "reasoning", None) or \
+            (getattr(message, "model_extra", None) or {}).get("reasoning") or ""
 
-        logger.info("OpenAI: received %d tokens (model=%s)", tokens, self.model_name)
+        logger.info(
+            "OpenAI: received %d tokens (model=%s finish_reason=%s prompt=%d "
+            "completion=%d reasoning_tokens=%d reasoning_chars=%d content_chars=%d "
+            "max_tokens=%d)",
+            tokens, self.model_name, finish_reason, prompt_tokens,
+            completion_tokens, reasoning_tokens, len(reasoning), len(content),
+            max_tokens,
+        )
+        # A length-truncated answer is as unusable as an empty one: the JSON is
+        # cut mid-object and parses to nothing, yet looks like a normal reply.
+        if not content.strip() or finish_reason == "length":
+            what = "a truncated answer" if content.strip() else "an empty answer"
+            raise EmptyResponseError(
+                f"{self.model_name} returned {what} "
+                f"(finish_reason={finish_reason}, completion={completion_tokens}/"
+                f"{max_tokens}, reasoning_tokens={reasoning_tokens})",
+                finish_reason=finish_reason, tokens_used=tokens,
+            )
         return AiResponse(content=content, tokens_used=tokens, model=self.model_name)
 
 
@@ -432,36 +515,64 @@ def get_provider_from_db_config(cfg) -> AiProvider:
 def get_provider(provider_name: str, workspace_id: int | None = None) -> AiProvider:
     """Factory — returns an AI provider instance.
 
+    `provider_name` is either:
+      * "db:<row id>" — one specific provider added via Settings > AI Providers
+      * a provider type ("claude_cli", "gemini", "openai_compat", …)
+
     Resolution order:
       1. DB (per-workspace config added via Settings UI)
       2. Env vars (.env / docker-compose)
       3. Auto-detected CLI tools on the system PATH
+
+    A bare type is kept working for settings saved before row-addressing
+    existed, but it cannot distinguish two rows of the same type — it resolves
+    to the most recently added one.
     """
     from app.core.config import settings
 
     # 1. Check DB for workspace-specific provider config
     if workspace_id is not None:
+        row_id = None
+        if isinstance(provider_name, str) and provider_name.startswith(DB_PROVIDER_PREFIX):
+            try:
+                row_id = int(provider_name[len(DB_PROVIDER_PREFIX):])
+            except ValueError:
+                raise ValueError(f"Malformed provider reference: {provider_name}")
+
         try:
             from app.db.session import SessionLocal
             from app.db import models as m
             db = SessionLocal()
-            cfg = (
-                db.query(m.AiProviderConfig)
-                .filter(
+            try:
+                q = db.query(m.AiProviderConfig).filter(
+                    # Always scope to the workspace: a row id must never reach
+                    # across tenants.
                     m.AiProviderConfig.workspace_id == workspace_id,
-                    m.AiProviderConfig.provider_type == provider_name,
                     m.AiProviderConfig.enabled == True,
                 )
-                .order_by(m.AiProviderConfig.id.desc())
-                .first()
-            )
-            if cfg:
-                provider = get_provider_from_db_config(cfg)
+                if row_id is not None:
+                    cfg = q.filter(m.AiProviderConfig.id == row_id).first()
+                    if cfg is None:
+                        raise ValueError(
+                            f"AI provider #{row_id} not found, disabled, or not in "
+                            f"this workspace"
+                        )
+                    return get_provider_from_db_config(cfg)
+
+                cfg = (
+                    q.filter(m.AiProviderConfig.provider_type == provider_name)
+                    .order_by(m.AiProviderConfig.id.desc())
+                    .first()
+                )
+                if cfg:
+                    return get_provider_from_db_config(cfg)
+            finally:
+                # Without this the session leaks whenever the query raises.
                 db.close()
-                return provider
-            db.close()
+        except ValueError:
+            raise
         except Exception as e:
-            logger.debug("DB provider lookup failed for %s: %s", provider_name, e)
+            logger.warning("DB provider lookup failed for %s: %s", provider_name, e)
 
     # 2. Fall back to env-configured providers
     if provider_name == "azure_openai":
