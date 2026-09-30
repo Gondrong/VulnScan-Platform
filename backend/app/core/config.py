@@ -17,14 +17,17 @@ from pydantic import BaseModel, field_validator
 #                          running (this is what produced the bogus
 #                          "stuck for over 15 minutes" errors).
 _AI_ANALYSIS_TIMEOUT = int(os.getenv("AI_ANALYSIS_TIMEOUT", "2700"))
-_AI_CLI_TIMEOUT = int(os.getenv("AI_CLI_TIMEOUT", "0")) or max(60, (_AI_ANALYSIS_TIMEOUT - 300) // 2)
+# Per provider call. No longer derived from "two calls per job": findings are
+# analysed in batches, so the call count varies with scan size. The engine
+# refuses to start a batch it cannot finish inside the job budget instead.
+_AI_CLI_TIMEOUT = int(os.getenv("AI_CLI_TIMEOUT", "0")) or 600
 _AI_STALE_AFTER = int(os.getenv("AI_STALE_AFTER_SECONDS", "0")) or (_AI_ANALYSIS_TIMEOUT + 600)
 
 # Self-correct a misordered configuration rather than failing scans at runtime.
 # Two calls plus overhead must still fit inside the RQ job budget.
-# Two calls plus ~300s of DB/parse overhead must still fit the RQ job budget.
-if _AI_CLI_TIMEOUT * 2 + 300 > _AI_ANALYSIS_TIMEOUT:
-    _AI_CLI_TIMEOUT = max(60, (_AI_ANALYSIS_TIMEOUT - 300) // 2)
+# At least one call plus overhead must fit, or nothing can ever run.
+if _AI_CLI_TIMEOUT + 300 > _AI_ANALYSIS_TIMEOUT:
+    _AI_CLI_TIMEOUT = max(60, _AI_ANALYSIS_TIMEOUT - 300)
 if _AI_STALE_AFTER <= _AI_ANALYSIS_TIMEOUT:
     _AI_STALE_AFTER = _AI_ANALYSIS_TIMEOUT + 600
 
@@ -54,6 +57,14 @@ class Settings(BaseModel):
     # had collected, so the margin is deliberately generous.
     SCAN_JOB_TIMEOUT: int = int(os.getenv("SCAN_JOB_TIMEOUT", "0")) or (
         int(os.getenv("SCAN_BUDGET_SECONDS", "900")) + 600
+    )
+    # Stale-scan watchdog. RQ SIGKILLs the work-horse at SCAN_JOB_TIMEOUT, and a
+    # SIGKILLed process cannot write its own status — the row would sit at
+    # "running" forever. Must exceed SCAN_JOB_TIMEOUT so a job that is still
+    # legitimately running is never touched.
+    SCAN_STALE_AFTER_SECONDS: int = int(os.getenv("SCAN_STALE_AFTER_SECONDS", "0")) or (
+        (int(os.getenv("SCAN_JOB_TIMEOUT", "0")) or
+         int(os.getenv("SCAN_BUDGET_SECONDS", "900")) + 600) + 300
     )
     REPORTS_DIR: str = os.getenv("REPORTS_DIR", "/data/reports")
 
@@ -104,6 +115,12 @@ class Settings(BaseModel):
     AI_ANALYSIS_TIMEOUT: int = _AI_ANALYSIS_TIMEOUT
     AI_CLI_TIMEOUT: int = _AI_CLI_TIMEOUT
     AI_STALE_AFTER_SECONDS: int = _AI_STALE_AFTER
+
+    # Findings per provider call. Keep at or below prompts.MAX_FULL_DETAIL (30)
+    # so every finding in a batch is sent with full detail: beyond that the
+    # prompt builder degrades findings to title-only summaries, and past
+    # MAX_FULL_DETAIL + MAX_SUMMARY it drops them entirely.
+    AI_BATCH_SIZE: int = int(os.getenv("AI_BATCH_SIZE", "30"))
 
     # GeoIP — path to GeoLite2-City.mmdb for IP → City/Country resolution
     GEOIP_DB_PATH: str = os.getenv("GEOIP_DB_PATH", "/data/GeoLite2-City.mmdb")
