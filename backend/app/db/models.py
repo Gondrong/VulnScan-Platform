@@ -73,6 +73,10 @@ class ScanJob(Base):
     scan_type: Mapped[str] = mapped_column(String(20), default="internal")  # internal|external
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Stamped when a worker picks the job up. The stale-job watchdog measures
+    # from here: a job still waiting behind a busy queue has not started
+    # spending its budget yet.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
