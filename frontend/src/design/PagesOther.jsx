@@ -1066,6 +1066,7 @@ const _AI_ADD_TYPES = {
   gemini:       { label: "Gemini",              icon: Icons.Sparkles, models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"] },
   azure_openai: { label: "Azure OpenAI",        icon: Icons.Cloud,    models: [] },
   openai_compat:{ label: "OpenAI-Compatible",   icon: Icons.Server,   models: [] },
+  openrouter:   { label: "OpenRouter",          icon: Icons.Layers,   models: ["anthropic/claude-sonnet-4.5", "openai/gpt-4o", "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-chat"] },
   local_llm:    { label: "Local LLM (Ollama, LM Studio, etc.)", icon: Icons.Server, models: ["llama3.1", "mistral", "codellama", "deepseek-r1", "qwen2.5", "gemma2"] },
 };
 
@@ -1089,6 +1090,24 @@ const _AI_TYPE_META = {
   qwen_cli:     { label: "Qwen CLI",           icon: Icons.Code },
 };
 
+// Match on the parsed hostname, not a substring: "my-openrouter.ai.example.com"
+// must not be mistaken for OpenRouter.
+function _isHost(url, host) {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === host || h.endsWith("." + host);
+  } catch { return false; }
+}
+
+// OpenRouter is stored as `openai_compat`, so the stored type alone cannot tell
+// it apart from a self-hosted gateway. The endpoint host is what identifies it.
+function _providerMeta(p) {
+  const pt = p.provider_type || p.id || "";
+  const ep = p.endpoint || "";
+  if (pt === "openai_compat" && _isHost(ep, "openrouter.ai")) return _AI_ADD_TYPES.openrouter;
+  return _AI_TYPE_META[pt] || null;
+}
+
 const _SOURCE_BADGE = {
   db:  { label: "API Key",  bg: "var(--brand-soft)", color: "var(--brand-text)" },
   env: { label: "Server",   bg: "var(--surface-2)",  color: "var(--text-2)" },
@@ -1101,11 +1120,32 @@ function AIProvidersPanel() {
   const [showAdd, setShowAdd] = useState(false);
   const [testing, setTesting] = useState(null);
   const [testMsg, setTestMsg] = useState({});
+  // Which provider post-scan analysis uses. Stored in the auto_ai_analysis
+  // workspace setting, so this button and Settings > Auto AI Analysis are two
+  // views of the same value.
+  const [defaultKey, setDefaultKey] = useState(null);
+  const [autoEnabled, setAutoEnabled] = useState(null);
+  const [settingDefault, setSettingDefault] = useState(null);
 
   const load = useCallback(() => {
     aiApi.providers().then(r => setProviders(r.providers || [])).catch(e => setError(e.message));
+    autoAiApi.get().then(c => {
+      setDefaultKey(c?.provider || "");
+      setAutoEnabled(!!c?.enabled);
+    }).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const onSetDefault = async (key) => {
+    setSettingDefault(key ?? "");
+    try {
+      // Only the provider. Flipping `enabled` here would silently switch
+      // automation back on for someone who deliberately turned it off.
+      await autoAiApi.update({ provider: key });
+      setDefaultKey(key);
+    } catch (e) { alert(e.message); }
+    finally { setSettingDefault(null); }
+  };
 
   const onDelete = async (id) => {
     if (!confirm("Delete this AI provider?")) return;
@@ -1128,7 +1168,8 @@ function AIProvidersPanel() {
 
   const providerIcon = (p) => {
     const pt = p.provider_type || p.id || "";
-    if (pt in _AI_TYPE_META) return _AI_TYPE_META[pt].icon;
+    const m = _providerMeta(p);
+    if (m?.icon) return m.icon;
     if (pt.includes("claude")) return Icons.Brain;
     if (pt.includes("openai")) return Icons.Cloud;
     if (pt.includes("gemini")) return Icons.Sparkles;
@@ -1141,7 +1182,27 @@ function AIProvidersPanel() {
       <div className="card-head">
         <div><div className="card-title">AI Providers</div><div className="card-sub" style={{marginTop: 0}}>LLM backends for finding validation and PoC generation.</div></div>
         {isAdmin() && (
-          <div className="actions">
+          <div className="actions" style={{display: "flex", alignItems: "center", gap: 10}}>
+            {/* One control for one value: which provider runs after every scan.
+                Writes auto_ai_analysis.provider, the same setting the Auto AI
+                Analysis panel edits. */}
+            <label style={{display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)"}}>
+              Default for auto-analysis
+              <select className="form-input" style={{height: 28, fontSize: 12, maxWidth: 210}}
+                      value={defaultKey ?? ""} disabled={settingDefault !== null || providers === null}
+                      onChange={e => onSetDefault(e.target.value)}>
+                <option value="">Auto-detect (prefer Claude CLI)</option>
+                {(providers || []).filter(p => p.enabled !== false).map(p => (
+                  <option key={p.id} value={p.key || p.id}>{p.name} ({p.model})</option>
+                ))}
+              </select>
+              {settingDefault !== null && <Icons.Refresh size={12} className="spin"/>}
+            </label>
+            {autoEnabled === false && (
+              <span style={{fontSize: 11, color: "var(--warn, var(--text-3))"}} title="Enable it under Settings > Auto AI Analysis">
+                auto-analysis is off
+              </span>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}><Icons.Plus size={12}/> Add provider</button>
           </div>
         )}
@@ -1157,8 +1218,11 @@ function AIProvidersPanel() {
         ) : (
           providers.map(p => {
             const I = providerIcon(p);
+            const typeLabel = _providerMeta(p)?.label || null;
             const badge = _SOURCE_BADGE[p.source] || _SOURCE_BADGE.env;
             const isDb = p.source === "db";
+            const pKey = p.key || p.id;
+            const isDefault = defaultKey != null && String(defaultKey) === String(pKey);
             const tm = testMsg[p.id];
             return (
               <div key={p.id} style={{display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 8, opacity: p.enabled === false ? 0.5 : 1}}>
@@ -1167,6 +1231,8 @@ function AIProvidersPanel() {
                   <div style={{display: "flex", alignItems: "center", gap: 8}}>
                     <span style={{fontSize: 13.5, color: "var(--text-0)", fontWeight: 500}}>{p.name}</span>
                     <span style={{fontSize: 10, padding: "1px 6px", borderRadius: 4, background: badge.bg, color: badge.color, fontWeight: 600}}>{badge.label}</span>
+                    {typeLabel && <span style={{fontSize: 11, color: "var(--text-3)"}}>{typeLabel}</span>}
+                    {isDefault && <span style={{fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--brand-soft)", color: "var(--brand-text)", fontWeight: 600}}>DEFAULT</span>}
                   </div>
                   <div style={{fontSize: 12, color: "var(--text-3)", fontFamily: "var(--font-mono)"}}>{p.model}{p.endpoint ? ` @ ${p.endpoint}` : ""}</div>
                   {tm && <div style={{fontSize: 11, marginTop: 2, color: tm === "OK" ? "var(--ok)" : "var(--err)"}}>{tm === "OK" ? "Test passed" : tm}</div>}
@@ -1208,13 +1274,19 @@ function AddAIProviderModal({ close, onSaved }) {
 
   const meta = _AI_ADD_TYPES[providerType] || {};
   const isLocal = providerType === "local_llm";
-  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat" || isLocal;
+  // OpenRouter is an OpenAI-compatible gateway: it is its own entry here purely
+  // so the endpoint is prefilled and the vendor/model ID format is signposted.
+  // It is stored as openai_compat, like local_llm.
+  const isOpenRouter = providerType === "openrouter";
+  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat" || isLocal || isOpenRouter;
   const needsApiKey = !isLocal;
 
   useEffect(() => {
     setName(meta.label || providerType);
     setModel(meta.models?.[0] || "");
-    setEndpoint(isLocal ? "http://localhost:11434/v1" : "");
+    setEndpoint(isLocal ? "http://localhost:11434/v1"
+              : isOpenRouter ? "https://openrouter.ai/api/v1"
+              : "");
     setApiKey("");
   }, [providerType]);
 
@@ -1223,7 +1295,7 @@ function AddAIProviderModal({ close, onSaved }) {
     setSubmitting(true);
     try {
       await aiApi.saveProvider({
-        provider_type: isLocal ? "openai_compat" : providerType,
+        provider_type: (isLocal || isOpenRouter) ? "openai_compat" : providerType,
         name,
         model,
         api_key: apiKey || (isLocal ? "local" : ""),
@@ -1258,7 +1330,7 @@ function AddAIProviderModal({ close, onSaved }) {
           </div>
           <div>
             <label className="form-label">Model</label>
-            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={isLocal ? "e.g. llama3.1, mistral, deepseek-r1" : needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
+            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={isLocal ? "e.g. llama3.1, mistral, deepseek-r1" : isOpenRouter ? "vendor/model — e.g. anthropic/claude-sonnet-4.5" : needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
             {meta.models?.length > 0 && (
               <datalist id="ai-model-list">
                 {meta.models.map(m => <option key={m} value={m}/>)}
@@ -1270,6 +1342,7 @@ function AddAIProviderModal({ close, onSaved }) {
               <label className="form-label">Endpoint URL</label>
               <input className="form-input" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder={isLocal ? "http://localhost:11434/v1" : providerType === "azure_openai" ? "https://your-resource.openai.azure.com" : "https://api.example.com/v1"}/>
               {isLocal && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 3}}>Ollama: :11434/v1 &middot; LM Studio: :1234/v1 &middot; LocalAI: :8080/v1 &middot; Jan: :1337/v1</div>}
+              {isOpenRouter && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 3}}>Base URL only &mdash; do not append <span className="mono">/chat/completions</span>. Model IDs are <span className="mono">vendor/model</span> (openrouter.ai/models). API key starts with <span className="mono">sk-or-v1-</span></div>}
             </div>
           )}
           <div>

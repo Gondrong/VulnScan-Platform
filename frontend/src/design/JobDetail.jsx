@@ -261,7 +261,7 @@ function AIAnalysisBanner({ job }) {
       .then(r => {
         const list = r.providers || [];
         setProviders(list);
-        if (list.length > 0) setProvider(list[0].id);
+        if (list.length > 0) setProvider(list[0].key || list[0].id);
       })
       .catch(e => setError(e.message));
     refreshHistory();
@@ -323,7 +323,10 @@ function AIAnalysisBanner({ job }) {
         </div>
         {providers.length > 0 && (
           <select className="form-input" style={{height: 28, fontSize: 12, maxWidth: 180}} value={provider} onChange={e => setProvider(e.target.value)} disabled={busy}>
-            {providers.map(p => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}
+            {/* value must be p.key (the provider type), not p.id: for
+                DB-configured providers p.id is the row id, which /ai/analyze
+                rejects. */}
+            {providers.map(p => <option key={p.id} value={p.key || p.id}>{p.name || p.id}</option>)}
           </select>
         )}
         <button className="btn btn-sm" disabled={busy || providers.length === 0 || job.status !== "done"} onClick={() => startAnalysis("validate")}>
