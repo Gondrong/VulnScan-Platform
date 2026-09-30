@@ -141,6 +141,22 @@ def _evidence(check_id: str, cmd: str, output: str, detail: dict) -> str:
     return " ".join(parts)
 
 
+def _sshd_directive_cmd(directive: str) -> str:
+    """First value of an sshd directive, drop-ins first (sshd's first-match order).
+
+    Drop-ins such as cloud-init's 50-cloud-init.conf are often mode 600, and
+    `cat ... 2>/dev/null` skipped them silently, so the check judged whatever
+    the readable files said. If any config file is unreadable, print nothing
+    and report it on stderr, which the evaluator turns into SKIP (requires root).
+    """
+    files = "/etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config"
+    return (
+        f'unr=""; for f in {files}; do [ -e "$f" ] && [ ! -r "$f" ] && unr="$unr $f"; done; '
+        f'if [ -n "$unr" ]; then echo "Permission denied: not readable:$unr" >&2; '
+        f"else cat {files} 2>/dev/null | grep -i '^{directive}' | head -1; fi"
+    )
+
+
 def _check_max_auth_tries(o: str) -> bool:
     nums = re.findall(r"\d+", o)
     return any(int(x) <= 4 for x in nums) if nums else False
@@ -299,7 +315,9 @@ _LINUX_CHECKS: list[tuple[str, str, str, object, str]] = [
     ),
     (
         "CIS-6.2.1", "Ensure no accounts have empty passwords",
-        "awk -F: '($2 == \"\") {print $1}' /etc/shadow 2>/dev/null",
+        # Unreadable for a non-root user: empty output used to mean "PASS".
+        "if [ -r /etc/shadow ]; then awk -F: '($2 == \"\") {print $1}' /etc/shadow; "
+        "else echo 'Permission denied: /etc/shadow not readable' >&2; fi",
         lambda o: o.strip() == "",
         "critical",
     ),
@@ -317,19 +335,19 @@ _LINUX_CHECKS: list[tuple[str, str, str, object, str]] = [
     ),
     (
         "CIS-6.3.1", "Ensure SSH root login is disabled",
-        "cat /etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config 2>/dev/null | grep -i '^PermitRootLogin' | head -1",
+        _sshd_directive_cmd("PermitRootLogin"),
         lambda o: "no" in o.lower(),
         "high",
     ),
     (
         "CIS-6.3.2", "Ensure SSH PasswordAuthentication is disabled",
-        "cat /etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config 2>/dev/null | grep -i '^PasswordAuthentication' | head -1",
+        _sshd_directive_cmd("PasswordAuthentication"),
         lambda o: "no" in o.lower(),
         "medium",
     ),
     (
         "CIS-6.3.3", "Ensure SSH MaxAuthTries is 4 or less",
-        "cat /etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config 2>/dev/null | grep -i '^MaxAuthTries' | head -1",
+        _sshd_directive_cmd("MaxAuthTries"),
         _check_max_auth_tries,
         "medium",
     ),
