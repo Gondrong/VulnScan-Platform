@@ -14,7 +14,7 @@ import re
 import shutil
 
 from app.scanner.plugins.base import Finding, Plugin, PluginMeta, PluginResult
-from app.scanner.context import stable_fingerprint
+from app.scanner.context import stable_fingerprint, web_base_url
 
 logger = logging.getLogger("vulnscan.plugin.nuclei")
 
@@ -86,14 +86,7 @@ def _build_target_url(target: str, ctx) -> str:
     target_raw = ctx.get("target_raw", target)
     if re.match(r"^https?://", target_raw, re.I):
         return target_raw
-
-    # Check if HTTP fingerprint found a scheme
-    scheme = ctx.get("target_scheme", "")
-    if scheme:
-        return f"{scheme}://{target}"
-
-    # Default: try HTTPS first, nuclei handles fallback
-    return f"https://{target}"
+    return web_base_url(target, ctx)
 
 
 class Check(Plugin):
@@ -127,6 +120,9 @@ class Check(Plugin):
             "-bulk-size", "25",
             "-concurrency", "25",
             "-no-interactsh",          # disable OOB testing (needs external server)
+            "-duc",                    # no template update check: it reaches out
+                                       # to GitHub on every run and can stall for
+                                       # minutes before the scan even starts
         ]
 
         # Severity filter — default to critical,high,medium for speed
