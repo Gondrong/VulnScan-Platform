@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.db import models
-from app.ai.providers import get_provider
+from app.ai.providers import EmptyResponseError, get_provider
 from app.ai.prompts import build_prompt, build_poc_prompt
 
 logger = logging.getLogger("vulnscan.ai.engine")
@@ -160,6 +160,8 @@ def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
     merged: dict = {}
     tokens = 0
     assessed = 0
+    failed: list[dict] = []
+    stats: list[dict] = []
 
     for i, batch in enumerate(batches):
         # Never start a call that cannot finish inside the job budget — being
@@ -176,12 +178,52 @@ def _run_batched(db, analysis, provider, mode: str, findings_data: list[dict],
             "pct": pct,
             "step": f"{label} — batch {i + 1}/{len(batches)} ({len(batch)} findings)...",
         })
-        resp = provider.generate(*build_prompt(mode=mode, findings=batch, target=target))
+        prompts = build_prompt(mode=mode, findings=batch, target=target)
+        resp = None
+        for attempt in (1, 2):
+            try:
+                resp = provider.generate(*prompts, max_tokens=settings.AI_MAX_TOKENS)
+                break
+            except EmptyResponseError as e:
+                # The tokens were billed even though nothing came back.
+                tokens += e.tokens_used
+                # finish_reason=length means the budget ran out; the same call
+                # again would just burn the same budget, so only retry the
+                # other cases (transient provider hiccups).
+                retry = attempt == 1 and e.finish_reason != "length"
+                logger.warning(
+                    "AI analysis #%s: %s batch %d/%d empty response (attempt %d%s): %s",
+                    analysis.id, label, i + 1, len(batches), attempt,
+                    ", retrying" if retry else "", e,
+                )
+                if not retry:
+                    failed.append({
+                        "batch": i + 1,
+                        "findings": len(batch),
+                        "finding_ids": [f["id"] for f in batch],
+                        "finish_reason": e.finish_reason,
+                        "error": str(e)[:300],
+                    })
+                    break
+        if resp is None:
+            continue
+        stats.append({"batch": i + 1, "findings": len(batch), **(resp.meta or {})})
         _merge_result(merged, _validate_result(_extract_json(resp.content), mode))
         tokens += resp.tokens_used
         assessed += len(batch)
 
-    return _validate_result(merged, mode), tokens, assessed
+    # Every batch empty: fail loudly rather than report a clean-looking result
+    # (in two-stage mode, "0 refuted, all promoted") that the model never produced.
+    if batches and len(failed) == len(batches):
+        raise RuntimeError(
+            f"{label}: all {len(batches)} batches returned an empty response "
+            f"(finish_reasons: {sorted({str(f['finish_reason']) for f in failed})}). "
+            f"First error: {failed[0]['error']}"
+        )
+    result = _validate_result(merged, mode)
+    result["_failed_batches"] = failed
+    result["_batch_stats"] = stats
+    return result, tokens, assessed
 
 
 # Two-stage mode: run `validate` first, then `full_exploit` on only the findings
@@ -227,14 +269,21 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
     # Report both, otherwise this metadata overstates coverage — a 100-finding
     # scan submits 100 but only 80 ever reach the prompt, and the remaining 20
     # are promoted purely by the "needs_manual" default.
+    # Findings with no stage-1 verdict are still promoted (never silently
+    # dropped), but listed here so they are not mistaken for "needs_manual".
+    not_assessed_ids = [f["id"] for f in findings_data if str(f["id"]) not in validations]
     stage_meta = {
         "validated": total,
         "submitted_to_model": assessed1,
         "verdicts_returned": len(validations),
-        "not_assessed": max(0, total - len(validations)),
+        "not_assessed": len(not_assessed_ids),
+        "not_assessed_ids": not_assessed_ids,
         "promoted": len(kept),
         "skipped_false_positive": dropped,
         "batch_size": settings.AI_BATCH_SIZE,
+        "max_tokens": settings.AI_MAX_TOKENS,
+        "stage1_failed_batches": stage1.pop("_failed_batches", []),
+        "stage1_batches": stage1.pop("_batch_stats", []),
     }
 
     # ── Everything refuted: no point paying for stage 2 ─────────────────
@@ -260,6 +309,8 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
         ),
     )
     stage_meta["deep_analysed"] = assessed2
+    stage_meta["stage2_failed_batches"] = stage2.pop("_failed_batches", [])
+    stage_meta["stage2_batches"] = stage2.pop("_batch_stats", [])
 
     # Merge: stage 2 drives the output, but stage 1's verdicts are kept for
     # *every* finding so the UI can still explain what was dropped and why.
@@ -369,6 +420,9 @@ def run_analysis(analysis_id: int) -> None:
                 "total": len(findings_data),
                 "submitted_to_model": assessed,
                 "batch_size": settings.AI_BATCH_SIZE,
+                "max_tokens": settings.AI_MAX_TOKENS,
+                "failed_batches": result.pop("_failed_batches", []),
+                "batches": result.pop("_batch_stats", []),
             }
         _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
 

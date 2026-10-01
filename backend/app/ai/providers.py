@@ -7,7 +7,7 @@ import json
 import logging
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger("vulnscan.ai")
@@ -23,6 +23,25 @@ class AiResponse:
     content: str          # Raw text response
     tokens_used: int      # Total tokens (prompt + completion)
     model: str            # Model identifier used
+    # Per-call diagnostics (finish_reason, token split, upstream provider…),
+    # stored with the analysis result — worker logs do not survive a redeploy.
+    meta: dict = field(default_factory=dict)
+
+
+class EmptyResponseError(RuntimeError):
+    """The provider returned 200 OK but no usable answer (empty or truncated).
+
+    Reasoning models do this when the reasoning trace uses up max_tokens
+    before any answer is written (finish_reason == "length"). Treating it as
+    a parsed-but-empty result silently turns every finding into the default
+    verdict, so it is raised instead.
+    """
+
+    def __init__(self, message: str, finish_reason: str | None = None,
+                 tokens_used: int = 0):
+        super().__init__(message)
+        self.finish_reason = finish_reason
+        self.tokens_used = tokens_used
 
 
 class AiProvider:
@@ -262,11 +281,55 @@ class OpenAIProvider(AiProvider):
             response_format={"type": "json_object"},
         )
 
-        content = resp.choices[0].message.content or ""
-        tokens = resp.usage.total_tokens if resp.usage else 0
+        choice = resp.choices[0]
+        message = choice.message
+        content = message.content or ""
+        finish_reason = choice.finish_reason
+        usage = resp.usage
+        tokens = usage.total_tokens if usage else 0
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        details = getattr(usage, "completion_tokens_details", None)
+        reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0
+        # OpenRouter returns the reasoning trace as a non-standard field.
+        reasoning = getattr(message, "reasoning", None) or \
+            (getattr(message, "model_extra", None) or {}).get("reasoning") or ""
+        # OpenRouter routes one model id to different upstream hosts, which can
+        # behave very differently (GLM's reasoning length varied 10x between
+        # runs). It reports the host as a non-standard top-level "provider".
+        upstream = getattr(resp, "provider", None) or \
+            (getattr(resp, "model_extra", None) or {}).get("provider") or ""
+        served_model = getattr(resp, "model", "") or ""
 
-        logger.info("OpenAI: received %d tokens (model=%s)", tokens, self.model_name)
-        return AiResponse(content=content, tokens_used=tokens, model=self.model_name)
+        logger.info(
+            "OpenAI: received %d tokens (model=%s served=%s upstream=%s "
+            "finish_reason=%s prompt=%d completion=%d reasoning_tokens=%d "
+            "reasoning_chars=%d content_chars=%d max_tokens=%d)",
+            tokens, self.model_name, served_model, upstream or "-", finish_reason,
+            prompt_tokens, completion_tokens, reasoning_tokens, len(reasoning),
+            len(content), max_tokens,
+        )
+        # A length-truncated answer is as unusable as an empty one: the JSON is
+        # cut mid-object and parses to nothing, yet looks like a normal reply.
+        if not content.strip() or finish_reason == "length":
+            what = "a truncated answer" if content.strip() else "an empty answer"
+            raise EmptyResponseError(
+                f"{self.model_name} returned {what} "
+                f"(finish_reason={finish_reason}, completion={completion_tokens}/"
+                f"{max_tokens}, reasoning_tokens={reasoning_tokens})",
+                finish_reason=finish_reason, tokens_used=tokens,
+            )
+        return AiResponse(
+            content=content, tokens_used=tokens, model=self.model_name,
+            meta={
+                "finish_reason": finish_reason,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                "upstream_provider": upstream,
+                "served_model": served_model,
+            },
+        )
 
 
 # ── CLI auto-detection ─────────────────────────────────────────────────────
