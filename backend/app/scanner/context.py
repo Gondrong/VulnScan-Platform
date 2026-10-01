@@ -61,6 +61,25 @@ class ScanContext:
         return True
 
 
+def web_base_url(target: str, ctx: "ScanContext") -> str:
+    """Base URL (no trailing slash) for web plugins scanning `target`.
+
+    The engine sets target_scheme to "unknown" for a bare host/IP, which is
+    truthy — plugins that did `if scheme:` ended up scanning "unknown://host".
+    Only http/https count; otherwise infer from open ports, preferring https.
+    """
+    target_raw = ctx.get("target_raw", target) or target
+    if isinstance(target_raw, str) and target_raw.lower().startswith(("http://", "https://")):
+        return target_raw.rstrip("/")
+    scheme = ctx.get("target_scheme", "")
+    if scheme in ("http", "https"):
+        return f"{scheme}://{target}"
+    open_ports = ctx.get("net.open_ports", []) or []
+    if 80 in open_ports and 443 not in open_ports:
+        return f"http://{target}"
+    return f"https://{target}"
+
+
 def stable_fingerprint(*parts: Any) -> str:
     """
     Produce a stable 12-char hex fingerprint from arbitrary input.
