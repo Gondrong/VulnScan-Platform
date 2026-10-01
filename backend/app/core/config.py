@@ -93,7 +93,7 @@ class Settings(BaseModel):
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
-    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.1.0")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.2.0")
 
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
@@ -121,6 +121,12 @@ class Settings(BaseModel):
     # prompt builder degrades findings to title-only summaries, and past
     # MAX_FULL_DETAIL + MAX_SUMMARY it drops them entirely.
     AI_BATCH_SIZE: int = int(os.getenv("AI_BATCH_SIZE", "30"))
+
+    # Output-token budget per batch call. For reasoning models (GLM, Qwen via
+    # OpenRouter) the reasoning trace is billed against this same budget: at
+    # 8192, GLM 5.3 Flash spent 6.6k-8.6k tokens reasoning over a 30-finding
+    # validate batch and was cut off (finish_reason=length) before answering.
+    AI_MAX_TOKENS: int = int(os.getenv("AI_MAX_TOKENS", "16384"))
 
     # GeoIP — path to GeoLite2-City.mmdb for IP → City/Country resolution
     GEOIP_DB_PATH: str = os.getenv("GEOIP_DB_PATH", "/data/GeoLite2-City.mmdb")
