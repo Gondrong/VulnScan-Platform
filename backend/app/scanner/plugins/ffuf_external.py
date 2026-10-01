@@ -14,7 +14,7 @@ import re
 import shutil
 
 from app.scanner.plugins.base import Finding, Plugin, PluginMeta, PluginResult
-from app.scanner.context import stable_fingerprint
+from app.scanner.context import stable_fingerprint, web_base_url
 
 logger = logging.getLogger("vulnscan.plugin.ffuf")
 
@@ -91,19 +91,11 @@ class Check(Plugin):
                 fingerprint=stable_fingerprint(target, META.plugin_id, "no_wordlist"),
             )])
 
-        target_raw = ctx.get("target_raw", target)
-        scheme = ctx.get("target_scheme", "")
         effective_timeout = ctx.get("_effective_timeout", META.timeout_seconds)
         options = ctx.get("profile_options", {})
         ffuf_opts = options.get("ffuf", {})
 
-        # Build target URL
-        if re.match(r"^https?://", target_raw, re.I):
-            base_url = target_raw.rstrip("/")
-        elif scheme:
-            base_url = f"{scheme}://{target}"
-        else:
-            base_url = f"https://{target}"
+        base_url = web_base_url(target, ctx)
 
         output_file = f"/tmp/ffuf_{target.replace('.', '_')}.json"
 

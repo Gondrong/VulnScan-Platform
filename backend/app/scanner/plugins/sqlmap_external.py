@@ -17,7 +17,7 @@ import shutil
 import tempfile
 
 from app.scanner.plugins.base import Finding, Plugin, PluginMeta, PluginResult
-from app.scanner.context import stable_fingerprint
+from app.scanner.context import stable_fingerprint, web_base_url
 
 logger = logging.getLogger("vulnscan.plugin.sqlmap")
 
@@ -60,16 +60,8 @@ def _build_target_urls(target: str, ctx) -> list[str]:
     """Build list of URLs to test for SQL injection."""
     urls: list[str] = []
 
-    target_raw = ctx.get("target_raw", target)
-    scheme = ctx.get("target_scheme", "")
-
     # Primary target URL
-    if re.match(r"^https?://", target_raw, re.I):
-        base_url = target_raw.rstrip("/")
-    elif scheme:
-        base_url = f"{scheme}://{target}"
-    else:
-        base_url = f"https://{target}"
+    base_url = web_base_url(target, ctx)
 
     urls.append(base_url)
 

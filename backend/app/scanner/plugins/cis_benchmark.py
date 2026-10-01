@@ -12,6 +12,7 @@ Covers CIS benchmarks for:
 Requires SSH credentials configured in the scan profile. This plugin is
 opt-in (enabled_by_default=False).
 """
+import asyncio
 import io
 import logging
 import re
@@ -117,6 +118,43 @@ def _check_pass_max_days(o: str) -> bool:
 def _check_min_pw_len(o: str) -> bool:
     nums = re.findall(r"\d+", o)
     return any(int(x) >= 14 for x in nums) if nums else False
+
+
+# stderr of a check run by a non-root SSH user that lacks the privilege for it.
+_PRIV_ERR = re.compile(
+    r"permission denied|must be root|operation not permitted|are you root", re.I,
+)
+
+
+def _evidence(check_id: str, cmd: str, output: str, detail: dict) -> str:
+    """Evidence for one check: enough to re-verify the verdict without the host."""
+    parts = [
+        f"check_id={check_id}",
+        f"command={cmd}",
+        f"exit={detail.get('exit')}",
+        # An empty result is itself the evidence (e.g. directive not set), so
+        # say so rather than leave a blank that reads like missing data.
+        f"output={output.strip()[:256] or '(empty)'}",
+    ]
+    if detail.get("stderr"):
+        parts.append(f"stderr={detail['stderr']}")
+    return " ".join(parts)
+
+
+def _sshd_directive_cmd(directive: str) -> str:
+    """First value of an sshd directive, drop-ins first (sshd's first-match order).
+
+    Drop-ins such as cloud-init's 50-cloud-init.conf are often mode 600, and
+    `cat ... 2>/dev/null` skipped them silently, so the check judged whatever
+    the readable files said. If any config file is unreadable, print nothing
+    and report it on stderr, which the evaluator turns into SKIP (requires root).
+    """
+    files = "/etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config"
+    return (
+        f'unr=""; for f in {files}; do [ -e "$f" ] && [ ! -r "$f" ] && unr="$unr $f"; done; '
+        f'if [ -n "$unr" ]; then echo "Permission denied: not readable:$unr" >&2; '
+        f"else cat {files} 2>/dev/null | grep -i '^{directive}' | head -1; fi"
+    )
 
 
 def _check_max_auth_tries(o: str) -> bool:
@@ -233,7 +271,7 @@ _LINUX_CHECKS: list[tuple[str, str, str, object, str]] = [
     ),
     (
         "CIS-4.1.2", "Ensure default deny firewall policy",
-        "iptables -L INPUT -n 2>/dev/null | head -1",
+        "iptables -L INPUT -n | head -1",
         lambda o: "DROP" in o or "REJECT" in o,
         "high",
     ),
@@ -277,7 +315,9 @@ _LINUX_CHECKS: list[tuple[str, str, str, object, str]] = [
     ),
     (
         "CIS-6.2.1", "Ensure no accounts have empty passwords",
-        "awk -F: '($2 == \"\") {print $1}' /etc/shadow 2>/dev/null",
+        # Unreadable for a non-root user: empty output used to mean "PASS".
+        "if [ -r /etc/shadow ]; then awk -F: '($2 == \"\") {print $1}' /etc/shadow; "
+        "else echo 'Permission denied: /etc/shadow not readable' >&2; fi",
         lambda o: o.strip() == "",
         "critical",
     ),
@@ -295,19 +335,19 @@ _LINUX_CHECKS: list[tuple[str, str, str, object, str]] = [
     ),
     (
         "CIS-6.3.1", "Ensure SSH root login is disabled",
-        "grep -i '^PermitRootLogin' /etc/ssh/sshd_config 2>/dev/null",
+        _sshd_directive_cmd("PermitRootLogin"),
         lambda o: "no" in o.lower(),
         "high",
     ),
     (
         "CIS-6.3.2", "Ensure SSH PasswordAuthentication is disabled",
-        "grep -i '^PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null",
+        _sshd_directive_cmd("PasswordAuthentication"),
         lambda o: "no" in o.lower(),
         "medium",
     ),
     (
         "CIS-6.3.3", "Ensure SSH MaxAuthTries is 4 or less",
-        "grep -i '^MaxAuthTries' /etc/ssh/sshd_config 2>/dev/null",
+        _sshd_directive_cmd("MaxAuthTries"),
         _check_max_auth_tries,
         "medium",
     ),
@@ -384,7 +424,7 @@ _DOCKER_CHECKS: list[tuple[str, str, str, object, str]] = [
     ),
     (
         "CIS-D.1.2", "Ensure auditing is configured for Docker",
-        "auditctl -l 2>/dev/null | grep docker",
+        "auditctl -l | grep docker",
         lambda o: "docker" in o.lower(),
         "medium",
     ),
@@ -521,10 +561,12 @@ def _ssh_exec_batch(
     key_text: str | None = None,
     commands: list[str] | None = None,
     timeout: float = 10,
+    details: list[dict] | None = None,
 ) -> list[str]:
     """
     Execute multiple commands over a single SSH connection.
-    Returns a list of stdout strings, one per command.
+    Returns a list of stdout strings, one per command. If `details` is given,
+    one {"exit", "stderr"} dict per command is appended to it.
     """
     if not commands:
         return []
@@ -567,9 +609,14 @@ def _ssh_exec_batch(
             try:
                 _stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
                 out = stdout.read().decode("utf-8", errors="ignore")
+                err = stderr.read().decode("utf-8", errors="ignore").strip()[:256]
                 results.append(out)
+                if details is not None:
+                    details.append({"exit": stdout.channel.recv_exit_status(), "stderr": err})
             except Exception as e:
                 results.append(f"ERROR: {e}")
+                if details is not None:
+                    details.append({"exit": None, "stderr": ""})
 
     except Exception as e:
         # Connection-level failure — fill remaining with errors
@@ -678,7 +725,8 @@ class Check(Plugin):
             )
 
         # ── 3. Test SSH connectivity ──────────────────────────────────
-        test_output = _ssh_exec(
+        test_output = await asyncio.to_thread(
+            _ssh_exec,
             ssh_host, ssh_port, ssh_user,
             password=ssh_password, key_text=ssh_key_text,
             command="echo CIS_BENCHMARK_READY", timeout=10,
@@ -707,7 +755,8 @@ class Check(Plugin):
             "which docker 2>/dev/null && docker info >/dev/null 2>&1 && echo DOCKER_PRESENT",
             "which nginx 2>/dev/null && echo NGINX_PRESENT",
         ]
-        detection_results = _ssh_exec_batch(
+        detection_results = await asyncio.to_thread(
+            _ssh_exec_batch,
             ssh_host, ssh_port, ssh_user,
             password=ssh_password, key_text=ssh_key_text,
             commands=detection_cmds, timeout=15,
@@ -724,10 +773,12 @@ class Check(Plugin):
 
         # ── 6. Execute all checks in a single SSH session ─────────────
         commands = [check[2] for check in all_checks]
-        outputs = _ssh_exec_batch(
+        details: list[dict] = []
+        outputs = await asyncio.to_thread(
+            _ssh_exec_batch,
             ssh_host, ssh_port, ssh_user,
             password=ssh_password, key_text=ssh_key_text,
-            commands=commands, timeout=15,
+            commands=commands, timeout=15, details=details,
         )
 
         # ── 7. Evaluate results ───────────────────────────────────────
@@ -736,8 +787,15 @@ class Check(Plugin):
         skipped = 0
         check_results: list[dict] = []
 
-        for i, (check_id, description, _cmd, pass_fn, severity) in enumerate(all_checks):
+        for i, (check_id, description, cmd, pass_fn, severity) in enumerate(all_checks):
             output = outputs[i] if i < len(outputs) else "ERROR: no output"
+            detail = details[i] if i < len(details) else {}
+
+            # Empty output because the (non-root) SSH user was refused is
+            # "could not check", not a failed control.
+            needs_root = not output.strip() and bool(_PRIV_ERR.search(detail.get("stderr", "")))
+            if needs_root:
+                output = f"ERROR: requires root: {detail['stderr']}"
 
             if output.startswith("ERROR:"):
                 # Command error — skip this check
@@ -751,9 +809,10 @@ class Check(Plugin):
                 findings.append(Finding(
                     severity="info",
                     plugin_id=META.plugin_id,
-                    title=f"SKIP: {check_id}: {description} (error)",
+                    title=f"SKIP: {check_id}: {description} "
+                          f"({'requires root' if needs_root else 'error'})",
                     description=f"Check could not be executed: {output[:256]}",
-                    evidence=f"check_id={check_id} output={output[:256]}",
+                    evidence=f"check_id={check_id} command={cmd} output={output[:256]}",
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, check_id, "skip"),
                     remediation=_REMEDIATION.get(check_id, ""),
@@ -776,7 +835,7 @@ class Check(Plugin):
                     plugin_id=META.plugin_id,
                     title=f"SKIP: {check_id}: {description} (eval error)",
                     description=f"Check evaluation failed: {e}",
-                    evidence=f"check_id={check_id} output={output[:256]} error={e}",
+                    evidence=f"{_evidence(check_id, cmd, output, detail)} error={e}",
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, check_id, "eval_error"),
                     remediation=_REMEDIATION.get(check_id, ""),
@@ -796,7 +855,7 @@ class Check(Plugin):
                     plugin_id=META.plugin_id,
                     title=f"PASS: {check_id}: {description}",
                     description=f"CIS Benchmark check passed.",
-                    evidence=f"check_id={check_id} output={output.strip()[:256]}",
+                    evidence=_evidence(check_id, cmd, output, detail),
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, check_id, "pass"),
                     remediation=_REMEDIATION.get(check_id, ""),
@@ -817,7 +876,7 @@ class Check(Plugin):
                         f"CIS Benchmark check failed. The system does not comply with "
                         f"{check_id}: {description}."
                     ),
-                    evidence=f"check_id={check_id} output={output.strip()[:256]}",
+                    evidence=_evidence(check_id, cmd, output, detail),
                     affected=target,
                     fingerprint=stable_fingerprint(target, META.plugin_id, check_id, "fail"),
                     remediation=_REMEDIATION.get(check_id, ""),

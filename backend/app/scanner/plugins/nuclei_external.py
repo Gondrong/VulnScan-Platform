@@ -14,7 +14,7 @@ import re
 import shutil
 
 from app.scanner.plugins.base import Finding, Plugin, PluginMeta, PluginResult
-from app.scanner.context import stable_fingerprint
+from app.scanner.context import stable_fingerprint, web_base_url
 
 logger = logging.getLogger("vulnscan.plugin.nuclei")
 
@@ -24,10 +24,18 @@ META = PluginMeta(
     category="web",
     provides=["nuclei.findings"],
     depends_on=[],
-    soft_depends_on=["fingerprint.http", "ext.nmap"],
+    # ext.httpx first: its live-URL list decides which extra ports get scanned.
+    soft_depends_on=["fingerprint.http", "ext.nmap", "ext.httpx"],
     enabled_by_default=True,
     timeout_seconds=180.0,
 )
+
+# Ports that are never HTTP. Used only when httpx produced no probe data.
+_NON_HTTP_PORTS = {
+    21, 22, 23, 25, 53, 110, 111, 135, 139, 143, 389, 445, 465, 587, 636,
+    993, 995, 1433, 1521, 2049, 2222, 3306, 3389, 5432, 5900, 6379, 11211,
+    27017,
+}
 
 _SEV_MAP = {
     "critical": "critical",
@@ -86,14 +94,7 @@ def _build_target_url(target: str, ctx) -> str:
     target_raw = ctx.get("target_raw", target)
     if re.match(r"^https?://", target_raw, re.I):
         return target_raw
-
-    # Check if HTTP fingerprint found a scheme
-    scheme = ctx.get("target_scheme", "")
-    if scheme:
-        return f"{scheme}://{target}"
-
-    # Default: try HTTPS first, nuclei handles fallback
-    return f"https://{target}"
+    return web_base_url(target, ctx)
 
 
 class Check(Plugin):
@@ -151,15 +152,29 @@ class Check(Plugin):
         if template_types:
             cmd += ["-type", template_types]
 
-        # For internal scans, also scan non-standard ports found by nmap
-        open_ports = ctx.get("net.open_ports", []) or []
-        http_ports = [p for p in open_ports if p not in (80, 443)]
-        if http_ports and len(http_ports) <= 10:
-            # Add extra port targets for nuclei
-            for p in http_ports:
-                # Nuclei can scan multiple targets if we add them
+        # Extra targets on non-standard ports. This used to add http:// and
+        # https:// for *every* open port, so nuclei fired thousands of HTTP
+        # requests at sshd on :22. OpenSSH 10's PerSourcePenalties then
+        # refused the scanner outright, and every later SSH plugin (CIS
+        # benchmark, SCA) failed with "Error reading SSH protocol banner".
+        # Prefer the URLs httpx confirmed live; without them, skip ports that
+        # are never HTTP.
+        extra_urls: list[str] = []
+        probes = ctx.get("httpx.probes") or []
+        if probes:
+            for pr in probes:
+                url = (pr.get("url") or "").rstrip("/")
+                if url and url != target_url.rstrip("/") and url not in extra_urls:
+                    extra_urls.append(url)
+        else:
+            open_ports = ctx.get("net.open_ports", []) or []
+            for p in open_ports:
+                if p in (80, 443) or p in _NON_HTTP_PORTS:
+                    continue
                 for scheme in ("http", "https"):
-                    cmd += ["-u", f"{scheme}://{target}:{p}"]
+                    extra_urls.append(f"{scheme}://{target}:{p}")
+        for url in extra_urls[:20]:
+            cmd += ["-u", url]
 
         logger.info("Nuclei cmd: %s", " ".join(cmd[:15]) + "...")
 

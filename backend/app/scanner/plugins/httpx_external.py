@@ -48,14 +48,43 @@ _NOTABLE_TECH = {
 }
 
 
+def _is_python_script(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = f.read(64)
+    except OSError:
+        return False
+    return head.startswith(b"#!") and b"python" in head
+
+
+def _resolve_httpx() -> tuple[str | None, str]:
+    """Path to ProjectDiscovery httpx, plus a reason when it is unavailable.
+
+    `pip install httpx` (an openai SDK dependency) installs its own `httpx`
+    console script at /usr/local/bin/httpx, overwriting the ProjectDiscovery
+    binary. That script rejects every flag used here, so the plugin used to
+    report "0 live HTTP services" on every scan. The image installs the real
+    binary as `httpx-pd` for that reason.
+    """
+    for name in ("httpx-pd", "httpx"):
+        path = shutil.which(name)
+        if path and not _is_python_script(path):
+            return path, ""
+    if shutil.which("httpx"):
+        return None, "only the Python httpx CLI is on PATH (not ProjectDiscovery httpx)"
+    return None, "httpx is not installed"
+
+
 class Check(Plugin):
     async def run(self, target: str, ctx) -> PluginResult:
-        if not shutil.which("httpx"):
+        httpx_bin, missing_reason = _resolve_httpx()
+        if not httpx_bin:
+            logger.warning("httpx plugin skipped: %s", missing_reason)
             return PluginResult(findings=[Finding(
                 plugin_id=META.plugin_id,
                 title="httpx not found — skipping HTTP probing",
                 severity="info",
-                evidence="httpx is not installed",
+                evidence=missing_reason,
                 fingerprint=stable_fingerprint(target, META.plugin_id, "missing"),
             )])
 
@@ -92,10 +121,10 @@ class Check(Plugin):
                 f.write("\n".join(targets))
 
             cmd = [
-                "httpx",
+                httpx_bin,
                 "-l", target_file,
                 "-silent",
-                "-jsonl",
+                "-json",  # JSON Lines; httpx has no -jsonl flag and exits on it
                 "-no-color",
                 "-timeout", "10",
                 "-retries", "1",
@@ -147,6 +176,20 @@ class Check(Plugin):
                 os.unlink(target_file)
             except Exception:
                 pass
+
+        # A failed run leaves stdout empty, which would otherwise be reported
+        # as "0 live HTTP services" — indistinguishable from a real result.
+        if proc.returncode != 0 and not stdout.strip():
+            err = stderr.decode("utf-8", errors="replace").strip()
+            logger.warning("httpx exited %s: %s", proc.returncode, err[:300])
+            return PluginResult(findings=[Finding(
+                plugin_id=META.plugin_id,
+                title=f"httpx failed (exit {proc.returncode})",
+                severity="info",
+                evidence=err[:300],
+                affected=target,
+                fingerprint=stable_fingerprint(target, META.plugin_id, "error"),
+            )])
 
         # Parse JSONL
         findings: list[Finding] = []
