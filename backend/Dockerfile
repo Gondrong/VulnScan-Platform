@@ -46,14 +46,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /usr/local/bin/subfinder && \
     rm /tmp/subfinder.zip
 
-# httpx (ProjectDiscovery) — HTTP probing + tech detection
+# httpx (ProjectDiscovery) — HTTP probing + tech detection.
+# Installed as `httpx-pd`: the Python httpx package from requirements.txt
+# installs its own /usr/local/bin/httpx script and would overwrite it.
 ARG HTTPX_VERSION=1.6.9
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_${ARCH}.zip" \
       -o /tmp/httpx.zip && \
-    unzip -o /tmp/httpx.zip -d /usr/local/bin/ && \
-    chmod +x /usr/local/bin/httpx && \
-    rm /tmp/httpx.zip
+    unzip -o /tmp/httpx.zip httpx -d /tmp/httpx && \
+    install -m 0755 /tmp/httpx/httpx /usr/local/bin/httpx-pd && \
+    rm -rf /tmp/httpx.zip /tmp/httpx
 
 # sqlmap — advanced SQL injection testing
 RUN git clone --depth 1 https://github.com/sqlmapproject/sqlmap.git /opt/sqlmap && \
