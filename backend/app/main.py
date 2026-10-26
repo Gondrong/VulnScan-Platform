@@ -306,12 +306,14 @@ def _schedule_loop():
     _sla_check_counter = 0       # run every 60 ticks  (60 min)
     _backup_counter = 0          # run every 1440 ticks (24 hours)
     _update_check_counter = 0    # run every 1440 ticks (24 hours)
+    _dataset_counter = 0         # interval comes from the per-workspace setting
 
     while True:
         time.sleep(60)
         _sla_check_counter += 1
         _backup_counter += 1
         _update_check_counter += 1
+        _dataset_counter += 1
 
         db = None
         try:
@@ -631,6 +633,33 @@ def _schedule_loop():
                                     logger.warning("SLA check for finding #%d failed: %s", f.id, e_f)
             except Exception as e_feat2:
                 logger.warning("SLA breach alert feature error: %s", e_feat2)
+
+            # ── Feature 5: Scheduled Dataset Refresh ──────────────────────
+            # Without this, CVE data is only as fresh as the last time someone
+            # remembered to press the button — which is how a 4-day-old,
+            # silently incomplete NVD dataset ended up in production.
+            try:
+                from app.api.routes_settings import _get_setting, DEFAULT_DATASET_REFRESH
+                ws_rows = db.query(models.Workspace).all()
+                for ws_row in ws_rows:
+                    cfg = _get_setting(db, ws_row.id, "dataset_refresh", DEFAULT_DATASET_REFRESH)
+                    if not cfg.get("enabled"):
+                        continue
+                    interval_ticks = max(1, int(cfg.get("interval_hours", 24)) * 60)
+                    if _dataset_counter % interval_ticks != 0:
+                        continue
+                    # run_dataset_refresh holds a Redis lock, so a trigger that
+                    # lands while one is still running is a no-op, not a clash.
+                    from app.worker_tasks import run_dataset_refresh
+                    Queue("datasets", connection=Redis.from_url(settings.REDIS_URL)).enqueue(
+                        run_dataset_refresh, ws_row.id, None, job_timeout=7200,
+                    )
+                    logger.info(
+                        "Scheduled dataset refresh queued for workspace %d (every %sh)",
+                        ws_row.id, cfg.get("interval_hours", 24),
+                    )
+            except Exception as e_feat5:
+                logger.warning("Scheduled dataset refresh error: %s", e_feat5)
 
             # ── Feature 3: Database Backup ────────────────────────────────
             # Run pg_dump every 1440 ticks (≈24 hours), keep last 7 backups.

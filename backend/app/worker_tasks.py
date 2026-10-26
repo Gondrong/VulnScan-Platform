@@ -1,5 +1,6 @@
 import os
 import asyncio
+import http.client
 import json
 import logging
 import re
@@ -990,6 +991,16 @@ _DS_CANONICAL = {
 }
 
 _NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+# NVD can no longer serve resultsPerPage=2000 within any sane timeout: measured
+# from this host, a 2000-item page did not complete in 155s while a 200-item
+# page took 9.8s. Smaller pages mean more requests, but they are the only size
+# that finishes.
+_NVD_PAGE_SIZE = int(os.environ.get("NVD_PAGE_SIZE", "200"))
+_NVD_PAGE_TIMEOUT = int(os.environ.get("NVD_PAGE_TIMEOUT", "120"))
+# How long a half-finished run stays resumable before its window is
+# treated as too stale to keep extending.
+_NVD_RESUME_MAX_AGE_HOURS = int(os.environ.get("NVD_RESUME_MAX_AGE_HOURS", "48"))
 _CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 _EPSS_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
 _CVEORG_API = "https://cveawg.mitre.org/api/cve"
@@ -1008,6 +1019,18 @@ def _ds_fetch_url(url, headers=None, timeout=30):
 # HTTP status codes worth retrying (transient server errors)
 _RETRYABLE_HTTP_CODES = {429, 500, 502, 503, 504}
 
+# Transport-level failures worth retrying. http.client.HTTPException is the one
+# that is easy to miss: IncompleteRead (the connection drops mid-body) derives
+# from it, NOT from URLError/OSError, so it used to escape the retry loop
+# entirely and fail the page on its first attempt — while the caller still
+# logged "failed after retries".
+_RETRYABLE_EXC = (
+    urllib.error.URLError,
+    TimeoutError,
+    OSError,
+    http.client.HTTPException,
+)
+
 
 def _ds_fetch_url_retry(url, headers=None, timeout=30, max_retries=3, label=""):
     """Fetch URL with exponential backoff retry for transient errors."""
@@ -1024,7 +1047,7 @@ def _ds_fetch_url_retry(url, headers=None, timeout=30, max_retries=3, label=""):
                 time.sleep(delay)
                 continue
             raise  # non-retryable (e.g. 403) or retries exhausted
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+        except _RETRYABLE_EXC as e:
             last_exc = e
             if attempt <= max_retries:
                 delay = 10 * (2 ** (attempt - 1))
@@ -1050,53 +1073,159 @@ def _ds_run_script(name, args, timeout=180):
 
 
 def _ds_refresh_nvd(api_key, nvd_days=120):
+    """Fetch the NVD CVE feed, resuming an interrupted run.
+
+    NVD throttles sustained paging hard and unpredictably — measured here at
+    7.9s per page at the start of a run and ~56s after twenty minutes — so a
+    full fetch can outlast the RQ job timeout no matter how that timeout is
+    tuned. Rather than guess at their limits, each page is written to disk the
+    moment it arrives and a manifest records which query it belongs to. A run
+    that is cut short resumes from the first missing page instead of starting
+    over, so the refresh completes across however many attempts it takes.
+    """
     from pathlib import Path
     raw_dir = Path("/data/raw/nvd")
     out_dir = Path("/data/cve")
     raw_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = raw_dir / "_manifest.json"
 
-    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
-    start_date = (datetime.now(timezone.utc) - __import__('datetime').timedelta(days=nvd_days)).strftime("%Y-%m-%dT%H:%M:%S.000")
+    size = _NVD_PAGE_SIZE
     rate_delay = 0.6 if api_key else 6.0
-
     headers = {"Accept": "application/json"}
     if api_key:
         headers["apiKey"] = api_key
 
-    # Fetch first page (with retry for transient errors like 503)
-    try:
-        url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex=0&resultsPerPage=2000"
-        first = json.loads(_ds_fetch_url_retry(url, headers, 60, label="NVD page 1"))
-    except Exception as e:
-        return False, None, f"NVD first page failed: {e}"
+    def _page_file(n):
+        return raw_dir / f"nvd_api_page_{n}.json"
 
-    total = first.get("totalResults", 0)
-    logger.info("NVD total: %d CVEs", total)
-    pages = [first]
+    def _page_ok(n):
+        """Done only if the page is on disk and parses."""
+        f = _page_file(n)
+        if not f.exists():
+            return False
+        try:
+            with open(f) as fh:
+                json.load(fh)
+            return True
+        except Exception:
+            return False
 
-    if total > 2000:
-        for start_idx in range(2000, total, 2000):
-            time.sleep(rate_delay)
-            page_num = start_idx // 2000 + 1
+    def _discard_all():
+        for stale in raw_dir.glob("nvd_api_page_*.json"):
             try:
-                url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex={start_idx}&resultsPerPage=2000"
-                page = json.loads(_ds_fetch_url_retry(url, headers, 60, label=f"NVD page {page_num}"))
-                pages.append(page)
-                logger.info("  NVD page %d: startIndex=%d, got %d", page_num, start_idx, len(page.get("vulnerabilities", [])))
+                stale.unlink()
             except Exception as e:
-                logger.warning("  NVD page %d (startIndex=%d) failed after retries: %s", page_num, start_idx, e)
+                logger.debug("Could not remove stale raw page %s: %s", stale.name, e)
 
-    # Write raw pages
-    for i, p in enumerate(pages, 1):
-        with open(raw_dir / f"nvd_api_page_{i}.json", "w") as f:
-            json.dump(p, f)
+    # ── Resume, or open a fresh window ───────────────────────────────────
+    # A resumed run must reuse the *same* pubStartDate/pubEndDate: they move
+    # with wall-clock time, and mixing windows would change what page N means.
+    manifest = None
+    if manifest_path.exists():
+        try:
+            with open(manifest_path) as fh:
+                m = json.load(fh)
+            age_h = (time.time() - m.get("created_ts", 0)) / 3600
+            if m.get("page_size") == size and age_h < _NVD_RESUME_MAX_AGE_HOURS:
+                manifest = m
+                logger.info("NVD: resuming run from %.1fh ago (window %s..%s, %d pages of %d)",
+                            age_h, m["start_date"][:10], m["end_date"][:10],
+                            m["expected_pages"], size)
+            else:
+                logger.info("NVD: discarding previous run (age %.1fh, page_size %s) — starting fresh",
+                            age_h, m.get("page_size"))
+        except Exception as e:
+            logger.warning("NVD: unreadable manifest, starting fresh: %s", e)
 
-    inputs = [str(raw_dir / f"nvd_api_page_{i}.json") for i in range(1, len(pages) + 1)]
+    if manifest is None:
+        _discard_all()
+        end_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
+        start_date = (datetime.now(timezone.utc) - __import__("datetime").timedelta(days=nvd_days)).strftime("%Y-%m-%dT%H:%M:%S.000")
+        try:
+            url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex=0&resultsPerPage={size}"
+            first = json.loads(_ds_fetch_url_retry(url, headers, _NVD_PAGE_TIMEOUT, label="NVD page 1"))
+        except Exception as e:
+            return False, None, f"NVD first page failed: {e}"
+        total = first.get("totalResults", 0)
+        expected_pages = (total + size - 1) // size if total else 1
+        with open(_page_file(1), "w") as fh:
+            json.dump(first, fh)
+        manifest = {
+            "created_ts": time.time(),
+            "start_date": start_date,
+            "end_date": end_date,
+            "page_size": size,
+            "total": total,
+            "expected_pages": expected_pages,
+        }
+        with open(manifest_path, "w") as fh:
+            json.dump(manifest, fh)
+        logger.info("NVD total: %d CVEs, %d pages of %d", total, expected_pages, size)
+
+    start_date = manifest["start_date"]
+    end_date = manifest["end_date"]
+    total = manifest["total"]
+    expected_pages = manifest["expected_pages"]
+
+    # ── Fetch whatever is still missing ──────────────────────────────────
+    missing = [n for n in range(1, expected_pages + 1) if not _page_ok(n)]
+    if missing:
+        logger.info("NVD: %d/%d pages already on disk, fetching %d more",
+                    expected_pages - len(missing), expected_pages, len(missing))
+
+    for page_num in missing:
+        time.sleep(rate_delay)
+        start_idx = (page_num - 1) * size
+        try:
+            url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex={start_idx}&resultsPerPage={size}"
+            page = json.loads(_ds_fetch_url_retry(url, headers, _NVD_PAGE_TIMEOUT, label=f"NVD page {page_num}"))
+            # Written via a temp file so a kill mid-write cannot leave a
+            # truncated page that later looks complete.
+            tmp = _page_file(page_num).with_suffix(".tmp")
+            with open(tmp, "w") as fh:
+                json.dump(page, fh)
+            tmp.replace(_page_file(page_num))
+            logger.info("  NVD page %d/%d: startIndex=%d, got %d",
+                        page_num, expected_pages, start_idx, len(page.get("vulnerabilities", [])))
+        except Exception as e:
+            logger.warning("  NVD page %d/%d (startIndex=%d) failed: %s",
+                           page_num, expected_pages, start_idx, e)
+
+    # ── Build the dataset only when every page is present ────────────────
+    still_missing = [n for n in range(1, expected_pages + 1) if not _page_ok(n)]
+    if still_missing:
+        have = expected_pages - len(still_missing)
+        return False, None, (
+            f"NVD refresh incomplete: {have}/{expected_pages} pages fetched. "
+            f"Progress is saved — run the refresh again to continue from page "
+            f"{still_missing[0]}. Dataset left unchanged."
+        )
+
+    pages = []
+    for n in range(1, expected_pages + 1):
+        with open(_page_file(n)) as fh:
+            pages.append(json.load(fh))
+    fetched = sum(len(p.get("vulnerabilities", [])) for p in pages)
+    if total and fetched < total:
+        return False, None, (
+            f"NVD refresh incomplete: {fetched} of {total} CVEs across "
+            f"{expected_pages} complete pages — NVD may have changed its "
+            f"pagination. Dataset left unchanged."
+        )
+    logger.info("NVD fetch complete: %d/%d CVEs across %d pages", fetched, total, expected_pages)
+
+    inputs = [str(_page_file(n)) for n in range(1, expected_pages + 1)]
     out_path = str(out_dir / f"nvd_cpe_cve_{_ds_ts()}.json")
     ok, err = _ds_run_script("nvd_flatten.py", ["--inputs"] + inputs + ["--out", out_path])
     if not ok:
         return False, None, f"nvd_flatten.py: {err}"
+
+    # Window consumed; the next run opens a fresh one.
+    try:
+        manifest_path.unlink()
+    except Exception:
+        pass
     return True, out_path, None
 
 
@@ -1338,7 +1467,9 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
     lock_key = f"dataset_refresh_lock:{workspace_id}"
     status_key = f"dataset_refresh:{workspace_id}"
 
-    if not r.set(lock_key, "1", nx=True, ex=3600):
+    # TTL must cover the slowest full refresh, or the lock expires mid-run and a
+    # scheduled trigger starts a second one. Matches the 7200s job_timeout.
+    if not r.set(lock_key, "1", nx=True, ex=7200):
         logger.warning("Dataset refresh already running for workspace %d", workspace_id)
         return
 
