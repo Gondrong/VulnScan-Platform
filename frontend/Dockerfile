@@ -1,4 +1,6 @@
-FROM node:20-slim
+# node:20-slim is EOL and ships a Brotli decoder vulnerable to
+# CVE-2026-111497; 24.22.1+ carries the fix.
+FROM node:24-slim
 
 WORKDIR /app
 
