@@ -23,7 +23,7 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.2.0 highlights** *(2026-09-30)* — see [Changelog](#changelog) for full notes.
+**v3.2.1 highlights** *(2026-10-26)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
@@ -580,6 +580,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.2.1 — 2026-10-26** — CVE-2026-111497 (Brotli decoder OOB write, CVSS 9.2): patched libbrotli1 and moved off end-of-life Node.js 20 to 24.22.1. Dataset refresh fixes: NVD paging no longer completes at 2000 items/page, `IncompleteRead` escaped the retry loop (28 pages recovered in one refresh), a partial fetch was installed as if complete (49,794 of 52,760 CVEs), and a refresh that outlasts the job timeout now resumes instead of restarting. Adds scheduled refresh, off by default
 - **v3.2.0 — 2026-09-30** — Batched AI analysis (verdict coverage 80 → 100% of findings; false positives caught on a 96-finding scan went from 1–3 to 21), stale-scan watchdog, row-addressed AI providers so two OpenRouter models are both selectable, `AI_MAX_TOKENS` for reasoning models, and scanners no longer reporting clean results from runs that failed
 - **v3.1.0 — 2026-08-27** — Reliability release: auto AI analysis, Neo4j graph population and internal scans had never actually worked (undefined names, blocking socket calls defeating per-plugin timeouts, a transaction held across the whole scan that let startup DDL freeze the app). New two-stage `validate_then_exploit` analysis mode, trusted-proxy client IP resolution, login latency 23–30s → 0.29s, `python-multipart` CVE-2024-53981
 - **v3.0.6 — 2026-08-12** — CVE.org fallback matcher (detection coverage 49%→75%), CIS Benchmark scanner (53 checks), server-side SCA (OS packages + dependencies via SSH), 7 automation features (auto AI, auto report, SLA alerts, DB backup, update check), 71 total plugins
