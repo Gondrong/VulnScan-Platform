@@ -43,6 +43,9 @@ Thumbs.db
 
 # Claude
 .claude/
+# Working notes kept local: this repo is public, and these are
+# internal debugging notes rather than project documentation.
+CLAUDE.md
 # Container-only Claude CLI profile — holds OAuth credentials, never commit
 data/claude-config/
 
