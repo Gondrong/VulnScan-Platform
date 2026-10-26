@@ -68,8 +68,14 @@ RUN mkdir -p /opt/wordlists && \
     curl -fsSL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt" \
       -o /opt/wordlists/raft-medium-directories.txt
 
-# Install Node.js (required for Claude Code CLI)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Install Node.js (required for Claude Code CLI).
+# 24.x, not 20.x: Node 20 reached end of life in March 2026 and does not get
+# security fixes — CVE-2026-111497 (Brotli decoder OOB write, CVSS 9.2) is
+# fixed in v24.22.1 and has no 20.x release at all. Note that
+# `process.versions.brotli` still reports 1.2.0 on a patched build: Node
+# cherry-picked the fix without bumping the upstream version string, so a
+# version comparison alone will misjudge it.
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
