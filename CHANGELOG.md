@@ -5,6 +5,124 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.2.1 — 2026-10-26
+
+Dataset refresh had stopped completing, and when it did finish it produced a
+dataset that was quietly missing CVEs. The active NVD dataset held 49,794 of
+52,760 CVEs — 2,966 short — with nothing in the UI to suggest anything was
+wrong.
+
+### Fixed
+
+**NVD paging no longer completes at `resultsPerPage=2000`**
+
+- Measured from the platform host: a 2000-item page did not finish in 155s,
+  while a 200-item page took 9.8s. The request timeout was 60s, so every page
+  after the first timed out, retried, and timed out again.
+- Page size is now 200 (`NVD_PAGE_SIZE`) and the timeout 120s
+  (`NVD_PAGE_TIMEOUT`). Larger pages were measured and are slower overall:
+  200/500/1000 items took 5.5s/16.2s/38.1s, so fewer-but-bigger pages lose.
+
+**`IncompleteRead` escaped the retry loop entirely**
+
+- `http.client.IncompleteRead` — the connection dropping mid-body — derives
+  from `HTTPException`, not from `URLError`/`OSError`, so the retry handler
+  never caught it. The page failed on its first attempt while the caller still
+  logged "failed after retries".
+- It is now retried like any other transport error. In one full refresh this
+  recovered **28 pages**, roughly 10% of all requests.
+
+**A partial fetch was swapped in as if it were complete**
+
+- Pages that failed after retries were logged at warning level and skipped; the
+  remaining pages were flattened and installed as the active dataset. Nothing
+  downstream could tell a complete dataset from one missing thousands of CVEs.
+- The refresh now fails and leaves the previous dataset in place, reporting how
+  many pages and CVEs it actually got.
+
+**Refresh could not finish inside the job timeout**
+
+- NVD throttles sustained paging: measured at 7.9s per page early in a run and
+  ~61s per page thereafter, steady for hours. A full refresh takes ~4.5 hours
+  against a 2-hour RQ `job_timeout`, so it could never complete — and with the
+  guard above, that meant it would never install a dataset either.
+- Each page is now written to disk as it arrives (via a temp file and rename,
+  so a kill mid-write cannot leave a truncated page that later looks valid),
+  and a manifest records the query window it belongs to. An interrupted run
+  resumes from the first missing page rather than starting over.
+- A resumed run reuses the stored `pubStartDate`/`pubEndDate`: those move with
+  wall-clock time, and a shifted window would change what page N means. Windows
+  older than `NVD_RESUME_MAX_AGE_HOURS` (48) are discarded instead.
+- Side effect: 265 pages no longer accumulate in memory, which is what had been
+  exhausting RAM on the host.
+
+**Refresh lock expired mid-run**
+
+- The Redis lock was held for 3600s while `job_timeout` was 7200s, so a long
+  refresh could lose its lock and a second trigger would start a concurrent run
+  writing to the same files. The lock now matches the job timeout.
+
+### Added
+
+**Scheduled dataset refresh**
+
+- `GET`/`PUT /settings/dataset-refresh` (`enabled`, `interval_hours` 1–168),
+  and a scheduler feature that enqueues a refresh per workspace on that
+  interval. Defaults to **off**.
+- Without it, CVE data was only as fresh as the last time someone remembered to
+  press the button — which is how a four-day-old, silently incomplete dataset
+  ended up in production.
+- The existing Redis lock means a trigger that lands while a refresh is still
+  running is a no-op rather than a clash.
+
+### Security
+
+**CVE-2026-111497 — Brotli decoder out-of-bounds write (CVSS 4.0: 9.2)**
+
+- A malformed Brotli stream can write past an internal decoder buffer, allowing
+  memory disclosure, a crash, or remote code execution. Affects Brotli 1.0.3
+  through 1.2.0.
+- `libbrotli1` moves to Debian's patched `1.1.0-2+deb13u1`, which also covers
+  the bundled `curl` — the one component here that decodes Brotli from scan
+  targets, since it links libbrotli and sends `Accept-Encoding: br`.
+- Node.js moves from 20.x to **24.22.1** (`node:24-slim`, `setup_24.x`). Node 20
+  reached end of life in March 2026 and has no fixed release: its last build,
+  v20.20.2, predates the October 2026 security releases by seven months.
+- The Python scanner was never exposed: `httpx` advertises only
+  `gzip, deflate` and no Brotli module is installed, so a malicious scan target
+  could not have reached the decoder through it. `nuclei`, `httpx`, `ffuf` and
+  `subfinder` do not link libbrotli either.
+
+**Version strings do not reveal either fix.** A patched Node 24.22.1 still
+reports `process.versions.brotli == 1.2.0`, and the patched Debian package still
+reads as 1.1.0 — both sit inside the vulnerable range. Confirming the fix meant
+reading the Debian changelog, and for Node, locating the cherry-pick commit
+(2026-10-20) and verifying it is an ancestor of the v24.22.1 tag but not of
+v24.22.0. Version-range matching alone reports both as vulnerable.
+
+### Upgrade notes
+
+- Node.js 24 replaces Node.js 20 in both images. Verified against this
+  deployment: Claude CLI (2.1.310) and the Vite 5.4 / React 18 frontend both run
+  unchanged.
+- Rebuilding is required for the Brotli fixes — patching a running container
+  does not survive the next rebuild.
+- New optional settings: `NVD_PAGE_SIZE` (200), `NVD_PAGE_TIMEOUT` (120),
+  `NVD_RESUME_MAX_AGE_HOURS` (48). All have defaults.
+- A full NVD refresh takes roughly 4.5 hours against the 2-hour job timeout, so
+  it completes across two triggers. With scheduling enabled at an 8-hour
+  interval the dataset lands about once a day; at 24 hours it takes two to
+  three days to catch up, then stays current.
+- Enable scheduling deliberately — it is off after upgrading.
+
+### Known limitations
+
+- The manifest is only written after page 1 succeeds. A run killed while page 1
+  is still retrying leaves nothing to resume from and starts over.
+- NVD's ~61s per page is not something this release can tune away; it is the
+  observed cost of sustained paging from the host.
+
+---
 ## v3.2.0 — 2026-09-30
 
 Follow-up to v3.1.0. Three things that looked like they worked were producing
