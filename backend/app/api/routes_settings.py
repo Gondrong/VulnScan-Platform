@@ -714,6 +714,45 @@ def put_sla_alert(
 
 # ── Auto Report Generation ─────────────────────────────────────────────────
 
+DEFAULT_DATASET_REFRESH = {
+    "enabled": False,
+    "interval_hours": 24,
+}
+
+
+@router.get("/dataset-refresh")
+def get_dataset_refresh(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Return scheduled dataset refresh configuration."""
+    return _get_setting(db, user["ws"], "dataset_refresh", DEFAULT_DATASET_REFRESH)
+
+
+class DatasetRefreshUpdate(BaseModel):
+    enabled: bool | None = None
+    interval_hours: int | None = None
+
+
+@router.put("/dataset-refresh")
+def put_dataset_refresh(
+    body: DatasetRefreshUpdate,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Update scheduled dataset refresh configuration."""
+    current = _get_setting(db, user["ws"], "dataset_refresh", DEFAULT_DATASET_REFRESH)
+    incoming = body.dict(exclude_unset=True)
+    if "interval_hours" in incoming:
+        iv = incoming["interval_hours"]
+        if not isinstance(iv, int) or not (1 <= iv <= 168):
+            raise HTTPException(400, "interval_hours must be between 1 and 168")
+    current.update(incoming)
+    _set_setting(db, user["ws"], "dataset_refresh", current)
+    logger.info("Dataset refresh schedule updated by %s: %s", user.get("sub", "?"), current)
+    return current
+
+
 DEFAULT_AUTO_REPORT = {
     "enabled": False,
     "format": "pdf",
