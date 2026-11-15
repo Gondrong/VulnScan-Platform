@@ -166,7 +166,7 @@ async def create_code_scan_job(
         redis_conn = redis.from_url(settings.REDIS_URL)
         q = Queue("scans", connection=redis_conn)
         from app.worker_tasks import run_scan_job
-        q.enqueue(run_scan_job, job.id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+        q.enqueue(run_scan_job, job.id, job_timeout=settings.CODE_SCAN_JOB_TIMEOUT)
         logger.info("Code scan job #%d queued: source=%s tracks=%s", job.id, stype, track_list)
     except Exception as e:
         job.status = "failed"

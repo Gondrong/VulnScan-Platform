@@ -64,6 +64,7 @@ _MANIFEST_NAMES = {
     "pom.xml", "gradle.lockfile",
     "cargo.toml", "cargo.lock",
     "packages.config",
+    "pubspec.lock",
 }
 _MANIFEST_SUFFIXES = (".csproj",)  # NuGet project files
 

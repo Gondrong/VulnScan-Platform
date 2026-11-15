@@ -536,6 +536,14 @@ def delete_job(
         models.Finding.workspace_id == ws_id,
     ).delete()
 
+    # Mode B (agent-crafted exploit) jobs have an immutable audit trail in
+    # agentic_actions whose FK → scan_jobs.id has no ON DELETE CASCADE. Without
+    # clearing it first, db.delete(job) raises IntegrityError → 500.
+    db.query(models.AgenticAction).filter(
+        models.AgenticAction.job_id == job_id,
+        models.AgenticAction.workspace_id == ws_id,
+    ).delete()
+
     db.delete(job)
     db.commit()
     logger.info("Deleted scan job #%d", job_id)

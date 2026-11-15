@@ -81,6 +81,11 @@ class Settings(BaseModel):
         (int(os.getenv("SCAN_JOB_TIMEOUT", "0")) or
          int(os.getenv("SCAN_BUDGET_SECONDS", "900")) + 600) + 300
     )
+    # Source-code scans are not network scans: the agentic review reads hundreds
+    # or thousands of files with an LLM and legitimately runs for an hour or more.
+    # They get their own, far larger RQ timeout, and the stale watchdog honours it
+    # for scan_type == "source_code" instead of the network SCAN_STALE_AFTER_SECONDS.
+    CODE_SCAN_JOB_TIMEOUT: int = int(os.getenv("CODE_SCAN_JOB_TIMEOUT", "7200"))   # 2h
     REPORTS_DIR: str = os.getenv("REPORTS_DIR", "/data/reports")
 
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -108,7 +113,7 @@ class Settings(BaseModel):
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
-    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.3.0")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.3.1")
 
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")

@@ -288,6 +288,22 @@ def _p_go_mod(raw: bytes) -> Iterable[tuple[str, str, str]]:
             yield ("Go", m.group(1), m.group(2))
 
 
+def _p_pubspec_lock(raw: bytes) -> Iterable[tuple[str, str, str]]:
+    # Dart/Flutter pubspec.lock (YAML): packages: {name: {version: "x.y.z"}}
+    try:
+        import yaml
+    except ModuleNotFoundError:
+        return
+    try:
+        data = yaml.safe_load(raw.decode("utf-8", "replace")) or {}
+    except Exception:  # noqa: BLE001
+        return
+    for name, meta in (data.get("packages") or {}).items():
+        ver = (meta or {}).get("version") if isinstance(meta, dict) else None
+        if name and ver:
+            yield ("Pub", str(name), str(ver))
+
+
 def _norm_py(name: str) -> str:
     # PEP 503 normalisation so manifest names match OSV package names
     return re.sub(r"[-_.]+", "-", name).lower()
@@ -304,6 +320,7 @@ _PARSERS = {
     "gemfile.lock": _p_gemfile_lock,
     "cargo.lock": _p_cargo_lock,
     "go.mod": _p_go_mod,
+    "pubspec.lock": _p_pubspec_lock,
 }
 
 

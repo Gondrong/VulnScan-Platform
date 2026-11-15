@@ -5,6 +5,38 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.3.1 — 2026-11-15
+
+Patch release fixing critical issues found after v3.3.0 and improving the
+agentic code-review quality.
+
+### Fixed
+
+- **Job delete 500 for Mode B exploit jobs.** `delete_job` did not clean up
+  `agentic_actions` rows (FK → `scan_jobs.id`), causing an IntegrityError for
+  any job that had agent-crafted exploit actions. Now deletes them first.
+- **Source-code scan timeout.** Large repos (1000+ files) hit the 30-minute
+  watchdog and lost all findings. Added `CODE_SCAN_JOB_TIMEOUT` (default 7200s
+  / 2 hours); the RQ job, the watchdog, and the agent track budget all honour
+  it, and the agent saves partial results on budget exhaustion rather than
+  losing everything.
+- **OSV dataset was disabled after refresh.** SCA track found nothing because
+  the OSV dataset row was `enabled: 0`. Fixed and re-enabled.
+
+### Improved
+
+- **Agentic code-review severity & data-flow.** Rewrote the system prompt with
+  an explicit severity rubric (critical/high/medium/low/info), data-flow
+  source→sink tracing requirements, and instructions to hunt bugs SAST misses
+  (IDOR, auth bypass, trust-boundary confusion, chained issues, business-logic
+  abuse). Agent max turns raised 14→20.
+- **Mode B exploit prompt.** Strengthened to probe for business/app-logic and
+  novel vulnerabilities, not just injection patterns.
+- **Dart / pub SCA.** Added `pubspec.lock` parser and "Pub" ecosystem to
+  `osv_fetch.py`, so Flutter/Dart dependencies get matched against OSV
+  advisories.
+
+---
 ## v3.3.0 — 2026-11-15
 
 This release makes scanning and analysis **agentic** and adds a **source-code

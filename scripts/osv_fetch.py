@@ -42,7 +42,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 _BASE = "https://osv-vulnerabilities.storage.googleapis.com"
 # OSV.dev storage path == ecosystem name we emit (must match sca.py output).
-_DEFAULT_ECOSYSTEMS = ["npm", "PyPI", "Maven", "Go", "RubyGems", "Packagist", "crates.io", "NuGet"]
+_DEFAULT_ECOSYSTEMS = ["npm", "PyPI", "Maven", "Go", "RubyGems", "Packagist", "crates.io", "NuGet", "Pub"]
 _TIMEOUT = 300
 
 

@@ -381,14 +381,24 @@ def _schedule_loop():
             # empty. Only an outside observer can close these out.
             scan_run_cutoff = now_utc - timedelta(seconds=settings.SCAN_STALE_AFTER_SECONDS)
             scan_queue_cutoff = now_utc - timedelta(seconds=settings.SCAN_STALE_AFTER_SECONDS * 4)
+            # Source-code scans run far longer than network scans (agentic review of
+            # many files), so they get their own, larger running cutoff — otherwise
+            # the watchdog kills a job that is still legitimately progressing.
+            code_run_cutoff = now_utc - timedelta(seconds=settings.CODE_SCAN_JOB_TIMEOUT + 300)
             stale_jobs = (
                 db.query(models.ScanJob)
                 .filter(
                     models.ScanJob.status.in_(["queued", "running"]),
                     or_(
                         and_(
+                            models.ScanJob.scan_type != "source_code",
                             models.ScanJob.started_at.isnot(None),
                             models.ScanJob.started_at < scan_run_cutoff,
+                        ),
+                        and_(
+                            models.ScanJob.scan_type == "source_code",
+                            models.ScanJob.started_at.isnot(None),
+                            models.ScanJob.started_at < code_run_cutoff,
                         ),
                         and_(
                             models.ScanJob.started_at.is_(None),
