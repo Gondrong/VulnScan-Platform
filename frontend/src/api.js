@@ -127,6 +127,8 @@ export const settingsApi = {
   resetPassword: (id, body) => api(`/settings/users/${id}/password`, { method: "PUT", body }),
   allowlist:   ()      => api("/settings/allowlist"),
   updateAllowlist: (body) => api("/settings/allowlist", { method: "PUT", body }),
+  getExploitAllowlist:    ()     => api("/settings/exploit-allowlist"),
+  updateExploitAllowlist: (body) => api("/settings/exploit-allowlist", { method: "PUT", body }),
   updateCheck: ()      => api("/settings/update/check"),
   updateStatus:()      => api("/settings/update/status"),
   triggerUpdate: ()    => api("/settings/update/trigger", { method: "POST" }),
@@ -220,6 +222,12 @@ export const autoAiApi = {
   update: (body) => api("/settings/auto-ai", { method: "PUT", body }),
 };
 
+// ── Scheduled dataset refresh ────────────────────────────
+export const datasetRefreshApi = {
+  get:    ()     => api("/settings/dataset-refresh"),
+  update: (body) => api("/settings/dataset-refresh", { method: "PUT", body }),
+};
+
 // ── SLA Breach Alert ────────────────────────────────────────────────
 export const slaAlertApi = {
   get:    ()     => api("/settings/sla-alert"),
@@ -264,6 +272,30 @@ export const apiScannerApi = {
   checks:    ()                    => api("/scan/api-scanner/checks"),
   parse:     (formData)            => api("/scan/api-scanner/parse", { method: "POST", body: formData }),
   createJob: (formData)            => api("/scan/api-scanner/jobs",  { method: "POST", body: formData }),
+};
+
+// ── Source-code Scanner ──────────────────────────────────────────────
+export const codeScannerApi = {
+  preflight: (formData)            => api("/scan/code/preflight", { method: "POST", body: formData }),
+  createJob: (formData)            => api("/scan/code/jobs",      { method: "POST", body: formData }),
+};
+
+// ── Agentic scan (Mode A: AI orchestrates plugins, plan then approve) ──
+export const agenticApi = {
+  createJob: (body)   => api("/scan/agentic/jobs",            { method: "POST", body }),
+  getPlan:   (id)     => api(`/scan/jobs/${id}/plan`),
+  approve:   (id, body) => api(`/scan/jobs/${id}/approve-plan`, { method: "POST", body }),
+  reject:    (id)     => api(`/scan/jobs/${id}/reject-plan`,  { method: "POST" }),
+};
+
+// ── Agentic EXPLOIT (Mode B: agent crafts payloads, per-action approval) ──
+export const exploitApi = {
+  createJob:   (body)     => api("/scan/exploit/jobs",             { method: "POST", body }),
+  getAction:   (id)       => api(`/scan/jobs/${id}/action`),
+  listActions: (id)       => api(`/scan/jobs/${id}/actions`),
+  approve:     (id)       => api(`/scan/jobs/${id}/approve-action`, { method: "POST" }),
+  reject:      (id, body) => api(`/scan/jobs/${id}/reject-action`,  { method: "POST", body }),
+  kill:        (id)       => api(`/scan/jobs/${id}/kill`,           { method: "POST" }),
 };
 
 // ── Graph ────────────────────────────────────────────────────────────

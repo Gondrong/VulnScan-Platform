@@ -14,6 +14,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.graphql_scanner",
+    intrusive=True,
     name="GraphQL Introspection & Security",
     category="web",
     depends_on=["fingerprint.http"],

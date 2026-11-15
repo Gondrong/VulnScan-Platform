@@ -23,6 +23,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="vuln.file.inclusion",
+    intrusive=True,
     name="File Inclusion Scanner (LFI/RFI)",
     category="vuln_scan",
     depends_on=["fingerprint.http"],

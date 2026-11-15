@@ -23,18 +23,19 @@
 
 VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
 
-**v3.0.6 highlights** *(2026-08-12)* — see [Changelog](#changelog) for full notes.
+**v3.3.0 highlights** *(2026-11-15)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
-| 🧠 **CVE.org fallback matcher** | Catch CVEs before NVD publishes CPE data — detection coverage 49% → 75% |
-| 🛡️ **CIS Benchmark scanner** | 53 server hardening checks (Linux + Docker + Nginx) via SSH |
-| ⚡ **7 automation features** | Auto AI analysis, auto report, SLA breach alerts, database backup, update check — all configurable |
-| 📊 **Analytics dashboard** | Executive dashboard, vulnerability trending, scan diff, comparative reports |
+| 🤖 **Agentic analysis** | After batch validation, a read-only agent investigates each doubtful finding with tools (sibling findings, local CVE intel, attack-graph blast radius). On a production scan it independently ruled out six "SQLi" findings as Cloudflare 403s, not injection |
+| 🧭 **Agentic scan — plugin mode** | The AI reads recon and proposes which active plugins to run; the scan pauses until you approve the plan. The payloads are still VulnScan's own vetted plugins |
+| ⚔️ **Agentic exploitation — off by default** | Opt-in and server-gated (`ENABLE_AGENTIC_EXPLOIT`), the agent crafts proof-only payloads with **per-action human approval**, a fail-closed target allowlist, structural target-pinning, a destructive deny-list enforced in code, a kill switch and a full audit trail |
+| 🧬 **Source-code scanner** | Scan a zip or git repo: deterministic SCA against OSV advisories for vulnerable dependencies, plus an AI agent that reads the source for logic, secret, injection and auth issues |
+| 🛡️ **Non-intrusive scan mode** | Choose observation-only per scan — attacking, credential-guessing and brute-force plugins are skipped, and the report lists exactly what was not run |
 
 **Key capabilities:**
 - **71 scanner plugins** (64 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API / recon / audit
-- **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation
+- **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation — optionally two-staged, so exploit work is spent only on findings that survived validation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance) with one-click refresh
 - **Composite threat-score prioritization** beyond CVSS-only — uses EPSS percentile, KEV listing, and ransomware status
 - **Compliance mapping** to NIST 800-53, PCI DSS v4, CIS Controls v8, ISO 27001
@@ -435,6 +436,7 @@ VulnScan integrates with multiple AI providers for intelligent vulnerability ana
 | **Validate** | Classifies each finding as True Positive / False Positive / Needs Manual |
 | **Full Analysis** | Executive summary, attack chain identification, remediation priority |
 | **Full + PoC** | Full analysis + proof-of-concept exploit scripts for confirmed findings |
+| **Validate then PoC** *(new in v3.1)* | Two stages in one job: validate every finding, drop the confirmed false positives, then run the full + PoC analysis only on what survived. Stage-1 verdicts are kept for every finding, so the UI still explains what was dropped and why |
 
 ### Per-Finding PoC Generation
 
@@ -536,12 +538,22 @@ All integrations support **per-provider Test buttons** that send a real test mes
 | `DATABASE_URL` | PostgreSQL connection | `postgresql+psycopg2://app:app@db:5432/app` |
 | `REDIS_URL` | Redis connection | `redis://redis:6379/0` |
 | `SCAN_BUDGET_SECONDS` | Max wall-clock duration per scan | `900` (15 min) |
-| `SCAN_TIMEOUT_SECONDS` | Default per-plugin timeout | `60` |
-| `ALLOWLIST` | CIDR ranges / domain suffixes allowed for internal scans | `*` |
+| `SCAN_JOB_TIMEOUT` | RQ job timeout; must exceed the engine's worst case plus post-processing | `SCAN_BUDGET_SECONDS + 600` |
+| `SCAN_TIMEOUT_SECONDS` | Default per-request timeout | `15` |
+| `ALLOWLIST` | CIDR ranges / domain suffixes allowed for internal scans | `10.0.0.0/8,192.168.0.0/16,172.16.0.0/12,127.0.0.0/8,.internal.local,.local` |
+| `TRUSTED_PROXIES` | Reverse proxies whose `X-Forwarded-For` may be trusted. Keep to the proxy hops only — adding a client network lets any user there forge the header | `127.0.0.0/8,::1/128,172.16.0.0/12` |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_POOL_TIMEOUT` | SQLAlchemy pool sizing | `10` / `20` / `10` |
 | `NVD_API_KEY` | NVD API key (5× faster dataset refresh) | (optional) |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI key | (optional) |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint | (optional) |
 | `CLAUDE_CLI_ENABLED` | Enable Claude CLI provider | `false` |
+| `CLAUDE_PROFILE_DIR` | **Host** path holding the Claude CLI profile, bind-mounted to `/root/.claude` | `./data/claude-config` |
+| `CLAUDE_CONFIG_DIR` | The Claude CLI's own variable — must be the **container** path. Do not point it at a host path | `/root/.claude` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Token from `claude setup-token`. Leave **empty** when authenticating by profile login: a stale token overrides the profile and every call fails with 401 | (empty) |
+| `AI_WORKERS` | Parallel AI workers | `2` |
+| `AI_ANALYSIS_TIMEOUT` | RQ job timeout for one analysis | `2700` |
+| `AI_CLI_TIMEOUT` | Budget for a single provider call. `validate_then_exploit` makes two per job | `(AI_ANALYSIS_TIMEOUT - 300) / 2` |
+| `AI_STALE_AFTER_SECONDS` | Stale-analysis watchdog limit, measured from when a worker starts the job | `AI_ANALYSIS_TIMEOUT + 600` |
 | `GEMINI_API_KEY` | Google Gemini key | (optional) |
 | `BACKEND_PORT` | API server port | `8888` |
 | `FRONTEND_PORT` | Web UI port | `5173` |
@@ -554,7 +566,9 @@ For manual updates:
 
 ```bash
 git pull
-docker compose build
+# Every service that builds from ./backend has its OWN image, so building
+# `backend` alone leaves the workers on the previous build.
+docker compose build backend worker-ai worker-scan worker-data
 docker compose up -d
 # Hard-refresh the browser to bust the cached JS bundle
 ```
@@ -567,6 +581,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.2.1 — 2026-10-26** — CVE-2026-111497 (Brotli decoder OOB write, CVSS 9.2): patched libbrotli1 and moved off end-of-life Node.js 20 to 24.22.1. Dataset refresh fixes: NVD paging no longer completes at 2000 items/page, `IncompleteRead` escaped the retry loop (28 pages recovered in one refresh), a partial fetch was installed as if complete (49,794 of 52,760 CVEs), and a refresh that outlasts the job timeout now resumes instead of restarting. Adds scheduled refresh, off by default. Also fixes the Neo4j healthcheck, which called `curl` — absent from the `neo4j:5` image — so the service reported `unhealthy` from first boot and `depends_on: condition: service_healthy` could never resolve
+- **v3.2.0 — 2026-09-30** — Batched AI analysis (verdict coverage 80 → 100% of findings; false positives caught on a 96-finding scan went from 1–3 to 21), stale-scan watchdog, row-addressed AI providers so two OpenRouter models are both selectable, `AI_MAX_TOKENS` for reasoning models, and scanners no longer reporting clean results from runs that failed
+- **v3.1.0 — 2026-08-27** — Reliability release: auto AI analysis, Neo4j graph population and internal scans had never actually worked (undefined names, blocking socket calls defeating per-plugin timeouts, a transaction held across the whole scan that let startup DDL freeze the app). New two-stage `validate_then_exploit` analysis mode, trusted-proxy client IP resolution, login latency 23–30s → 0.29s, `python-multipart` CVE-2024-53981
 - **v3.0.6 — 2026-08-12** — CVE.org fallback matcher (detection coverage 49%→75%), CIS Benchmark scanner (53 checks), server-side SCA (OS packages + dependencies via SSH), 7 automation features (auto AI, auto report, SLA alerts, DB backup, update check), 71 total plugins
 - **v3.0.5 — 2026-08-03** — 8 new scanner plugins (Wayback URLs, subdomain takeover, GitHub secrets, DNS history, CMS vuln scanner, SSL/TLS grading, SCA/dependency, web metadata), Analytics dashboard (executive, trending, scan diff, comparative reports, re-verification), scanner quality improvements (XSS encoding check, CMDi double-confirm, CVE vendor normalization, favicon hash database), 68 total plugins
 - **v3.0.4 — 2026-07-29** — Security hardening: bcrypt password hashing (replaces SHA256) with automatic legacy migration, CORS origin restriction, Redis-backed login rate limiting (5 req/min per IP), React Error Boundary for crash recovery

@@ -144,6 +144,15 @@ class Check(Plugin):
 
         # Exclude tags (optional, e.g. dos)
         exclude_tags = nuclei_opts.get("exclude_tags", "dos,fuzz")
+        # Non-intrusive scans keep detection templates but drop the ones that
+        # attack or log in: 641 templates tagged intrusive and 349 tagged
+        # default-login in the installed set.
+        if not ctx.get("intrusive", True):
+            tags_out = [t for t in exclude_tags.split(",") if t]
+            for t in ("dos", "fuzz", "intrusive", "default-login", "bruteforce"):
+                if t not in tags_out:
+                    tags_out.append(t)
+            exclude_tags = ",".join(tags_out)
         if exclude_tags:
             cmd += ["-etags", exclude_tags]
 

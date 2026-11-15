@@ -187,9 +187,13 @@ class Check(Plugin):
 
         # Perform the TLS check
         try:
-            tls_info = _perform_tls_check(
+            # _perform_tls_check does two blocking socket.create_connection
+            # calls. Running it inline froze the event loop, which meant the
+            # engine's asyncio.wait_for could not fire its per-plugin timeout.
+            tls_info = await asyncio.to_thread(
+                _perform_tls_check,
                 hostname, tls_port,
-                timeout=min(ctx.policy.timeout_seconds, 8.0)
+                min(ctx.policy.timeout_seconds, 8.0),
             )
         except Exception:
             return PluginResult(

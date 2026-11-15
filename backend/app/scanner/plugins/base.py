@@ -18,6 +18,12 @@ class PluginMeta:
     consumes: list[str] = field(default_factory=list)
     enabled_by_default: bool = True
     timeout_seconds: float = 30.0
+    # Sends attack payloads, guesses credentials, writes to the target,
+    # brute-forces paths or floods requests. Skipped when a scan is started in
+    # non-intrusive mode. A new plugin that does any of these must set it:
+    # the default is False, so forgetting it lets the plugin run against
+    # targets whose owner asked for observation only.
+    intrusive: bool = False
     # Soft dependencies: affects execution ORDER (runs after these plugins)
     # but does NOT auto-enable them. Use for cross-chain data consumption
     # where the data is optional (e.g., endpoint_prober consuming package_hits).

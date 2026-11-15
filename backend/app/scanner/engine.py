@@ -148,6 +148,23 @@ def _enabled(selection_json: str) -> list[str]:
     return [pid for pid in ORDER if pid in enabled]
 
 
+def _drop_intrusive(enabled: list[str]) -> tuple[list[str], list[str]]:
+    """Split `enabled` into (kept, dropped) for a non-intrusive scan.
+
+    Anything with a hard dependency on a dropped plugin goes too: left in, it
+    would run against data that dependency never produced.
+    """
+    dropped = {pid for pid in enabled if PLUGINS[pid].meta.intrusive}
+    changed = True
+    while changed:
+        changed = False
+        for pid in enabled:
+            if pid not in dropped and any(d in dropped for d in PLUGINS[pid].meta.depends_on):
+                dropped.add(pid)
+                changed = True
+    return [p for p in enabled if p not in dropped], [p for p in enabled if p in dropped]
+
+
 # ─── Remediation Knowledge Base ────────────────────────────────────────────────
 
 _REMEDIATION_DB = {
@@ -504,6 +521,32 @@ async def scan_target(
 
     findings_out: list[Finding] = []
     enabled = _enabled(profile.get("plugin_selection_json", "{}"))
+
+    # Non-intrusive mode (chosen per scan) skips plugins that attack, guess
+    # credentials, write to the target, brute-force or flood. The skipped list
+    # is recorded as a finding: a clean report from such a scan must not read
+    # as "no injection found" when injection was never tested.
+    intrusive = bool(profile.get("intrusive", True))
+    ctx.set("intrusive", intrusive)
+    if not intrusive:
+        enabled, skipped = _drop_intrusive(enabled)
+        if skipped:
+            findings_out.append(Finding(
+                severity="info",
+                plugin_id="policy.non_intrusive",
+                title=f"Non-intrusive scan: {len(skipped)} active-testing plugin(s) not run",
+                description=(
+                    "This scan was started in non-intrusive mode. Plugins that send "
+                    "attack payloads, guess credentials, write to the target, "
+                    "brute-force paths or flood requests were not run, so those "
+                    "vulnerability classes were not tested. No injection, "
+                    "authentication or bypass findings here means untested, not absent."
+                ),
+                remediation="Run an intrusive scan, with the target owner's agreement, to cover them.",
+                evidence="skipped=" + ",".join(skipped),
+                affected=target,
+                fingerprint=stable_fingerprint(target, "non_intrusive"),
+            ))
 
     # ── Global scan budget ──────────────────────────────────────────────
     # Prevents the scan from exceeding RQ's job_timeout by tracking

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons, Pip, Risk, Status } from "./icons.jsx";
-import { scanApi, assetsApi, reportsApi, apiScannerApi, credentialsApi, webAuthApi, canEdit } from "../api.js";
+import { scanApi, assetsApi, reportsApi, apiScannerApi, codeScannerApi, agenticApi, exploitApi, settingsApi, credentialsApi, aiApi, webAuthApi, canEdit } from "../api.js";
 
 export function Assets({ openAsset }) {
   const [view, setView] = useState("grid");
@@ -425,6 +425,9 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const [apiKeyValue, setApiKeyValue]   = useState("");
   const [apiBasicUser, setApiBasicUser] = useState("");
   const [apiBasicPass, setApiBasicPass] = useState("");
+  // Non-intrusive by default: someone clicking through without choosing gets
+  // the mode that cannot hurt a production target.
+  const [intrusive, setIntrusive] = useState(false);
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduleConfig, setScheduleConfig] = useState({
     interval_hours: 24,
@@ -464,14 +467,35 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const [testLoading, setTestLoading]           = useState(false);
   const [testResult, setTestResult]             = useState(null); // {success, evidence, error, cookie_names, header_names}
 
+  // ── Source-code scan state (only used when scanKind === "code") ──────
+  const [codeSource, setCodeSource]   = useState("git");   // "git" | "zip"
+  const [codeGitUrl, setCodeGitUrl]   = useState("");
+  const [codeFile, setCodeFile]       = useState(null);
+  const [codeCredId, setCodeCredId]   = useState("");
+  const [codeProvider, setCodeProvider] = useState("");
+  const [codeTracks, setCodeTracks]   = useState({ sca: true, agent: true });
+  const [aiProviders, setAiProviders] = useState([]);
+  const [codePreflight, setCodePreflight] = useState(null); // {status, message}
+  const [codePreflighting, setCodePreflighting] = useState(false);
+
+  // ── Agentic scan: Mode A (plugins) / Mode B (exploit) ────────────────────
+  const [agentic, setAgentic]               = useState(false);
+  const [agenticProvider, setAgenticProvider] = useState("");
+  const [agenticMode, setAgenticMode]       = useState("plugins"); // plugins | exploit
+  const [exploitEnabled, setExploitEnabled] = useState(false);     // master switch (server)
+  const [scopeAck, setScopeAck]             = useState(false);
+
   useEffect(() => {
     Promise.all([
       scanApi.listProfiles(),
       assetsApi.list(),
       apiScannerApi.checks().catch(() => ({ checks: [] })),
       credentialsApi.list().catch(() => []),
+      aiApi.providers().catch(() => ({ providers: [] })),
+      settingsApi.getExploitAllowlist().catch(() => ({ enabled: false })),
     ])
-      .then(([list, ass, chk, cs]) => {
+      .then(([list, ass, chk, cs, prov, exp]) => {
+        setExploitEnabled(!!(exp && exp.enabled));
         setProfiles(list || []);
         if (list && list.length > 0) setProfileId(list[0].id);
         setAssets(ass || []);
@@ -479,6 +503,8 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
         setApiChecks(checks);
         setSelectedApiChecks(new Set(checks.map(c => c.id)));
         setCreds(cs || []);
+        const provs = Array.isArray(prov) ? prov : (prov.providers || []);
+        setAiProviders(provs);
       })
       .catch(e => setError(e.message || "Failed to load form data"));
   }, []);
@@ -662,11 +688,27 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
     { id: "api",     label: "API",     icon: Icons.Code,   desc: "OpenAPI / Swagger / Postman" },
     { id: "iot",     label: "IoT",     icon: Icons.Chip,   desc: "MQTT, CoAP, gateways" },
     { id: "cloud",   label: "Cloud",   icon: Icons.Cloud,  desc: "AWS / Azure / GCP misconfigs" },
+    { id: "code",    label: "Source Code", icon: Icons.FileText, desc: "Upload or clone a repo — AI agent + dependency (SCA) review" },
   ];
   const activeKind = SCAN_KINDS.find(k => k.id === scanKind) || SCAN_KINDS[0];
 
   // Map design scan-kind to backend scan_type ("internal" | "external")
   const scanTypeFor = (k) => (k === "web" || k === "api" || k === "cloud") ? "external" : "internal";
+
+  const runCodePreflight = async () => {
+    if (!codeGitUrl.trim()) return;
+    setCodePreflighting(true); setCodePreflight(null);
+    try {
+      const fd = new FormData();
+      fd.append("git_url", codeGitUrl.trim());
+      if (codeCredId) fd.append("credential_id", codeCredId);
+      const r = await codeScannerApi.preflight(fd);
+      setCodePreflight(r);
+    } catch (e) {
+      setCodePreflight({ status: "unreachable", message: e.message || "Preflight failed" });
+    }
+    setCodePreflighting(false);
+  };
 
   const submit = async () => {
     setError("");
@@ -696,10 +738,69 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
       return;
     }
 
+    // ── Source-code scan → dedicated endpoint ─────────────────────
+    if (scanKind === "code") {
+      const tracks = Object.entries(codeTracks).filter(([, v]) => v).map(([k]) => k);
+      if (tracks.length === 0) { setError("Select at least one track (SCA or Agent)"); return; }
+      if (codeSource === "git" && !codeGitUrl.trim()) { setError("Git URL is required"); return; }
+      if (codeSource === "zip" && !codeFile) { setError("Upload a .zip archive"); return; }
+      if (codeTracks.agent && !codeProvider) { setError("Agentic review needs an AI provider — pick one or turn the Agent track off"); return; }
+      setSubmitting(true);
+      try {
+        const fd = new FormData();
+        fd.append("source_type", codeSource);
+        fd.append("tracks", tracks.join(","));
+        if (codeProvider) fd.append("provider", codeProvider);
+        if (codeSource === "git") {
+          fd.append("git_url", codeGitUrl.trim());
+          if (codeCredId) fd.append("credential_id", codeCredId);
+        } else {
+          fd.append("upload", codeFile);
+        }
+        await codeScannerApi.createJob(fd);
+        onCreated ? onCreated() : close();
+      } catch (e) {
+        // the backend returns a 409 with {preflight, message} when a private repo
+        // needs/rejects a credential — surface it as a readable error
+        let msg = e.message || "Failed to create code scan";
+        try { const p = JSON.parse(msg); if (p.message) msg = p.message; } catch { /* plain */ }
+        setError(msg); setSubmitting(false);
+      }
+      return;
+    }
+
     // ── Other scan types ──────────────────────────────────────────
     let finalTarget = target.trim();
     if (!finalTarget) { setError("Target is required"); return; }
     if (!profileId)   { setError("Pick a scan profile"); return; }
+
+    // ── Agentic scan → dedicated endpoint ──────────────────────────────
+    if (agentic) {
+      if (!agenticProvider) { setError("Agentic scan needs an AI provider — pick one, or turn Agentic off"); return; }
+      if (agenticMode === "exploit" && !scopeAck) { setError("Confirm you are authorised to actively test this target"); return; }
+      setSubmitting(true);
+      try {
+        if (agenticMode === "exploit") {
+          await exploitApi.createJob({
+            target: finalTarget,
+            scan_type: scanTypeFor(scanKind),
+            provider: agenticProvider,
+            scope_acknowledged: true,
+          });
+        } else {
+          await agenticApi.createJob({
+            target: finalTarget,
+            scan_type: scanTypeFor(scanKind),
+            profile_id: profileId,
+            provider: agenticProvider,
+          });
+        }
+        onCreated ? onCreated() : close();
+      } catch (e) {
+        setError(e.message || "Failed to start agentic scan"); setSubmitting(false);
+      }
+      return;
+    }
 
     // Build per-job web_auth (only for Web App + Run now)
     let webAuth = null;
@@ -764,6 +865,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
           profile_id: profileId,
           scan_type: scanType,
           asset_id: finalAssetId || null,
+          intrusive,
         };
         if (webAuth) jobBody.web_auth = webAuth;
         // Ephemeral cleanup: backend deletes the linked credential when the scan ends
@@ -778,6 +880,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
           profile_id: profileId,
           scan_type: scanType,
           enabled: true,
+          intrusive,
         };
         if (scheduleMode === "once") {
           if (!scheduleConfig.custom_datetime) throw new Error("Pick a date/time for the scheduled run");
@@ -812,7 +915,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
 
           <div>
             <label className="form-label">Scan type</label>
-            <div style={{display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6}}>
+            <div style={{display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6}}>
               {SCAN_KINDS.map(k => {
                 const I = k.icon; const active = scanKind === k.id;
                 return (
@@ -977,6 +1080,98 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
                 </div>
               </div>
             </div>
+          ) : scanKind === "code" ? (
+            <div style={{display: "flex", flexDirection: "column", gap: 14}}>
+              {/* Source: git or upload */}
+              <div>
+                <label className="form-label">Source</label>
+                <div style={{display: "flex", gap: 4, padding: 2, background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 7, marginBottom: 10}}>
+                  {[{id: "git", label: "Git URL"}, {id: "zip", label: "Upload .zip"}].map(t => (
+                    <button key={t.id} className="btn btn-sm"
+                            style={{border: "none", background: codeSource === t.id ? "var(--surface-2)" : "transparent", color: codeSource === t.id ? "var(--text-0)" : "var(--text-2)", flex: 1, justifyContent: "center", fontWeight: codeSource === t.id ? 600 : 500}}
+                            onClick={() => { setCodeSource(t.id); setCodePreflight(null); }}>{t.label}</button>
+                  ))}
+                </div>
+
+                {codeSource === "git" ? (
+                  <>
+                    <input className="form-input mono" placeholder="https://github.com/org/repo"
+                           value={codeGitUrl} onChange={e => { setCodeGitUrl(e.target.value); setCodePreflight(null); }} autoFocus/>
+                    <div className="form-help">GitHub, GitLab, Bitbucket, or any https/ssh repo. Shallow clone, no submodules.</div>
+
+                    <div style={{marginTop: 10}}>
+                      <label className="form-label">Credential (for private repos)</label>
+                      <select className="form-input" value={codeCredId} onChange={e => { setCodeCredId(e.target.value); setCodePreflight(null); }}>
+                        <option value="">None — public repo</option>
+                        {creds.map(c => <option key={c.id} value={c.id}>{c.name} ({c.secret_type || c.kind})</option>)}
+                      </select>
+                    </div>
+
+                    <div style={{display: "flex", alignItems: "center", gap: 8, marginTop: 10}}>
+                      <button className="btn btn-sm" onClick={runCodePreflight} disabled={codePreflighting || !codeGitUrl.trim()}>
+                        {codePreflighting ? <><Icons.Refresh size={12} className="spin"/> Checking…</> : <><Icons.Check size={12}/> Check access</>}
+                      </button>
+                      {codePreflight && (
+                        <span style={{fontSize: 12, fontWeight: 600, color: codePreflight.status === "ok" ? "var(--ok)" : "var(--err)"}}>
+                          {codePreflight.status === "ok" ? "Reachable" :
+                           codePreflight.status === "credential_required" ? "Needs a credential" :
+                           codePreflight.status === "credential_rejected" ? "Credential rejected" : "Unreachable"}
+                        </span>
+                      )}
+                    </div>
+                    {codePreflight && codePreflight.status !== "ok" && (
+                      <div className="form-help" style={{color: "var(--err)"}}>{codePreflight.message}</div>
+                    )}
+                  </>
+                ) : (
+                  <label htmlFor="code-file"
+                         style={{display: "block", padding: "18px 16px", border: "1.5px dashed var(--line-strong)", borderRadius: 8, textAlign: "center", cursor: "pointer", background: "var(--surface-1)"}}>
+                    <Icons.FilePlus size={20} color="var(--text-3)"/>
+                    <div style={{fontSize: 13, color: "var(--text-1)", marginTop: 6, fontWeight: 500}}>
+                      {codeFile ? codeFile.name : "Drop a .zip of the source tree"}
+                    </div>
+                    <div style={{fontSize: 11.5, color: "var(--text-3)", marginTop: 3}}>Max 50 MB</div>
+                    <input id="code-file" type="file" accept=".zip" style={{display: "none"}}
+                           onChange={e => setCodeFile(e.target.files?.[0] || null)}/>
+                  </label>
+                )}
+              </div>
+
+              {/* Tracks */}
+              <div>
+                <label className="form-label">What to run</label>
+                <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
+                  {[
+                    {id: "sca",   label: "Dependency (SCA)", desc: "Known-CVE lockfile scan via OSV"},
+                    {id: "agent", label: "Agentic review",   desc: "AI agent reads source for logic / secret / injection bugs"},
+                  ].map(t => {
+                    const on = codeTracks[t.id];
+                    return (
+                      <button key={t.id} className={`btn ${on ? "btn-primary" : ""}`}
+                              style={{flexDirection: "column", height: "auto", padding: "10px 12px", gap: 4, alignItems: "flex-start"}}
+                              onClick={() => setCodeTracks(s => ({...s, [t.id]: !s[t.id]}))}>
+                        <div style={{fontSize: 12, fontWeight: 600}}>{t.label}</div>
+                        <div style={{fontSize: 11, fontWeight: 400, opacity: 0.8, textAlign: "left"}}>{t.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* AI provider (only for the agentic track) */}
+              {codeTracks.agent && (
+                <div>
+                  <label className="form-label">AI provider (for agentic review)</label>
+                  <select className="form-input" value={codeProvider} onChange={e => setCodeProvider(e.target.value)}>
+                    <option value="">Select a provider…</option>
+                    {aiProviders.filter(p => p.enabled !== false).map(p => (
+                      <option key={p.key} value={p.key}>{p.name} · {p.model}</option>
+                    ))}
+                  </select>
+                  <div className="form-help">Use an OpenRouter / Netra / OpenAI-compatible provider. Claude CLI code-scan is coming soon.</div>
+                </div>
+              )}
+            </div>
           ) : (
             <div>
               <label className="form-label">Target</label>
@@ -998,7 +1193,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
             </div>
           )}
 
-          {scanKind !== "api" && (
+          {scanKind !== "api" && scanKind !== "code" && !(agentic && agenticMode === "exploit") && (
           <div>
             <label className="form-label">Scan profile</label>
             {profiles.length === 0 ? (
@@ -1009,6 +1204,107 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
               <select className="form-input" value={profileId || ""} onChange={e => setProfileId(parseInt(e.target.value))}>
                 {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
+            )}
+          </div>
+          )}
+
+          {scanKind !== "api" && scanKind !== "code" && !agentic && (
+          <div>
+            <label className="form-label">Scan mode</label>
+            <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
+              {[
+                { id: false, label: "Non-intrusive", desc: "Observe only: headers, TLS, ports, fingerprints, version-based CVEs" },
+                { id: true,  label: "Intrusive",     desc: "Attack payloads, credential guessing, path brute-force" },
+              ].map(o => {
+                const active = intrusive === o.id;
+                return (
+                  <button key={o.label} type="button" onClick={() => setIntrusive(o.id)}
+                          className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
+                          style={{flexDirection: "column", alignItems: "flex-start", height: "auto", padding: "10px 12px", gap: 2, textAlign: "left"}}>
+                    <div style={{fontSize: 13, fontWeight: 600}}>{o.label}</div>
+                    <div style={{fontSize: 11, opacity: active ? 0.85 : 0.6, fontWeight: 400}}>{o.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="form-help" style={{marginTop: 6, color: intrusive ? "var(--err)" : "var(--text-3)"}}>
+              {intrusive
+                ? "Sends SQLi/XSS/command-injection payloads, tries default credentials, brute-forces paths and may write to the target. Run only with the target owner's agreement."
+                : "Plugins that attack, guess credentials or write to the target are skipped. The results list which ones, so a clean report is not mistaken for a tested one."}
+            </div>
+          </div>
+          )}
+
+          {/* ── Agentic scan (AI plans which plugins to run) ───────────── */}
+          {scanKind !== "api" && scanKind !== "code" && (
+          <div>
+            <label className="form-label">Agentic scan</label>
+            <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
+              {[
+                { on: false, label: "Off",     desc: "Run the scan profile as-is" },
+                { on: true,  label: "Agentic", desc: "AI reads recon, proposes which active plugins to run — you approve before anything intrusive runs" },
+              ].map(o => {
+                const active = agentic === o.on;
+                return (
+                  <button key={String(o.on)} type="button" onClick={() => setAgentic(o.on)}
+                          className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
+                          style={{flexDirection: "column", alignItems: "flex-start", height: "auto", padding: "10px 12px", gap: 2, textAlign: "left"}}>
+                    <div style={{fontSize: 13, fontWeight: 600}}>{o.label}</div>
+                    <div style={{fontSize: 11, opacity: active ? 0.85 : 0.6, fontWeight: 400}}>{o.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {agentic && (
+              <div style={{marginTop: 10, display: "flex", flexDirection: "column", gap: 10}}>
+                {/* Mode A (plugins) vs Mode B (exploit) */}
+                <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
+                  {[
+                    { id: "plugins", label: "Plugins", desc: "AI picks which vetted plugins to run · approve the plan", enabled: true },
+                    { id: "exploit", label: "Exploit", desc: exploitEnabled ? "AI crafts its own payloads · approve EACH action" : "Disabled — set ENABLE_AGENTIC_EXPLOIT on the server", enabled: exploitEnabled },
+                  ].map(m => {
+                    const active = agenticMode === m.id;
+                    return (
+                      <button key={m.id} type="button" disabled={!m.enabled}
+                              onClick={() => m.enabled && setAgenticMode(m.id)}
+                              className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
+                              style={{flexDirection: "column", alignItems: "flex-start", height: "auto", padding: "10px 12px", gap: 2, textAlign: "left", opacity: m.enabled ? 1 : 0.5, cursor: m.enabled ? "pointer" : "not-allowed"}}>
+                        <div style={{fontSize: 12.5, fontWeight: 600}}>{m.label}</div>
+                        <div style={{fontSize: 10.5, opacity: active ? 0.85 : 0.6, fontWeight: 400}}>{m.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <select className="form-input" value={agenticProvider} onChange={e => setAgenticProvider(e.target.value)}>
+                  <option value="">Select AI provider…</option>
+                  {aiProviders.filter(p => p.enabled !== false).map(p => (
+                    <option key={p.key} value={p.key}>{p.name} · {p.model}</option>
+                  ))}
+                </select>
+
+                {agenticMode === "plugins" ? (
+                  <div className="form-help">
+                    A non-intrusive recon runs first, then the AI proposes a plugin plan. The scan pauses at
+                    "awaiting approval" — open the job to approve or reject before any active plugin runs.
+                  </div>
+                ) : (
+                  <div style={{padding: "10px 12px", background: "var(--surface-1)", border: "1px solid var(--err)", borderRadius: 8}}>
+                    <div style={{fontSize: 12, fontWeight: 600, color: "var(--err)", marginBottom: 6}}>
+                      <Icons.AlertTriangle size={13}/> Active exploitation — agent crafts payloads
+                    </div>
+                    <div style={{fontSize: 11.5, color: "var(--text-1)", lineHeight: 1.5, marginBottom: 8}}>
+                      The AI will propose real attack payloads against this target. Every action needs your approval
+                      before it is sent; destructive payloads are blocked in code, and the target must be on the
+                      exploit allowlist (Settings → Agentic Exploit).
+                    </div>
+                    <label style={{display: "flex", gap: 8, alignItems: "flex-start", fontSize: 11.5, cursor: "pointer"}}>
+                      <input type="checkbox" checked={scopeAck} onChange={e => setScopeAck(e.target.checked)} style={{marginTop: 2}}/>
+                      <span>I am authorised to actively test this target (rules of engagement in place).</span>
+                    </label>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           )}
@@ -1382,14 +1678,18 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
         )}
         <div style={{padding: "14px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 8, justifyContent: "flex-end", background: "var(--surface-1)"}}>
           <button className="btn" onClick={close} disabled={submitting}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={submitting || (scanKind !== "api" && profiles.length === 0)}>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting || (scanKind !== "api" && scanKind !== "code" && profiles.length === 0 && !(agentic && agenticMode === "exploit"))}>
             {submitting
-              ? <><Icons.Refresh size={12} className="spin"/> {scanKind === "api" ? "Launching…" : scheduleMode === "now" ? "Creating…" : "Scheduling…"}</>
+              ? <><Icons.Refresh size={12} className="spin"/> {(scanKind === "api" || scanKind === "code") ? "Launching…" : scheduleMode === "now" ? "Creating…" : "Scheduling…"}</>
               : scanKind === "api"
                 ? <><Icons.Play size={12}/> Launch API scan</>
-                : scheduleMode === "now"
-                  ? <><Icons.Play size={12}/> Run scan</>
-                  : <><Icons.Clock size={12}/> Create schedule</>}
+                : scanKind === "code"
+                  ? <><Icons.Play size={12}/> Launch code scan</>
+                  : agentic
+                    ? <><Icons.Play size={12}/> Launch agentic scan</>
+                    : scheduleMode === "now"
+                      ? <><Icons.Play size={12}/> Run scan</>
+                      : <><Icons.Clock size={12}/> Create schedule</>}
           </button>
         </div>
       </div>

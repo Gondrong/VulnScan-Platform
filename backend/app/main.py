@@ -4,10 +4,12 @@ from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
+from sqlalchemy import and_, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.net import client_ip
 from app.db import models
 from app.db.session import Base, SessionLocal, engine
 from app.api.routes_auth import router as auth_router
@@ -20,6 +22,7 @@ from app.api.routes_integrations import router as integrations_router
 from app.api.routes_ai import router as ai_router
 from app.api.routes_api_scanner import router as api_scanner_router
 from app.api.routes_iac_scanner import router as iac_scanner_router
+from app.api.routes_code_scanner import router as code_scanner_router
 from app.api.routes_web_auth import router as web_auth_router
 from app.api.routes_threat_intel import router as threat_intel_router
 from app.api.routes_assets import router as assets_router
@@ -105,6 +108,11 @@ def _run_migrations(db: Session) -> None:
         ALTER TABLE scan_jobs
             ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL;
         """,
+        # Agentic plugin-orchestration scans (Mode A): plan survives to approval
+        """
+        ALTER TABLE scan_jobs
+            ADD COLUMN IF NOT EXISTS agentic_json TEXT;
+        """,
         # Add user tracking columns
         """
         ALTER TABLE users
@@ -133,9 +141,26 @@ def _run_migrations(db: Session) -> None:
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
         """,
+        # Track when a worker actually starts an AI analysis, so the stale
+        # watchdog can measure running time instead of time-since-created.
+        """
+        ALTER TABLE ai_analyses
+            ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+        """,
+        # Same for scans, so the stale-job watchdog can measure running time.
+        """
+        ALTER TABLE scan_jobs
+            ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+        """,
     ]
     for sql in migrations:
         try:
+            # DDL needs ACCESS EXCLUSIVE, and a *queued* ACCESS EXCLUSIVE lock
+            # blocks every later reader of the table — one long-running
+            # transaction elsewhere is enough to freeze the whole application
+            # behind a no-op "ADD COLUMN IF NOT EXISTS". Give up quickly
+            # instead: these migrations are idempotent and retried next boot.
+            db.execute(text("SET LOCAL lock_timeout = '3s'"))
             db.execute(text(sql.strip()))
             db.commit()
         except Exception as exc:
@@ -149,6 +174,15 @@ def startup() -> None:
 
     db: Session = SessionLocal()
     try:
+        # Same reasoning as inside _run_migrations: never let idempotent DDL
+        # queue for an exclusive lock, because a queued ACCESS EXCLUSIVE lock
+        # blocks every subsequent reader of that table.
+        try:
+            db.execute(text("SET lock_timeout = '3s'"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
         _run_migrations(db)
 
         # Add scan_schedules table migration
@@ -213,6 +247,7 @@ def startup() -> None:
                 ("schedule_type", "VARCHAR(20) DEFAULT 'interval'"),
                 ("custom_datetime", "TIMESTAMPTZ"),
                 ("repeat", "BOOLEAN DEFAULT TRUE"),
+                ("intrusive", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ]:
                 try:
                     db.execute(text(f"ALTER TABLE scan_schedules ADD COLUMN IF NOT EXISTS {col} {coltype}"))
@@ -278,13 +313,16 @@ def _schedule_loop():
     _sla_check_counter = 0       # run every 60 ticks  (60 min)
     _backup_counter = 0          # run every 1440 ticks (24 hours)
     _update_check_counter = 0    # run every 1440 ticks (24 hours)
+    _dataset_counter = 0         # interval comes from the per-workspace setting
 
     while True:
         time.sleep(60)
         _sla_check_counter += 1
         _backup_counter += 1
         _update_check_counter += 1
+        _dataset_counter += 1
 
+        db = None
         try:
             db = SessionLocal()
             now_utc = datetime.now(timezone.utc)
@@ -304,13 +342,14 @@ def _schedule_loop():
                         profile_id=sched.profile_id,
                         status="queued",
                         scan_type=sched.scan_type or "internal",
+                        meta_json=_json.dumps({"intrusive": sched.intrusive is not False}),
                     )
                     db.add(job)
                     db.commit()
                     db.refresh(job)
 
                     q = Queue("scans", connection=Redis.from_url(settings.REDIS_URL))
-                    rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+                    rq_timeout = settings.SCAN_JOB_TIMEOUT
                     q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
 
                     sched.last_run_at = now_utc
@@ -334,22 +373,123 @@ def _schedule_loop():
                 except Exception as e:
                     logger.warning("Schedule #%d failed: %s", sched.id, e)
                     db.rollback()
+            # ── Stale scan job detection ───────────────────────────────
+            # RQ SIGKILLs a work-horse that overruns SCAN_JOB_TIMEOUT. A
+            # SIGKILLed process runs no Python, so run_scan_job's own error
+            # handler never fires and the row sits at "running" forever — the
+            # UI shows it as in-progress indefinitely and the Failed tab stays
+            # empty. Only an outside observer can close these out.
+            scan_run_cutoff = now_utc - timedelta(seconds=settings.SCAN_STALE_AFTER_SECONDS)
+            scan_queue_cutoff = now_utc - timedelta(seconds=settings.SCAN_STALE_AFTER_SECONDS * 4)
+            stale_jobs = (
+                db.query(models.ScanJob)
+                .filter(
+                    models.ScanJob.status.in_(["queued", "running"]),
+                    or_(
+                        and_(
+                            models.ScanJob.started_at.isnot(None),
+                            models.ScanJob.started_at < scan_run_cutoff,
+                        ),
+                        and_(
+                            models.ScanJob.started_at.is_(None),
+                            models.ScanJob.created_at < scan_queue_cutoff,
+                        ),
+                    ),
+                )
+                .all()
+            )
+            for sj in stale_jobs:
+                try:
+                    # Keep whatever progress was recorded: the plugin it died on
+                    # is the whole diagnostic value of one of these rows.
+                    try:
+                        meta = _json.loads(sj.meta_json or "{}")
+                        if not isinstance(meta, dict):
+                            meta = {}
+                    except Exception:
+                        meta = {}
+                    progress = meta.get("progress") or {}
+                    where = ""
+                    if progress:
+                        where = (
+                            f" at {progress.get('pct', '?')}% "
+                            f"(step {progress.get('step', '?')}/{progress.get('total', '?')}, "
+                            f"plugin {progress.get('current_plugin', '?')})"
+                        )
+
+                    if sj.started_at:
+                        ran = int((now_utc - sj.started_at).total_seconds())
+                        meta["error"] = f"Scan stopped responding{where}"
+                        meta["error_type"] = "timeout"
+                        meta["error_detail"] = (
+                            f"The scan ran for {ran}s without finishing (limit "
+                            f"{settings.SCAN_STALE_AFTER_SECONDS}s) and its worker is gone. "
+                            f"The work-horse was most likely killed after exceeding "
+                            f"SCAN_JOB_TIMEOUT ({settings.SCAN_JOB_TIMEOUT}s). Raise "
+                            f"SCAN_BUDGET_SECONDS, or disable the plugin it stalled on."
+                        )
+                    else:
+                        waited = int((now_utc - sj.created_at).total_seconds())
+                        meta["error"] = "Scan was never picked up by a worker"
+                        meta["error_type"] = "queue"
+                        meta["error_detail"] = (
+                            f"The job sat queued for {waited}s without a worker claiming it. "
+                            f"Check that the worker-scan container is running."
+                        )
+
+                    sj.meta_json = _json.dumps(meta)
+                    sj.status = "failed"
+                    sj.finished_at = now_utc
+                    db.commit()
+                    logger.info(
+                        "Stale scan job #%d (%s) marked failed: %s",
+                        sj.id, sj.target, meta["error"],
+                    )
+                except Exception as e_sj:
+                    logger.warning("Failed to clean stale scan job #%d: %s", sj.id, e_sj)
+                    db.rollback()
+
             # ── Stale AI analysis detection ────────────────────────────
-            # If an AI analysis has been queued/running for more than 15
-            # minutes, mark it as failed and restore the scan job to "done".
-            stale_cutoff = now_utc - timedelta(minutes=15)
+            # Fail an analysis only once it has genuinely overrun. Time is
+            # measured from started_at (when a worker picked it up), because
+            # an analysis sitting behind a busy queue has not consumed any of
+            # its budget yet — measuring from created_at used to fail those
+            # before they ever ran. Analyses that never start still get a
+            # much longer grace period so a dead worker is eventually noticed.
+            run_cutoff = now_utc - timedelta(seconds=settings.AI_STALE_AFTER_SECONDS)
+            queue_cutoff = now_utc - timedelta(seconds=settings.AI_STALE_AFTER_SECONDS * 4)
             stale_analyses = (
                 db.query(models.AiAnalysis)
                 .filter(
                     models.AiAnalysis.status.in_(["queued", "running"]),
-                    models.AiAnalysis.created_at < stale_cutoff,
+                    or_(
+                        and_(
+                            models.AiAnalysis.started_at.isnot(None),
+                            models.AiAnalysis.started_at < run_cutoff,
+                        ),
+                        and_(
+                            models.AiAnalysis.started_at.is_(None),
+                            models.AiAnalysis.created_at < queue_cutoff,
+                        ),
+                    ),
                 )
                 .all()
             )
             for sa in stale_analyses:
                 try:
+                    if sa.started_at:
+                        waited = int((now_utc - sa.started_at).total_seconds())
+                        sa.error = (
+                            f"Timed out — analysis ran for {waited}s without "
+                            f"finishing (limit {settings.AI_STALE_AFTER_SECONDS}s)"
+                        )
+                    else:
+                        waited = int((now_utc - sa.created_at).total_seconds())
+                        sa.error = (
+                            f"Timed out — never picked up by an AI worker after "
+                            f"{waited}s. Check that the worker-ai container is running."
+                        )
                     sa.status = "failed"
-                    sa.error = "Timed out — analysis was stuck for over 15 minutes"
                     sa.finished_at = now_utc
                     db.commit()
                     # Restore job status if stuck in "analyzing"
@@ -502,6 +642,33 @@ def _schedule_loop():
             except Exception as e_feat2:
                 logger.warning("SLA breach alert feature error: %s", e_feat2)
 
+            # ── Feature 5: Scheduled Dataset Refresh ──────────────────────
+            # Without this, CVE data is only as fresh as the last time someone
+            # remembered to press the button — which is how a 4-day-old,
+            # silently incomplete NVD dataset ended up in production.
+            try:
+                from app.api.routes_settings import _get_setting, DEFAULT_DATASET_REFRESH
+                ws_rows = db.query(models.Workspace).all()
+                for ws_row in ws_rows:
+                    cfg = _get_setting(db, ws_row.id, "dataset_refresh", DEFAULT_DATASET_REFRESH)
+                    if not cfg.get("enabled"):
+                        continue
+                    interval_ticks = max(1, int(cfg.get("interval_hours", 24)) * 60)
+                    if _dataset_counter % interval_ticks != 0:
+                        continue
+                    # run_dataset_refresh holds a Redis lock, so a trigger that
+                    # lands while one is still running is a no-op, not a clash.
+                    from app.worker_tasks import run_dataset_refresh
+                    Queue("datasets", connection=Redis.from_url(settings.REDIS_URL)).enqueue(
+                        run_dataset_refresh, ws_row.id, None, job_timeout=7200,
+                    )
+                    logger.info(
+                        "Scheduled dataset refresh queued for workspace %d (every %sh)",
+                        ws_row.id, cfg.get("interval_hours", 24),
+                    )
+            except Exception as e_feat5:
+                logger.warning("Scheduled dataset refresh error: %s", e_feat5)
+
             # ── Feature 3: Database Backup ────────────────────────────────
             # Run pg_dump every 1440 ticks (≈24 hours), keep last 7 backups.
             try:
@@ -634,9 +801,17 @@ def _schedule_loop():
             except Exception as e_feat4:
                 logger.warning("Update check feature error: %s", e_feat4)
 
-            db.close()
         except Exception as e:
             logger.warning("Scheduler tick error: %s", e)
+        finally:
+            # Always return the connection to the pool — a tick that raises
+            # before this point would otherwise leak one session per minute
+            # and exhaust the SQLAlchemy pool.
+            if db is not None:
+                try:
+                    db.close()
+                except Exception as e_close:
+                    logger.warning("Scheduler session close failed: %s", e_close)
 
 @app.on_event("startup")
 def start_scheduler():
@@ -644,28 +819,41 @@ def start_scheduler():
     t.start()
 
 
+def _write_audit(method: str, path: str, ip: str, ua: str) -> None:
+    """Blocking audit write — must run off the event loop."""
+    db: Session = SessionLocal()
+    try:
+        db.add(
+            models.AuditLog(
+                workspace_id=0,
+                actor_email="",
+                action=f"{method} {path}",
+                resource="",
+                ip=ip,
+                user_agent=ua,
+            )
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Audit log write failed: %s", exc)
+    finally:
+        db.close()
+
+
 @app.middleware("http")
 async def audit_mw(request: Request, call_next):
     response = await call_next(request)
     try:
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            db: Session = SessionLocal()
-            try:
-                ip = request.client.host if request.client else ""
-                ua = request.headers.get("User-Agent", "")
-                db.add(
-                    models.AuditLog(
-                        workspace_id=0,
-                        actor_email="",
-                        action=f"{request.method} {request.url.path}",
-                        resource="",
-                        ip=ip,
-                        user_agent=ua,
-                    )
-                )
-                db.commit()
-            finally:
-                db.close()
+            # Run in a worker thread: a synchronous commit here blocks the
+            # whole event loop, and it also holds a pool connection on the
+            # critical path of every mutating request.
+            ip = client_ip(request)
+            ua = request.headers.get("User-Agent", "")
+            await run_in_threadpool(
+                _write_audit, request.method, request.url.path, ip, ua,
+            )
     except Exception:
         pass
     return response
@@ -682,6 +870,7 @@ app.include_router(integrations_router)
 app.include_router(ai_router)
 app.include_router(api_scanner_router)
 app.include_router(iac_scanner_router)
+app.include_router(code_scanner_router)
 app.include_router(web_auth_router)
 app.include_router(threat_intel_router)
 app.include_router(assets_router)

@@ -30,6 +30,7 @@ logger = logging.getLogger("vulnscan.ssti")
 
 META = PluginMeta(
     plugin_id="web.ssti.scanner",
+    intrusive=True,
     name="SSTI (Server-Side Template Injection) Scanner",
     category="web",
     depends_on=["fingerprint.http"],

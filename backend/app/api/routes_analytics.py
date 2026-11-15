@@ -474,7 +474,7 @@ def reverify_scan(
 
     try:
         q = Queue("scans", connection=_redis())
-        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        rq_timeout = settings.SCAN_JOB_TIMEOUT
         q.enqueue(run_scan_job, new_job.id, job_timeout=rq_timeout)
         logger.info(
             "Reverify enqueued: job #%d (from #%d) target=%s fingerprints=%d",

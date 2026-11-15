@@ -14,6 +14,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.ssrf_deep",
+    intrusive=True,
     name="SSRF Deep (Cloud Metadata)",
     category="web",
     depends_on=["fingerprint.http"],

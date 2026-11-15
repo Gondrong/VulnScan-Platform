@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Icons, Status } from "./icons.jsx";
-import { scanApi, credentialsApi, datasetsApi, settingsApi, integrationsApi, aiApi, slaApi, threatIntelApi, notificationPrefsApi, autoAiApi, slaAlertApi, autoReportApi, canEdit, isAdmin } from "../api.js";
+import { scanApi, credentialsApi, datasetsApi, settingsApi, integrationsApi, aiApi, slaApi, threatIntelApi, notificationPrefsApi, autoAiApi, datasetRefreshApi, slaAlertApi, autoReportApi, canEdit, isAdmin } from "../api.js";
 
 function countPluginSelection(json) {
   try {
@@ -442,6 +442,70 @@ function NewCredentialModal({ credential, close, onSaved }) {
   );
 }
 
+const REFRESH_INTERVALS = [1, 2, 4, 6, 8, 12, 24, 48, 72, 168];
+
+function DatasetSchedule() {
+  const [cfg, setCfg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    datasetRefreshApi.get()
+      .then(setCfg)
+      .catch(() => setCfg({ enabled: false, interval_hours: 24 }));
+  }, []);
+
+  const save = async (updates) => {
+    setSaving(true); setMsg("");
+    try {
+      const r = await datasetRefreshApi.update(updates);
+      setCfg(r);
+      setMsg("Saved");
+      setTimeout(() => setMsg(""), 2000);
+    } catch (e) { setMsg(e.message || "Failed to save"); }
+    finally { setSaving(false); }
+  };
+
+  if (!cfg) return null;
+
+  const hours = cfg.interval_hours || 24;
+  const label = (h) => h === 1 ? "Every hour" : h === 168 ? "Every 7 days" : h % 24 === 0 ? `Every ${h / 24} day${h > 24 ? "s" : ""}` : `Every ${h} hours`;
+
+  return (
+    <div className="card" style={{marginBottom: 14}}>
+      <div className="card-body" style={{display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap"}}>
+        <div style={{flex: "1 1 320px"}}>
+          <div style={{fontWeight: 600, fontSize: 14, color: "var(--text-0)"}}>Scheduled refresh</div>
+          <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 2, lineHeight: 1.5}}>
+            {cfg.enabled
+              ? `Datasets refresh on their own, ${label(hours).toLowerCase()}. The clock runs from the last backend start, not from a fixed time of day.`
+              : "Datasets only refresh when someone presses Refresh all."}
+          </div>
+        </div>
+        {cfg.enabled && (
+          <select className="form-input" style={{width: 150}}
+            value={hours}
+            onChange={e => save({ interval_hours: Number(e.target.value) })}
+            disabled={saving || !canEdit()}
+          >
+            {REFRESH_INTERVALS.map(h => <option key={h} value={h}>{label(h)}</option>)}
+          </select>
+        )}
+        <button
+          className={cfg.enabled ? "btn btn-primary" : "btn"}
+          style={{minWidth: 70}}
+          onClick={() => save({ enabled: !cfg.enabled })}
+          disabled={saving || !canEdit()}
+          title={canEdit() ? "" : "Requires analyst or admin role"}
+        >
+          {cfg.enabled ? "ON" : "OFF"}
+        </button>
+        {msg && <span style={{fontSize: 12, color: msg === "Saved" ? "var(--ok)" : "var(--err)"}}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
 export function Datasets() {
   const [datasets, setDatasets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -520,6 +584,7 @@ export function Datasets() {
         )}
       </div>
       {error && <div style={{color: "var(--err)", marginBottom: 14, fontSize: 13}}><Icons.AlertTriangle size={13}/> {error}</div>}
+      <DatasetSchedule />
       {refreshStatus && refreshStatus.status && refreshStatus.status !== "idle" && (() => {
         const isRunning = refreshStatus.status === "running";
         const kinds = refreshStatus.kinds || {};
@@ -614,6 +679,7 @@ export function Settings({ initialTab }) {
     { id: "integrations", label: "Integrations", icon: Icons.Layers, minRole: "admin" },
     { id: "notifications", label: "Notifications", icon: Icons.Bell, minRole: "analyst" },
     { id: "users", label: "Users & RBAC", icon: Icons.Lock, minRole: "admin" },
+    { id: "exploit", label: "Agentic Exploit", icon: Icons.AlertTriangle, minRole: "admin" },
     { id: "system", label: "System", icon: Icons.Server },
   ];
   const sections = allSections.filter(s => {
@@ -667,6 +733,7 @@ export function Settings({ initialTab }) {
           {active === "integrations" && <IntegrationsPanel/>}
           {active === "notifications" && <NotificationPrefsPanel/>}
           {active === "users" && <UsersPanel/>}
+          {active === "exploit" && <ExploitAllowlistPanel/>}
           {active === "system" && <SystemPanel/>}
         </div>
       </div>
@@ -763,6 +830,7 @@ function AutoAIPanel() {
                 <option value="validate">Validate - Classify findings as true/false positive</option>
                 <option value="full">Full Analysis - Executive summary + attack chains + remediation</option>
                 <option value="full_exploit">Full + PoC - Full analysis + proof-of-concept scripts</option>
+                <option value="validate_then_exploit">Validate then PoC - Validate first, deep analysis only on confirmed findings</option>
               </select>
             </div>
 
@@ -899,6 +967,75 @@ function SLAAlertPanel() {
           </div>
         )}
         {msg && <div style={{fontSize: 12, color: msg === "Saved" ? "var(--low, #2ecc71)" : "var(--critical, #e74c3c)"}}>{msg}</div>}
+      </div>
+    </>
+  );
+}
+
+function ExploitAllowlistPanel() {
+  const [data, setData] = useState(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const r = await settingsApi.getExploitAllowlist();
+      setData(r);
+      setText((r.entries || []).join("\n"));
+      setErr("");
+    } catch (e) { setErr(e.message || "Failed to load"); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    setBusy(true); setMsg(""); setErr("");
+    try {
+      const entries = text.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+      const r = await settingsApi.updateExploitAllowlist({ entries });
+      setMsg(`Saved — ${r.count} entr${r.count === 1 ? "y" : "ies"}.`);
+      load();
+    } catch (e) { setErr(e.message || "Save failed"); }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Agentic Exploit</div>
+          <div className="card-sub" style={{marginTop: 0}}>
+            Hosts the AI exploit agent (Mode B) is permitted to actively attack. Fail-closed: empty = none allowed.
+          </div>
+        </div>
+      </div>
+      <div className="card-body" style={{display: "flex", flexDirection: "column", gap: 14}}>
+        <div style={{padding: "10px 12px", borderRadius: 8, background: "var(--surface-1)", border: "1px solid var(--line)"}}>
+          <div style={{fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 8}}>
+            Master switch:&nbsp;
+            {data?.enabled
+              ? <span style={{color: "var(--ok)"}}>ENABLED</span>
+              : <span style={{color: "var(--err)"}}>DISABLED</span>}
+          </div>
+          <div className="form-help" style={{marginTop: 4}}>
+            Controlled server-side by <span className="mono">ENABLE_AGENTIC_EXPLOIT</span> in <span className="mono">.env</span>.
+            {!data?.enabled && " While disabled, no exploit session can start even if a target is listed here."}
+          </div>
+        </div>
+
+        <div>
+          <label className="form-label">Exploit allowlist (one per line — host, .domain suffix, or CIDR)</label>
+          <textarea className="form-input mono" rows={8} value={text} onChange={e => setText(e.target.value)}
+                    placeholder={"omnichannel.qiscus.com\n.staging.qiscus.com\n10.0.5.0/24"} style={{resize: "vertical"}}/>
+          <div className="form-help" style={{color: "var(--err)", marginTop: 6}}>
+            <Icons.AlertTriangle size={12}/> Only add hosts you are explicitly authorised to actively exploit. Every action is still approved per-action, and destructive payloads are blocked in code.
+          </div>
+        </div>
+
+        {msg && <div style={{color: "var(--ok)", fontSize: 12}}>{msg}</div>}
+        {err && <div style={{color: "var(--err)", fontSize: 12}}><Icons.AlertTriangle size={12}/> {err}</div>}
+        <div><button className="btn btn-primary btn-sm" disabled={busy} onClick={save}><Icons.Check size={13}/> Save allowlist</button></div>
       </div>
     </>
   );
@@ -1065,6 +1202,7 @@ const _AI_ADD_TYPES = {
   gemini:       { label: "Gemini",              icon: Icons.Sparkles, models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"] },
   azure_openai: { label: "Azure OpenAI",        icon: Icons.Cloud,    models: [] },
   openai_compat:{ label: "OpenAI-Compatible",   icon: Icons.Server,   models: [] },
+  openrouter:   { label: "OpenRouter",          icon: Icons.Layers,   models: ["anthropic/claude-sonnet-4.5", "openai/gpt-4o", "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-chat"] },
   local_llm:    { label: "Local LLM (Ollama, LM Studio, etc.)", icon: Icons.Server, models: ["llama3.1", "mistral", "codellama", "deepseek-r1", "qwen2.5", "gemma2"] },
 };
 
@@ -1088,6 +1226,24 @@ const _AI_TYPE_META = {
   qwen_cli:     { label: "Qwen CLI",           icon: Icons.Code },
 };
 
+// Match on the parsed hostname, not a substring: "my-openrouter.ai.example.com"
+// must not be mistaken for OpenRouter.
+function _isHost(url, host) {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === host || h.endsWith("." + host);
+  } catch { return false; }
+}
+
+// OpenRouter is stored as `openai_compat`, so the stored type alone cannot tell
+// it apart from a self-hosted gateway. The endpoint host is what identifies it.
+function _providerMeta(p) {
+  const pt = p.provider_type || p.id || "";
+  const ep = p.endpoint || "";
+  if (pt === "openai_compat" && _isHost(ep, "openrouter.ai")) return _AI_ADD_TYPES.openrouter;
+  return _AI_TYPE_META[pt] || null;
+}
+
 const _SOURCE_BADGE = {
   db:  { label: "API Key",  bg: "var(--brand-soft)", color: "var(--brand-text)" },
   env: { label: "Server",   bg: "var(--surface-2)",  color: "var(--text-2)" },
@@ -1098,13 +1254,36 @@ function AIProvidersPanel() {
   const [providers, setProviders] = useState(null);
   const [error, setError] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  // When set, the Add modal opens in edit mode for this provider row.
+  const [editProvider, setEditProvider] = useState(null);
   const [testing, setTesting] = useState(null);
   const [testMsg, setTestMsg] = useState({});
+  // Which provider post-scan analysis uses. Stored in the auto_ai_analysis
+  // workspace setting, so this button and Settings > Auto AI Analysis are two
+  // views of the same value.
+  const [defaultKey, setDefaultKey] = useState(null);
+  const [autoEnabled, setAutoEnabled] = useState(null);
+  const [settingDefault, setSettingDefault] = useState(null);
 
   const load = useCallback(() => {
     aiApi.providers().then(r => setProviders(r.providers || [])).catch(e => setError(e.message));
+    autoAiApi.get().then(c => {
+      setDefaultKey(c?.provider || "");
+      setAutoEnabled(!!c?.enabled);
+    }).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const onSetDefault = async (key) => {
+    setSettingDefault(key ?? "");
+    try {
+      // Only the provider. Flipping `enabled` here would silently switch
+      // automation back on for someone who deliberately turned it off.
+      await autoAiApi.update({ provider: key });
+      setDefaultKey(key);
+    } catch (e) { alert(e.message); }
+    finally { setSettingDefault(null); }
+  };
 
   const onDelete = async (id) => {
     if (!confirm("Delete this AI provider?")) return;
@@ -1127,7 +1306,8 @@ function AIProvidersPanel() {
 
   const providerIcon = (p) => {
     const pt = p.provider_type || p.id || "";
-    if (pt in _AI_TYPE_META) return _AI_TYPE_META[pt].icon;
+    const m = _providerMeta(p);
+    if (m?.icon) return m.icon;
     if (pt.includes("claude")) return Icons.Brain;
     if (pt.includes("openai")) return Icons.Cloud;
     if (pt.includes("gemini")) return Icons.Sparkles;
@@ -1140,7 +1320,27 @@ function AIProvidersPanel() {
       <div className="card-head">
         <div><div className="card-title">AI Providers</div><div className="card-sub" style={{marginTop: 0}}>LLM backends for finding validation and PoC generation.</div></div>
         {isAdmin() && (
-          <div className="actions">
+          <div className="actions" style={{display: "flex", alignItems: "center", gap: 10}}>
+            {/* One control for one value: which provider runs after every scan.
+                Writes auto_ai_analysis.provider, the same setting the Auto AI
+                Analysis panel edits. */}
+            <label style={{display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)"}}>
+              Default for auto-analysis
+              <select className="form-input" style={{height: 28, fontSize: 12, maxWidth: 210}}
+                      value={defaultKey ?? ""} disabled={settingDefault !== null || providers === null}
+                      onChange={e => onSetDefault(e.target.value)}>
+                <option value="">Auto-detect (prefer Claude CLI)</option>
+                {(providers || []).filter(p => p.enabled !== false).map(p => (
+                  <option key={p.id} value={p.key || p.id}>{p.name} ({p.model})</option>
+                ))}
+              </select>
+              {settingDefault !== null && <Icons.Refresh size={12} className="spin"/>}
+            </label>
+            {autoEnabled === false && (
+              <span style={{fontSize: 11, color: "var(--warn, var(--text-3))"}} title="Enable it under Settings > Auto AI Analysis">
+                auto-analysis is off
+              </span>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}><Icons.Plus size={12}/> Add provider</button>
           </div>
         )}
@@ -1156,8 +1356,11 @@ function AIProvidersPanel() {
         ) : (
           providers.map(p => {
             const I = providerIcon(p);
+            const typeLabel = _providerMeta(p)?.label || null;
             const badge = _SOURCE_BADGE[p.source] || _SOURCE_BADGE.env;
             const isDb = p.source === "db";
+            const pKey = p.key || p.id;
+            const isDefault = defaultKey != null && String(defaultKey) === String(pKey);
             const tm = testMsg[p.id];
             return (
               <div key={p.id} style={{display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 8, opacity: p.enabled === false ? 0.5 : 1}}>
@@ -1166,6 +1369,8 @@ function AIProvidersPanel() {
                   <div style={{display: "flex", alignItems: "center", gap: 8}}>
                     <span style={{fontSize: 13.5, color: "var(--text-0)", fontWeight: 500}}>{p.name}</span>
                     <span style={{fontSize: 10, padding: "1px 6px", borderRadius: 4, background: badge.bg, color: badge.color, fontWeight: 600}}>{badge.label}</span>
+                    {typeLabel && <span style={{fontSize: 11, color: "var(--text-3)"}}>{typeLabel}</span>}
+                    {isDefault && <span style={{fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--brand-soft)", color: "var(--brand-text)", fontWeight: 600}}>DEFAULT</span>}
                   </div>
                   <div style={{fontSize: 12, color: "var(--text-3)", fontFamily: "var(--font-mono)"}}>{p.model}{p.endpoint ? ` @ ${p.endpoint}` : ""}</div>
                   {tm && <div style={{fontSize: 11, marginTop: 2, color: tm === "OK" ? "var(--ok)" : "var(--err)"}}>{tm === "OK" ? "Test passed" : tm}</div>}
@@ -1175,6 +1380,9 @@ function AIProvidersPanel() {
                     <>
                       <button className="btn btn-ghost btn-sm" onClick={() => onTest(p.id)} disabled={testing === p.id}>
                         {testing === p.id ? <Icons.Refresh size={11} className="spin"/> : <Icons.Check size={11}/>} Test
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditProvider(p)}>
+                        <Icons.Settings size={11}/> Edit
                       </button>
                       <button className="btn btn-ghost btn-sm" onClick={() => onToggle(p.id, p.enabled)}>
                         {p.enabled ? "Disable" : "Enable"}
@@ -1192,28 +1400,52 @@ function AIProvidersPanel() {
         )}
       </div>
       {showAdd && <AddAIProviderModal close={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); }}/>}
+      {editProvider && <AddAIProviderModal editProvider={editProvider} close={() => setEditProvider(null)} onSaved={() => { setEditProvider(null); load(); }}/>}
     </>
   );
 }
 
-function AddAIProviderModal({ close, onSaved }) {
-  const [providerType, setProviderType] = useState("openai");
-  const [name, setName] = useState("");
-  const [model, setModel] = useState("");
+// Re-derive the add-modal type key from a stored row. OpenRouter and local LLMs
+// are both saved as openai_compat, told apart by their endpoint.
+function _editTypeOf(p) {
+  const pt = p.provider_type || "";
+  if (pt === "openai_compat") {
+    if (_isHost(p.endpoint, "openrouter.ai")) return "openrouter";
+    const ep = (p.endpoint || "").toLowerCase();
+    if (ep.includes("localhost") || ep.includes("127.0.0.1")) return "local_llm";
+  }
+  return pt;
+}
+
+function AddAIProviderModal({ close, onSaved, editProvider }) {
+  const isEdit = !!editProvider;
+  const [providerType, setProviderType] = useState(
+    isEdit ? _editTypeOf(editProvider) : "openai");
+  const [name, setName] = useState(isEdit ? (editProvider.name || "") : "");
+  const [model, setModel] = useState(isEdit ? (editProvider.model || "") : "");
   const [apiKey, setApiKey] = useState("");
-  const [endpoint, setEndpoint] = useState("");
+  const [endpoint, setEndpoint] = useState(isEdit ? (editProvider.endpoint || "") : "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const meta = _AI_ADD_TYPES[providerType] || {};
   const isLocal = providerType === "local_llm";
-  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat" || isLocal;
+  // OpenRouter is an OpenAI-compatible gateway: it is its own entry here purely
+  // so the endpoint is prefilled and the vendor/model ID format is signposted.
+  // It is stored as openai_compat, like local_llm.
+  const isOpenRouter = providerType === "openrouter";
+  const needsEndpoint = providerType === "azure_openai" || providerType === "openai_compat" || isLocal || isOpenRouter;
   const needsApiKey = !isLocal;
 
+  // Prefill defaults when the user picks a type — but not in edit mode, where
+  // the type is fixed and these would wipe the values loaded from the row.
   useEffect(() => {
+    if (isEdit) return;
     setName(meta.label || providerType);
     setModel(meta.models?.[0] || "");
-    setEndpoint(isLocal ? "http://localhost:11434/v1" : "");
+    setEndpoint(isLocal ? "http://localhost:11434/v1"
+              : isOpenRouter ? "https://openrouter.ai/api/v1"
+              : "");
     setApiKey("");
   }, [providerType]);
 
@@ -1221,19 +1453,30 @@ function AddAIProviderModal({ close, onSaved }) {
     setError("");
     setSubmitting(true);
     try {
-      await aiApi.saveProvider({
-        provider_type: isLocal ? "openai_compat" : providerType,
-        name,
-        model,
-        api_key: apiKey || (isLocal ? "local" : ""),
-        endpoint: endpoint || undefined,
-      });
+      if (isEdit) {
+        const body = { name, model, endpoint: endpoint || "" };
+        // Blank key = keep the stored one; the API key is never sent back to
+        // the browser, so an empty field must not overwrite it.
+        if (apiKey) body.api_key = apiKey;
+        await aiApi.updateProvider(editProvider.id, body);
+      } else {
+        await aiApi.saveProvider({
+          provider_type: (isLocal || isOpenRouter) ? "openai_compat" : providerType,
+          name,
+          model,
+          api_key: apiKey || (isLocal ? "local" : ""),
+          endpoint: endpoint || undefined,
+        });
+      }
       onSaved();
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }
   };
 
-  const canSubmit = !submitting && name && model && (needsApiKey ? !!apiKey : true) && (needsEndpoint ? !!endpoint : true);
+  // In edit mode the key is optional (blank = unchanged).
+  const canSubmit = !submitting && name && model
+    && (needsApiKey && !isEdit ? !!apiKey : true)
+    && (needsEndpoint ? !!endpoint : true);
 
   return (
     <>
@@ -1241,15 +1484,17 @@ function AddAIProviderModal({ close, onSaved }) {
       <div className="modal" style={{maxWidth: 500}}>
         <div className="drawer-head">
           <Icons.Brain size={16} color="var(--brand)"/>
-          <span style={{fontSize: 14, fontWeight: 600, color: "var(--text-0)"}}>Add AI provider</span>
+          <span style={{fontSize: 14, fontWeight: 600, color: "var(--text-0)"}}>{isEdit ? "Edit AI provider" : "Add AI provider"}</span>
           <button className="btn btn-ghost btn-icon btn-sm" onClick={close} style={{marginLeft: "auto"}}><Icons.X size={14}/></button>
         </div>
         <div style={{padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14}}>
           <div>
             <label className="form-label">Provider type</label>
-            <select className="form-input" value={providerType} onChange={e => setProviderType(e.target.value)}>
+            <select className="form-input" value={providerType} disabled={isEdit}
+                    onChange={e => setProviderType(e.target.value)}>
               {Object.entries(_AI_ADD_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
+            {isEdit && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 3}}>Provider type cannot be changed — delete and re-add to switch type.</div>}
           </div>
           <div>
             <label className="form-label">Display name</label>
@@ -1257,7 +1502,7 @@ function AddAIProviderModal({ close, onSaved }) {
           </div>
           <div>
             <label className="form-label">Model</label>
-            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={isLocal ? "e.g. llama3.1, mistral, deepseek-r1" : needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
+            <input className="form-input" value={model} onChange={e => setModel(e.target.value)} list="ai-model-list" placeholder={isLocal ? "e.g. llama3.1, mistral, deepseek-r1" : isOpenRouter ? "vendor/model — e.g. anthropic/claude-sonnet-4.5" : needsEndpoint ? "deployment name or model ID" : "e.g. gpt-4o"}/>
             {meta.models?.length > 0 && (
               <datalist id="ai-model-list">
                 {meta.models.map(m => <option key={m} value={m}/>)}
@@ -1269,15 +1514,16 @@ function AddAIProviderModal({ close, onSaved }) {
               <label className="form-label">Endpoint URL</label>
               <input className="form-input" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder={isLocal ? "http://localhost:11434/v1" : providerType === "azure_openai" ? "https://your-resource.openai.azure.com" : "https://api.example.com/v1"}/>
               {isLocal && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 3}}>Ollama: :11434/v1 &middot; LM Studio: :1234/v1 &middot; LocalAI: :8080/v1 &middot; Jan: :1337/v1</div>}
+              {isOpenRouter && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 3}}>Base URL only &mdash; do not append <span className="mono">/chat/completions</span>. Model IDs are <span className="mono">vendor/model</span> (openrouter.ai/models). API key starts with <span className="mono">sk-or-v1-</span></div>}
             </div>
           )}
           <div>
-            <label className="form-label">API key {isLocal && <span style={{color: "var(--text-3)", fontWeight: 400}}>(optional — most local LLMs don't need one)</span>}</label>
-            <input className="form-input" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={isLocal ? "leave empty if not required" : "sk-..."}/>
+            <label className="form-label">API key {(isLocal || isEdit) && <span style={{color: "var(--text-3)", fontWeight: 400}}>{isEdit ? "(leave blank to keep the current key)" : "(optional — most local LLMs don't need one)"}</span>}</label>
+            <input className="form-input" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={isEdit ? "•••••••• unchanged" : isLocal ? "leave empty if not required" : "sk-..."}/>
           </div>
           {error && <div style={{color: "var(--err)", fontSize: 13}}><Icons.AlertTriangle size={12}/> {error}</div>}
           <button className="btn btn-primary" onClick={submit} disabled={!canSubmit}>
-            {submitting ? "Adding..." : "Add provider"}
+            {submitting ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save changes" : "Add provider")}
           </button>
         </div>
       </div>

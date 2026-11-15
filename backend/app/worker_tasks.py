@@ -1,14 +1,19 @@
 import os
 import asyncio
+import http.client
 import json
 import logging
 import re
+import time
 import traceback
 from datetime import datetime, timezone
 
+from redis import Redis
+from rq import Queue
 from sqlalchemy.orm import Session
 
 from app.compliance.mapper import map_compliance_by_cve_or_category
+from app.core.config import settings
 from app.cve.dataset_loader import load_json
 from app.db import models
 from app.db.session import SessionLocal
@@ -150,8 +155,9 @@ def run_scan_job(job_id: int) -> None:
         scan_type = job.scan_type or "internal"
 
         # API Scanner & IaC Scanner jobs don't need a profile — handle separately
-        if scan_type in ("api", "iac"):
+        if scan_type in ("api", "iac", "source_code"):
             job.status = "running"
+            job.started_at = datetime.now(timezone.utc)
             db.commit()
             logger.info("Starting %s scan job #%d target=%s", scan_type, job_id, job.target)
             prof = None
@@ -178,6 +184,9 @@ def run_scan_job(job_id: int) -> None:
                 return
 
             job.status = "running"
+            # Stamped here, not at creation: the watchdog must measure how long
+            # the job has actually been running, not how long it queued.
+            job.started_at = datetime.now(timezone.utc)
             db.commit()
             logger.info("Starting scan job #%d target=%s type=%s", job_id, job.target, scan_type)
 
@@ -218,12 +227,81 @@ def run_scan_job(job_id: int) -> None:
                 job_id, _job_web_auth.get("type"), _job_web_auth.get("credential_id"),
             )
 
+        # Intrusive or not is chosen per scan in the New Scan dialog. Absent
+        # means intrusive: jobs from before the choice existed, schedules and
+        # API callers keep the behaviour they had.
+        profile["intrusive"] = (bool(_job_meta_in.get("intrusive", True))
+                                if isinstance(_job_meta_in, dict) else True)
+
+        # ── Agentic plugin-orchestration (Mode A) phase override ─────────────
+        # Read from the dedicated agentic_json column (meta_json is overwritten
+        # by progress). "plan" = non-intrusive recon then propose a plugin plan;
+        # "execute" = run only the human-approved plugins, intrusive.
+        try:
+            _agentic = json.loads(job.agentic_json) if job.agentic_json else None
+        except Exception:
+            _agentic = None
+        _agentic_phase = _agentic.get("phase") if isinstance(_agentic, dict) else None
+        if _agentic_phase == "plan":
+            profile["intrusive"] = False
+        elif _agentic_phase == "execute":
+            _approved = set(_agentic.get("approved_plugins") or [])
+            from app.scanner.engine import PLUGINS as _ALL_PLUGINS
+            profile["plugin_selection_json"] = json.dumps(
+                {pid: (pid in _approved) for pid in _ALL_PLUGINS.keys()}
+            )
+            profile["intrusive"] = True
+        _agentic_provider = _agentic.get("provider") if isinstance(_agentic, dict) else None
+
+        # Everything the scan needs is now in plain Python values. Close the
+        # transaction before the long-running scan starts.
+        #
+        # Reading `prof`/`job` attributes after the earlier commit made
+        # SQLAlchemy silently re-open a transaction to refresh the expired
+        # objects, and that transaction then sat "idle in transaction" for the
+        # entire scan while holding locks on profiles/scan_jobs. Any DDL that
+        # came along (the startup migrations run ALTER TABLE scan_jobs) queued
+        # behind it, and in PostgreSQL a queued ACCESS EXCLUSIVE lock blocks
+        # every subsequent reader — freezing the whole application.
+        _job_target = job.target
+        _job_pk = job.id
+        db.commit()
+
         # Progress callback - updates meta_json so frontend can poll
         # Uses a SEPARATE db session to avoid corrupting the main session
         _scan_start = datetime.now(timezone.utc)
         _plugin_log = []
+        _last_progress_write = [0.0]
+        # A "running" tick closer than this to the previous write is dropped.
+        # Terminal ticks always get through, so the UI never misses a final state.
+        PROGRESS_MIN_INTERVAL = 2.0
 
-        def _progress(step, total, plugin_id, plugin_name, status):
+        def _write_progress(progress_json: str) -> None:
+            """Blocking DB write — must run off the event loop."""
+            progress_db = None
+            try:
+                progress_db = SessionLocal()
+                progress_db.query(models.ScanJob).filter(
+                    models.ScanJob.id == job_id
+                ).update({"meta_json": progress_json})
+                progress_db.commit()
+            except Exception as exc:
+                # Warning, not debug: a pool timeout here is exactly what made
+                # scans silently overrun their budget.
+                logger.warning("Progress update failed for job #%d: %s", job_id, exc)
+                if progress_db:
+                    try:
+                        progress_db.rollback()
+                    except Exception:
+                        pass
+            finally:
+                if progress_db:
+                    try:
+                        progress_db.close()
+                    except Exception:
+                        pass
+
+        async def _progress(step, total, plugin_id, plugin_name, status):
             elapsed = (datetime.now(timezone.utc) - _scan_start).total_seconds()
             entry = {"plugin_id": plugin_id, "name": plugin_name, "status": status, "t": round(elapsed, 1)}
             # Update log (replace if same plugin, append if new)
@@ -246,27 +324,15 @@ def run_scan_job(job_id: int) -> None:
                 }
             })
 
-            # Use a separate session so failures don't corrupt the main session
-            progress_db = None
-            try:
-                progress_db = SessionLocal()
-                progress_db.query(models.ScanJob).filter(
-                    models.ScanJob.id == job_id
-                ).update({"meta_json": progress_json})
-                progress_db.commit()
-            except Exception as exc:
-                logger.debug("Progress update failed for job #%d: %s", job_id, exc)
-                if progress_db:
-                    try:
-                        progress_db.rollback()
-                    except Exception:
-                        pass
-            finally:
-                if progress_db:
-                    try:
-                        progress_db.close()
-                    except Exception:
-                        pass
+            # Opening a session per plugin transition (~138 per scan) on the
+            # event loop is what let a drained pool stall a scan for minutes at
+            # a time: each call blocked for pool_timeout seconds and the failure
+            # was swallowed at debug level. Throttle, and write off the loop.
+            now_m = time.monotonic()
+            if status == "running" and (now_m - _last_progress_write[0]) < PROGRESS_MIN_INTERVAL:
+                return
+            _last_progress_write[0] = now_m
+            await asyncio.to_thread(_write_progress, progress_json)
 
         try:
             if scan_type == "api":
@@ -281,8 +347,18 @@ def run_scan_job(job_id: int) -> None:
                 from app.scanner.plugins.iac_scanner import Check as IacScannerCheck
                 iac_checker = IacScannerCheck()
                 findings = _run_async(iac_checker.run_standalone(iac_config, progress_callback=_progress))
+            elif scan_type == "source_code":
+                # Source-code Scanner — standalone mode (upload/git driven).
+                # SCA (deterministic) + agentic source read over an ingested tree.
+                code_config = json.loads(job.meta_json or "{}").get("code_scanner_config", {})
+                from app.scanner.code_scan import Check as CodeScanCheck
+                code_checker = CodeScanCheck()
+                findings = _run_async(code_checker.run_standalone(
+                    code_config, progress_callback=_progress,
+                    job_id=_job_pk, workspace_id=ws_id,
+                ))
             else:
-                findings = _run_async(scan_target(job.target, profile, ws_id, scan_type, progress_callback=_progress, job_id=job.id))
+                findings = _run_async(scan_target(_job_target, profile, ws_id, scan_type, progress_callback=_progress, job_id=_job_pk))
         except Exception as e:
             tb = traceback.format_exc()
             logger.exception("scan_target failed for job #%d: %s", job_id, e)
@@ -581,7 +657,7 @@ def run_scan_job(job_id: int) -> None:
                         risk_score=risk,
                         fingerprint=getattr(f, "fingerprint", ""),
                         title=getattr(f, "title", ""),
-                        severity=severity,
+                        severity=sev,
                         compliance_ids=compliance_ids,
                     )
                 except Exception as e:
@@ -592,6 +668,35 @@ def run_scan_job(job_id: int) -> None:
             "Job #%d done: %d findings saved, %d dropped (total=%d, threshold=%.2f)",
             job_id, saved_count, dropped_count, len(findings), min_confidence,
         )
+
+        # ── Agentic plan phase: propose a plugin plan and pause for approval ──
+        # The recon findings are saved above; now ask the provider for a plan,
+        # store it on agentic_json, and leave the job awaiting a human. Nothing
+        # intrusive runs until POST /scan/jobs/{id}/approve-plan re-enqueues it.
+        if _agentic_phase == "plan":
+            try:
+                from app.ai import agentic_planner
+                plan_result = agentic_planner.propose_plan(
+                    _agentic_provider or "", ws_id, _job_target,
+                    scan_type, findings,
+                )
+            except Exception as e:  # noqa: BLE001
+                plan_result = {"summary": "", "plan": [], "error": str(e)}
+            _agentic.update({
+                "phase": "awaiting_approval",
+                "recon_findings_saved": saved_count,
+                "summary": plan_result.get("summary", ""),
+                "plan": plan_result.get("plan", []),
+                "error": plan_result.get("error"),
+                "planned_at": datetime.now(timezone.utc).isoformat(),
+            })
+            job.agentic_json = json.dumps(_agentic)
+            job.status = "awaiting_approval"
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            logger.info("Job #%d agentic plan ready: %d plugin(s) proposed, awaiting approval",
+                        job_id, len(plan_result.get("plan", [])))
+            return
 
         job.status = "done"
         job.finished_at = datetime.now(timezone.utc)
@@ -933,12 +1038,13 @@ import concurrent.futures
 import threading
 import time
 
-_DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories", "cvedetails_cvss", "cms_cve_map", "compliance_map"]
+_DS_KINDS_ORDER = ["nvd_cpe_cve", "cisa_kev", "epss", "vendor_advisories", "cvedetails_cvss", "cms_cve_map", "compliance_map", "osv"]
 _DS_KIND_DEPENDS = {"cms_cve_map": "nvd_cpe_cve", "cvedetails_cvss": "nvd_cpe_cve"}
 _DS_KIND_NAMES = {
     "nvd_cpe_cve": "nvd_auto", "cisa_kev": "kev_auto", "epss": "epss_auto",
     "vendor_advisories": "vendor_adv_auto",
     "cms_cve_map": "cms_auto", "compliance_map": "compliance_auto", "cvedetails_cvss": "cvedetails_auto",
+    "osv": "osv_auto",
 }
 _DS_CANONICAL = {
     "nvd_cpe_cve": "/data/cve/nvd_cpe_cve.json",
@@ -948,9 +1054,26 @@ _DS_CANONICAL = {
     "cvedetails_cvss": "/data/cve/cvedetails_cvss.json",
     "cms_cve_map": "/data/cve/cms_cve_map.json",
     "compliance_map": "/data/cve/compliance_map.json",
+    "osv": "/data/cve/osv.json",
 }
 
 _NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+# NVD can no longer serve resultsPerPage=2000 within any sane timeout: measured
+# from this host, a 2000-item page did not complete in 155s while a 200-item
+# page took 9.8s. Smaller pages mean more requests, but they are the only size
+# that finishes.
+_NVD_PAGE_SIZE = int(os.environ.get("NVD_PAGE_SIZE", "200"))
+_NVD_PAGE_TIMEOUT = int(os.environ.get("NVD_PAGE_TIMEOUT", "120"))
+# How long a half-finished run stays resumable before its window is
+# treated as too stale to keep extending.
+_NVD_RESUME_MAX_AGE_HOURS = int(os.environ.get("NVD_RESUME_MAX_AGE_HOURS", "48"))
+# Superseded (disabled) rows kept per dataset kind after a successful refresh.
+# Every row of a kind points at the same canonical file, overwritten in place
+# each refresh, so a disabled row is a stale pointer with no rollback value;
+# default 0 deletes every disabled row as soon as that kind's refresh succeeds.
+# Set higher only to keep a few historical rows visible on the Datasets page.
+_DATASET_KEEP_DISABLED = max(0, int(os.environ.get("DATASET_KEEP_DISABLED", "0")))
 _CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 _EPSS_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
 _CVEORG_API = "https://cveawg.mitre.org/api/cve"
@@ -969,6 +1092,18 @@ def _ds_fetch_url(url, headers=None, timeout=30):
 # HTTP status codes worth retrying (transient server errors)
 _RETRYABLE_HTTP_CODES = {429, 500, 502, 503, 504}
 
+# Transport-level failures worth retrying. http.client.HTTPException is the one
+# that is easy to miss: IncompleteRead (the connection drops mid-body) derives
+# from it, NOT from URLError/OSError, so it used to escape the retry loop
+# entirely and fail the page on its first attempt — while the caller still
+# logged "failed after retries".
+_RETRYABLE_EXC = (
+    urllib.error.URLError,
+    TimeoutError,
+    OSError,
+    http.client.HTTPException,
+)
+
 
 def _ds_fetch_url_retry(url, headers=None, timeout=30, max_retries=3, label=""):
     """Fetch URL with exponential backoff retry for transient errors."""
@@ -985,7 +1120,7 @@ def _ds_fetch_url_retry(url, headers=None, timeout=30, max_retries=3, label=""):
                 time.sleep(delay)
                 continue
             raise  # non-retryable (e.g. 403) or retries exhausted
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+        except _RETRYABLE_EXC as e:
             last_exc = e
             if attempt <= max_retries:
                 delay = 10 * (2 ** (attempt - 1))
@@ -1011,53 +1146,159 @@ def _ds_run_script(name, args, timeout=180):
 
 
 def _ds_refresh_nvd(api_key, nvd_days=120):
+    """Fetch the NVD CVE feed, resuming an interrupted run.
+
+    NVD throttles sustained paging hard and unpredictably — measured here at
+    7.9s per page at the start of a run and ~56s after twenty minutes — so a
+    full fetch can outlast the RQ job timeout no matter how that timeout is
+    tuned. Rather than guess at their limits, each page is written to disk the
+    moment it arrives and a manifest records which query it belongs to. A run
+    that is cut short resumes from the first missing page instead of starting
+    over, so the refresh completes across however many attempts it takes.
+    """
     from pathlib import Path
     raw_dir = Path("/data/raw/nvd")
     out_dir = Path("/data/cve")
     raw_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = raw_dir / "_manifest.json"
 
-    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
-    start_date = (datetime.now(timezone.utc) - __import__('datetime').timedelta(days=nvd_days)).strftime("%Y-%m-%dT%H:%M:%S.000")
+    size = _NVD_PAGE_SIZE
     rate_delay = 0.6 if api_key else 6.0
-
     headers = {"Accept": "application/json"}
     if api_key:
         headers["apiKey"] = api_key
 
-    # Fetch first page (with retry for transient errors like 503)
-    try:
-        url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex=0&resultsPerPage=2000"
-        first = json.loads(_ds_fetch_url_retry(url, headers, 60, label="NVD page 1"))
-    except Exception as e:
-        return False, None, f"NVD first page failed: {e}"
+    def _page_file(n):
+        return raw_dir / f"nvd_api_page_{n}.json"
 
-    total = first.get("totalResults", 0)
-    logger.info("NVD total: %d CVEs", total)
-    pages = [first]
+    def _page_ok(n):
+        """Done only if the page is on disk and parses."""
+        f = _page_file(n)
+        if not f.exists():
+            return False
+        try:
+            with open(f) as fh:
+                json.load(fh)
+            return True
+        except Exception:
+            return False
 
-    if total > 2000:
-        for start_idx in range(2000, total, 2000):
-            time.sleep(rate_delay)
-            page_num = start_idx // 2000 + 1
+    def _discard_all():
+        for stale in raw_dir.glob("nvd_api_page_*.json"):
             try:
-                url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex={start_idx}&resultsPerPage=2000"
-                page = json.loads(_ds_fetch_url_retry(url, headers, 60, label=f"NVD page {page_num}"))
-                pages.append(page)
-                logger.info("  NVD page %d: startIndex=%d, got %d", page_num, start_idx, len(page.get("vulnerabilities", [])))
+                stale.unlink()
             except Exception as e:
-                logger.warning("  NVD page %d (startIndex=%d) failed after retries: %s", page_num, start_idx, e)
+                logger.debug("Could not remove stale raw page %s: %s", stale.name, e)
 
-    # Write raw pages
-    for i, p in enumerate(pages, 1):
-        with open(raw_dir / f"nvd_api_page_{i}.json", "w") as f:
-            json.dump(p, f)
+    # ── Resume, or open a fresh window ───────────────────────────────────
+    # A resumed run must reuse the *same* pubStartDate/pubEndDate: they move
+    # with wall-clock time, and mixing windows would change what page N means.
+    manifest = None
+    if manifest_path.exists():
+        try:
+            with open(manifest_path) as fh:
+                m = json.load(fh)
+            age_h = (time.time() - m.get("created_ts", 0)) / 3600
+            if m.get("page_size") == size and age_h < _NVD_RESUME_MAX_AGE_HOURS:
+                manifest = m
+                logger.info("NVD: resuming run from %.1fh ago (window %s..%s, %d pages of %d)",
+                            age_h, m["start_date"][:10], m["end_date"][:10],
+                            m["expected_pages"], size)
+            else:
+                logger.info("NVD: discarding previous run (age %.1fh, page_size %s) — starting fresh",
+                            age_h, m.get("page_size"))
+        except Exception as e:
+            logger.warning("NVD: unreadable manifest, starting fresh: %s", e)
 
-    inputs = [str(raw_dir / f"nvd_api_page_{i}.json") for i in range(1, len(pages) + 1)]
+    if manifest is None:
+        _discard_all()
+        end_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
+        start_date = (datetime.now(timezone.utc) - __import__("datetime").timedelta(days=nvd_days)).strftime("%Y-%m-%dT%H:%M:%S.000")
+        try:
+            url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex=0&resultsPerPage={size}"
+            first = json.loads(_ds_fetch_url_retry(url, headers, _NVD_PAGE_TIMEOUT, label="NVD page 1"))
+        except Exception as e:
+            return False, None, f"NVD first page failed: {e}"
+        total = first.get("totalResults", 0)
+        expected_pages = (total + size - 1) // size if total else 1
+        with open(_page_file(1), "w") as fh:
+            json.dump(first, fh)
+        manifest = {
+            "created_ts": time.time(),
+            "start_date": start_date,
+            "end_date": end_date,
+            "page_size": size,
+            "total": total,
+            "expected_pages": expected_pages,
+        }
+        with open(manifest_path, "w") as fh:
+            json.dump(manifest, fh)
+        logger.info("NVD total: %d CVEs, %d pages of %d", total, expected_pages, size)
+
+    start_date = manifest["start_date"]
+    end_date = manifest["end_date"]
+    total = manifest["total"]
+    expected_pages = manifest["expected_pages"]
+
+    # ── Fetch whatever is still missing ──────────────────────────────────
+    missing = [n for n in range(1, expected_pages + 1) if not _page_ok(n)]
+    if missing:
+        logger.info("NVD: %d/%d pages already on disk, fetching %d more",
+                    expected_pages - len(missing), expected_pages, len(missing))
+
+    for page_num in missing:
+        time.sleep(rate_delay)
+        start_idx = (page_num - 1) * size
+        try:
+            url = f"{_NVD_API_BASE}?pubStartDate={start_date}&pubEndDate={end_date}&startIndex={start_idx}&resultsPerPage={size}"
+            page = json.loads(_ds_fetch_url_retry(url, headers, _NVD_PAGE_TIMEOUT, label=f"NVD page {page_num}"))
+            # Written via a temp file so a kill mid-write cannot leave a
+            # truncated page that later looks complete.
+            tmp = _page_file(page_num).with_suffix(".tmp")
+            with open(tmp, "w") as fh:
+                json.dump(page, fh)
+            tmp.replace(_page_file(page_num))
+            logger.info("  NVD page %d/%d: startIndex=%d, got %d",
+                        page_num, expected_pages, start_idx, len(page.get("vulnerabilities", [])))
+        except Exception as e:
+            logger.warning("  NVD page %d/%d (startIndex=%d) failed: %s",
+                           page_num, expected_pages, start_idx, e)
+
+    # ── Build the dataset only when every page is present ────────────────
+    still_missing = [n for n in range(1, expected_pages + 1) if not _page_ok(n)]
+    if still_missing:
+        have = expected_pages - len(still_missing)
+        return False, None, (
+            f"NVD refresh incomplete: {have}/{expected_pages} pages fetched. "
+            f"Progress is saved — run the refresh again to continue from page "
+            f"{still_missing[0]}. Dataset left unchanged."
+        )
+
+    pages = []
+    for n in range(1, expected_pages + 1):
+        with open(_page_file(n)) as fh:
+            pages.append(json.load(fh))
+    fetched = sum(len(p.get("vulnerabilities", [])) for p in pages)
+    if total and fetched < total:
+        return False, None, (
+            f"NVD refresh incomplete: {fetched} of {total} CVEs across "
+            f"{expected_pages} complete pages — NVD may have changed its "
+            f"pagination. Dataset left unchanged."
+        )
+    logger.info("NVD fetch complete: %d/%d CVEs across %d pages", fetched, total, expected_pages)
+
+    inputs = [str(_page_file(n)) for n in range(1, expected_pages + 1)]
     out_path = str(out_dir / f"nvd_cpe_cve_{_ds_ts()}.json")
     ok, err = _ds_run_script("nvd_flatten.py", ["--inputs"] + inputs + ["--out", out_path])
     if not ok:
         return False, None, f"nvd_flatten.py: {err}"
+
+    # Window consumed; the next run opens a fresh one.
+    try:
+        manifest_path.unlink()
+    except Exception:
+        pass
     return True, out_path, None
 
 
@@ -1103,6 +1344,25 @@ def _ds_refresh_epss():
     ok, err = _ds_run_script("epss_convert.py", ["--in", raw_path, "--out", out_path])
     if not ok:
         return False, None, f"epss_convert.py: {err}"
+    return True, out_path, None
+
+
+# OSV downloads several per-ecosystem archives, so it needs a far longer budget
+# than the fetch+convert feeders above.
+_OSV_FETCH_TIMEOUT = int(os.environ.get("OSV_FETCH_TIMEOUT", "1800"))
+
+
+def _ds_refresh_osv():
+    """Fetch OSV.dev advisories (npm, PyPI, Maven, Go, …) and convert them to
+    the match_osv schema. Feeds the code scanner's SCA track."""
+    from pathlib import Path
+    out_dir = Path("/data/cve")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = str(out_dir / f"osv_{_ds_ts()}.json")
+    ok, err = _ds_run_script("osv_fetch.py", ["--out", out_path], timeout=_OSV_FETCH_TIMEOUT)
+    if not ok:
+        return False, None, f"osv_fetch.py: {err}"
     return True, out_path, None
 
 
@@ -1299,7 +1559,9 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
     lock_key = f"dataset_refresh_lock:{workspace_id}"
     status_key = f"dataset_refresh:{workspace_id}"
 
-    if not r.set(lock_key, "1", nx=True, ex=3600):
+    # TTL must cover the slowest full refresh, or the lock expires mid-run and a
+    # scheduled trigger starts a second one. Matches the 7200s job_timeout.
+    if not r.set(lock_key, "1", nx=True, ex=7200):
         logger.warning("Dataset refresh already running for workspace %d", workspace_id)
         return
 
@@ -1343,6 +1605,7 @@ def run_dataset_refresh(workspace_id: int, kinds: list[str] | None = None) -> No
         "cvedetails_cvss": lambda dep: _ds_refresh_cvedetails(dep, on_progress=_cveorg_progress),
         "cms_cve_map": lambda dep: _ds_refresh_cms_cve_map(dep),
         "compliance_map": lambda: _ds_refresh_compliance_map(),
+        "osv": lambda: _ds_refresh_osv(),
     }
 
     try:
@@ -1473,6 +1736,49 @@ def _cleanup_old_dataset_files() -> None:
         logger.info("Dataset cleanup: removed %d old timestamped file(s)", removed)
 
 
+def _prune_dataset_rows(ws_id: int, kind: str, db: Session) -> None:
+    """Delete superseded (disabled) rows of `kind` after a successful swap.
+
+    Only ever called from _swap_dataset once it has committed a fresh enabled
+    row, so every disabled row of this kind is now a previous generation. All
+    rows of a kind point at the same canonical file, which each refresh
+    overwrites in place, so a disabled row is a stale pointer with no rollback
+    value — deleting it frees nothing on disk and never touches the live
+    (enabled) dataset. With _DATASET_KEEP_DISABLED > 0 the newest N disabled
+    rows are kept for history. Best-effort: the swap has already committed, and
+    a failure here must not undo it.
+    """
+    try:
+        q = (
+            db.query(models.CveDataset)
+            .filter(
+                models.CveDataset.workspace_id == ws_id,
+                models.CveDataset.kind == kind,
+                models.CveDataset.enabled == False,  # noqa: E712
+            )
+        )
+        if _DATASET_KEEP_DISABLED:
+            keep_ids = [
+                r.id for r in db.query(models.CveDataset.id)
+                .filter(
+                    models.CveDataset.workspace_id == ws_id,
+                    models.CveDataset.kind == kind,
+                    models.CveDataset.enabled == False,  # noqa: E712
+                )
+                .order_by(models.CveDataset.id.desc())
+                .limit(_DATASET_KEEP_DISABLED)
+            ]
+            if keep_ids:
+                q = q.filter(models.CveDataset.id.notin_(keep_ids))
+        removed = q.delete(synchronize_session=False)
+        db.commit()
+        if removed:
+            logger.info("Deleted %d superseded (disabled) %s dataset row(s)", removed, kind)
+    except Exception as e:
+        db.rollback()
+        logger.warning("Pruning disabled %s dataset rows failed: %s", kind, e)
+
+
 def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> None:
     """Atomically swap: create new dataset, disable old ones of same kind."""
     try:
@@ -1499,6 +1805,7 @@ def _swap_dataset(ws_id: int, kind: str, new_file_path: str, db: Session) -> Non
         db.add(new_ds)
         db.commit()
         logger.info("Swapped dataset %s: new ID=%d", kind, new_ds.id)
+        _prune_dataset_rows(ws_id, kind, db)
 
         # Invalidate the Threat Intel cache for this workspace if a feeder
         # dataset was just rotated. Best-effort — never block the swap on it.
@@ -1520,6 +1827,13 @@ def run_ai_analysis(analysis_id: int) -> None:
     """RQ task — runs AI deep analysis on scan findings."""
     from app.ai.engine import run_analysis
     run_analysis(analysis_id)
+
+
+def run_agentic_exploit(job_id: int) -> None:
+    """RQ task — one burst of the Mode B exploit agent (pauses for per-action
+    human approval; re-enqueues itself to resume)."""
+    from app.ai.exploit_runner import run_session
+    run_session(job_id)
 
 
 def run_ai_poc(analysis_id: int, finding_id: int) -> None:

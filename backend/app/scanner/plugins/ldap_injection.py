@@ -14,6 +14,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.ldap_injection",
+    intrusive=True,
     name="LDAP Injection Scanner",
     category="web",
     depends_on=["fingerprint.http", "net.port.discovery.v2"],

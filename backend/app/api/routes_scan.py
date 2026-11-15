@@ -278,16 +278,22 @@ def create_job(
     # profile's options at scan time and auto-enable the web.auth plugin.
     web_auth_override = body.get("web_auth")
     web_auth_ephemeral = bool(body.get("web_auth_credential_ephemeral"))
-    job_meta = None
+    meta_payload: dict = {}
     if web_auth_override and isinstance(web_auth_override, dict) and web_auth_override.get("type"):
         if web_auth_override["type"] not in ("form", "bearer", "basic", "cookie", "header"):
             raise HTTPException(400, f"Invalid web_auth type: {web_auth_override['type']}")
-        meta_payload = {"web_auth": web_auth_override}
+        meta_payload["web_auth"] = web_auth_override
         # Ephemeral credentials: the worker deletes the linked credential after the scan
         # ends (any status). Only valid when web_auth references a credential_id.
         if web_auth_ephemeral and web_auth_override.get("credential_id"):
             meta_payload["web_auth_credential_ephemeral"] = True
-        job_meta = json.dumps(meta_payload)
+    # Non-intrusive mode skips plugins flagged PluginMeta.intrusive. Only
+    # recorded when the caller chose; absent means intrusive, as before.
+    if "intrusive" in body:
+        if not isinstance(body["intrusive"], bool):
+            raise HTTPException(400, "intrusive must be true or false")
+        meta_payload["intrusive"] = body["intrusive"]
+    job_meta = json.dumps(meta_payload) if meta_payload else None
 
     job = models.ScanJob(
         workspace_id=user["ws"],
@@ -306,7 +312,7 @@ def create_job(
     try:
         q = Queue("scans", connection=_redis())
         # RQ timeout = scan budget + 300s headroom for post-processing & DB writes
-        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        rq_timeout = settings.SCAN_JOB_TIMEOUT
         q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
         logger.info("Enqueued scan job #%d target=%s type=%s timeout=%ds", job.id, target, scan_type, rq_timeout)
     except Exception as e:
@@ -608,6 +614,67 @@ def rescan_job(
     if not original:
         raise HTTPException(404, "job not found")
 
+    # Upload/config-driven scans keep their input (API spec, IaC archive, repo
+    # URL/credential, tracks) in meta_json, which the worker overwrites with
+    # progress/summary during the run. Rescan copies only target/profile, so a
+    # rescanned job would run with no config — fail cleanly instead with a clear
+    # message. Re-run these from the New Scan dialog.
+    if (original.scan_type or "") in ("api", "iac", "source_code"):
+        raise HTTPException(
+            400,
+            "Rescan is not available for API / IaC / source-code scans — their "
+            "configuration is not retained after the run. Start a new scan from "
+            "the New Scan dialog instead.",
+        )
+
+    # Agentic jobs: re-run as a FRESH agentic session (same target/provider/mode),
+    # never copy the old session state. The plain rescan path would lose
+    # agentic_json and, for exploit (no profile), fail with "Profile not found".
+    if original.agentic_json:
+        try:
+            ostate = json.loads(original.agentic_json)
+        except Exception:
+            ostate = {}
+        provider = ostate.get("provider") or ""
+        if ostate.get("mode") == "exploit":
+            if not settings.ENABLE_AGENTIC_EXPLOIT:
+                raise HTTPException(403, "Agentic exploitation is disabled (ENABLE_AGENTIC_EXPLOIT off).")
+            from app.ai.exploit_guard import target_host, check_target_allowed
+            allowed, why = check_target_allowed(db, user["ws"], target_host(original.target))
+            if not allowed:
+                raise HTTPException(403, f"Target not permitted for exploitation: {why}")
+            new_state = {"mode": "exploit", "phase": "run", "provider": provider,
+                         "kill": False, "action_count": 0, "seq": 0,
+                         "scope_acknowledged_by": user.get("email") or user.get("uid")}
+            task_name = "exploit"
+        else:
+            new_state = {"phase": "plan", "provider": provider, "mode": "plugin"}
+            task_name = "plan"
+
+        ag_job = models.ScanJob(
+            workspace_id=user["ws"], target=original.target,
+            profile_id=original.profile_id, status="queued",
+            scan_type=original.scan_type or "external",
+            created_by_user_id=user.get("uid") or _resolve_user_id(db, user),
+            agentic_json=json.dumps(new_state),
+        )
+        db.add(ag_job)
+        db.commit()
+        db.refresh(ag_job)
+        try:
+            q = Queue("scans", connection=_redis())
+            if task_name == "exploit":
+                from app.worker_tasks import run_agentic_exploit
+                q.enqueue(run_agentic_exploit, ag_job.id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+            else:
+                q.enqueue(run_scan_job, ag_job.id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+        except Exception as e:
+            ag_job.status = "failed"
+            db.commit()
+            raise HTTPException(503, f"Could not enqueue agentic rescan: {e}")
+        return {"id": ag_job.id, "original_job_id": job_id, "target": ag_job.target,
+                "status": "queued", "agentic": True}
+
     new_job = models.ScanJob(
         workspace_id=user["ws"],
         target=original.target,
@@ -621,7 +688,7 @@ def rescan_job(
 
     try:
         q = Queue("scans", connection=_redis())
-        rq_timeout = settings.SCAN_BUDGET_SECONDS + 300
+        rq_timeout = settings.SCAN_JOB_TIMEOUT
         q.enqueue(run_scan_job, new_job.id, job_timeout=rq_timeout)
         logger.info("Rescan enqueued: job #%d (from #%d) target=%s", new_job.id, job_id, original.target)
     except Exception as e:
@@ -636,6 +703,346 @@ def rescan_job(
         "target": new_job.target,
         "status": new_job.status,
     }
+
+
+# ─── Agentic plugin-orchestration scans (Mode A) ───────────────────────────────
+
+@router.post("/agentic/jobs")
+def create_agentic_job(
+    body: dict,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Start an agentic scan: a non-intrusive recon runs, then the AI provider
+    proposes a plugin plan and the job pauses at 'awaiting_approval'. Nothing
+    intrusive runs until the plan is approved."""
+    target = (body.get("target") or "").strip()
+    if not target:
+        raise HTTPException(400, "target is required")
+    provider = (body.get("provider") or "").strip()
+    if not provider:
+        raise HTTPException(400, "provider is required for an agentic scan")
+
+    scan_type = body.get("scan_type", "internal")
+    if scan_type not in ("internal", "external"):
+        scan_type = "internal"
+
+    profile_id = body.get("profile_id")
+    prof = None
+    if profile_id:
+        try:
+            prof = db.query(models.Profile).filter(
+                models.Profile.workspace_id == user["ws"],
+                models.Profile.id == int(profile_id),
+            ).first()
+        except (TypeError, ValueError):
+            raise HTTPException(400, "profile_id must be an integer")
+    if prof is None:
+        prof = (db.query(models.Profile)
+                .filter(models.Profile.workspace_id == user["ws"])
+                .order_by(models.Profile.id).first())
+    if prof is None:
+        raise HTTPException(400, "No scan profile available — create one first")
+
+    job = models.ScanJob(
+        workspace_id=user["ws"],
+        target=target,
+        profile_id=prof.id,
+        status="queued",
+        scan_type=scan_type,
+        created_by_user_id=user.get("uid") or _resolve_user_id(db, user),
+        agentic_json=json.dumps({"phase": "plan", "provider": provider, "mode": "plugin"}),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    try:
+        q = Queue("scans", connection=_redis())
+        q.enqueue(run_scan_job, job.id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+        logger.info("Agentic scan job #%d queued (plan phase) target=%s provider=%s",
+                    job.id, target, provider)
+    except Exception as e:
+        job.status = "failed"
+        job.meta_json = json.dumps({"error": f"Failed to enqueue: {e}"})
+        db.commit()
+        raise HTTPException(503, f"Could not enqueue job: {e}")
+
+    return {"id": job.id, "target": target, "status": "queued", "phase": "plan"}
+
+
+def _load_agentic(db: Session, ws: int, job_id: int) -> tuple[models.ScanJob, dict]:
+    job = db.query(models.ScanJob).filter(
+        models.ScanJob.workspace_id == ws, models.ScanJob.id == job_id).first()
+    if not job:
+        raise HTTPException(404, "job not found")
+    if not job.agentic_json:
+        raise HTTPException(400, "not an agentic job")
+    try:
+        state = json.loads(job.agentic_json)
+    except Exception:
+        raise HTTPException(400, "agentic state unreadable")
+    return job, state
+
+
+@router.get("/jobs/{job_id}/plan")
+def get_agentic_plan(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """The proposed plugin plan (and status) for an agentic job."""
+    job, state = _load_agentic(db, user["ws"], job_id)
+    return {"id": job.id, "status": job.status, "target": job.target, **state}
+
+
+@router.post("/jobs/{job_id}/approve-plan")
+def approve_agentic_plan(
+    job_id: int,
+    body: dict,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Approve the proposed plan (optionally a subset of plugin_ids) and run it."""
+    job, state = _load_agentic(db, user["ws"], job_id)
+    if job.status != "awaiting_approval":
+        raise HTTPException(409, f"job is not awaiting approval (status={job.status})")
+
+    proposed = [p["plugin_id"] for p in (state.get("plan") or []) if p.get("plugin_id")]
+    requested = body.get("approved_plugins")
+    if requested is None:
+        approved = proposed                      # approve the whole plan
+    else:
+        if not isinstance(requested, list):
+            raise HTTPException(400, "approved_plugins must be a list of plugin_ids")
+        approved = [p for p in requested if p in proposed]  # only from the proposal
+    if not approved:
+        raise HTTPException(400, "no plugins approved — nothing to run (use reject to cancel)")
+
+    state["phase"] = "execute"
+    state["approved_plugins"] = approved
+    state["approved_by"] = user.get("email") or user.get("uid")
+    job.agentic_json = json.dumps(state)
+    job.status = "queued"
+    job.finished_at = None
+    db.commit()
+
+    try:
+        q = Queue("scans", connection=_redis())
+        q.enqueue(run_scan_job, job.id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+        logger.info("Agentic job #%d approved: %d plugin(s) → execute", job.id, len(approved))
+    except Exception as e:
+        job.status = "failed"
+        db.commit()
+        raise HTTPException(503, f"Could not enqueue execution: {e}")
+
+    return {"id": job.id, "status": "queued", "approved_plugins": approved}
+
+
+@router.post("/jobs/{job_id}/reject-plan")
+def reject_agentic_plan(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Reject the plan and cancel the agentic job."""
+    job, state = _load_agentic(db, user["ws"], job_id)
+    if job.status != "awaiting_approval":
+        raise HTTPException(409, f"job is not awaiting approval (status={job.status})")
+    state["phase"] = "rejected"
+    job.agentic_json = json.dumps(state)
+    job.status = "cancelled"
+    job.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": job.id, "status": "cancelled"}
+
+
+# ─── Agentic EXPLOIT (Mode B: agent crafts payloads, per-action approval) ───────
+
+@router.post("/exploit/jobs")
+def create_exploit_job(
+    body: dict,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Start a Mode B exploit session. Gated by the ENABLE_AGENTIC_EXPLOIT master
+    switch, a fail-closed exploit allowlist, and an explicit scope acknowledgement.
+    Every attacking action still needs per-action approval afterwards."""
+    if not settings.ENABLE_AGENTIC_EXPLOIT:
+        raise HTTPException(403, "Agentic exploitation is disabled. Set ENABLE_AGENTIC_EXPLOIT=true in .env (server-side) to enable it.")
+    target = (body.get("target") or "").strip()
+    if not target:
+        raise HTTPException(400, "target is required")
+    provider = (body.get("provider") or "").strip()
+    if not provider:
+        raise HTTPException(400, "provider is required")
+    if not body.get("scope_acknowledged"):
+        raise HTTPException(400, "scope_acknowledged must be true — confirm you are authorised to actively test this target")
+
+    from app.ai.exploit_guard import target_host, check_target_allowed
+    host = target_host(target)
+    allowed, reason = check_target_allowed(db, user["ws"], host)
+    if not allowed:
+        raise HTTPException(403, f"Target not permitted for exploitation: {reason}")
+
+    scan_type = body.get("scan_type", "external")
+    if scan_type not in ("internal", "external"):
+        scan_type = "external"
+
+    job = models.ScanJob(
+        workspace_id=user["ws"],
+        target=target,
+        profile_id=None,
+        status="queued",
+        scan_type=scan_type,
+        created_by_user_id=user.get("uid") or _resolve_user_id(db, user),
+        agentic_json=json.dumps({
+            "mode": "exploit", "phase": "run", "provider": provider,
+            "kill": False, "action_count": 0, "seq": 0,
+            "scope_acknowledged_by": user.get("email") or user.get("uid"),
+        }),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    try:
+        q = Queue("scans", connection=_redis())
+        from app.worker_tasks import run_agentic_exploit
+        q.enqueue(run_agentic_exploit, job.id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+        logger.warning("EXPLOIT session #%d started target=%s host=%s by=%s",
+                       job.id, target, host, user.get("email") or user.get("uid"))
+    except Exception as e:
+        job.status = "failed"
+        db.commit()
+        raise HTTPException(503, f"Could not enqueue exploit session: {e}")
+
+    return {"id": job.id, "target": target, "status": "queued", "host": host}
+
+
+@router.get("/jobs/{job_id}/action")
+def get_pending_action(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """The pending (awaiting-approval) action + session info for an exploit job."""
+    job, state = _load_agentic(db, user["ws"], job_id)
+    return {
+        "id": job.id, "status": job.status, "target": job.target,
+        "phase": state.get("phase"), "action_count": state.get("action_count", 0),
+        "kill": state.get("kill", False),
+        "pending": state.get("pending"), "summary": state.get("summary"),
+    }
+
+
+@router.get("/jobs/{job_id}/actions")
+def list_exploit_actions(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Audit trail of all proposed actions for an exploit job."""
+    rows = (db.query(models.AgenticAction)
+            .filter(models.AgenticAction.workspace_id == user["ws"],
+                    models.AgenticAction.job_id == job_id)
+            .order_by(models.AgenticAction.seq).all())
+    return {"actions": [{
+        "seq": r.seq, "tool": r.tool, "target_host": r.target_host,
+        "payload": _safe_json(r.payload_json), "rationale": r.rationale,
+        "validation_verdict": r.validation_verdict, "validation_reason": r.validation_reason,
+        "decision": r.decision, "approver": r.approver, "reject_reason": r.reject_reason,
+        "response_summary": r.response_summary,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+    } for r in rows]}
+
+
+def _safe_json(s):
+    try:
+        return json.loads(s)
+    except Exception:
+        return {}
+
+
+def _decide_action(db, ws, job_id, approve: bool, approver: str, reason: str | None):
+    job, state = _load_agentic(db, ws, job_id)
+    if state.get("mode") != "exploit":
+        raise HTTPException(400, "not an exploit job")
+    if job.status != "awaiting_action":
+        raise HTTPException(409, f"no action awaiting approval (status={job.status})")
+    pending = state.get("pending")
+    if not pending:
+        raise HTTPException(409, "no pending action")
+
+    pending["decision"] = "approved" if approve else "rejected"
+    if not approve:
+        pending["reject_reason"] = (reason or "")[:1000]
+    state["pending"] = pending
+    job.agentic_json = json.dumps(state)
+    job.status = "queued"
+    job.finished_at = None
+
+    row = db.query(models.AgenticAction).filter(
+        models.AgenticAction.id == pending.get("action_id")).first()
+    if row:
+        row.decision = "approved" if approve else "rejected"
+        row.approver = approver
+        row.reject_reason = (reason or None) if not approve else None
+        row.decided_at = datetime.now(timezone.utc)
+    db.commit()
+
+    try:
+        q = Queue("scans", connection=_redis())
+        from app.worker_tasks import run_agentic_exploit
+        q.enqueue(run_agentic_exploit, job_id, job_timeout=settings.SCAN_JOB_TIMEOUT)
+    except Exception as e:
+        raise HTTPException(503, f"Could not resume session: {e}")
+    return {"id": job_id, "status": "queued", "decision": pending["decision"]}
+
+
+@router.post("/jobs/{job_id}/approve-action")
+def approve_action(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Approve the pending exploit action — it runs, then the agent resumes."""
+    return _decide_action(db, user["ws"], job_id, True,
+                          user.get("email") or str(user.get("uid")), None)
+
+
+@router.post("/jobs/{job_id}/reject-action")
+def reject_action(
+    job_id: int,
+    body: dict = None,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Reject the pending action (it is never sent); the agent is told and resumes."""
+    reason = (body or {}).get("reason", "")
+    return _decide_action(db, user["ws"], job_id, False,
+                          user.get("email") or str(user.get("uid")), reason)
+
+
+@router.post("/jobs/{job_id}/kill")
+def kill_exploit(
+    job_id: int,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Kill switch — stop the whole exploit session immediately."""
+    job, state = _load_agentic(db, user["ws"], job_id)
+    state["kill"] = True
+    if job.status == "awaiting_action":
+        # paused jobs won't re-run on their own — finalize now
+        state["phase"] = "killed"
+        job.status = "killed"
+        job.finished_at = datetime.now(timezone.utc)
+    job.agentic_json = json.dumps(state)
+    db.commit()
+    logger.warning("EXPLOIT session #%d killed by %s", job_id, user.get("email") or user.get("uid"))
+    return {"id": job_id, "status": job.status, "killed": True}
 
 
 # ─── Scan History (per host) ──────────────────────────────────────────────────
@@ -708,6 +1115,7 @@ def list_schedules(
             "interval_hours": r.interval_hours,
             "custom_datetime": r.custom_datetime.isoformat() if r.custom_datetime else None,
             "repeat": r.repeat if r.repeat is not None else True,
+            "intrusive": r.intrusive is not False,
             "enabled": r.enabled,
             "last_run_at": r.last_run_at.isoformat() if r.last_run_at else None,
             "next_run_at": r.next_run_at.isoformat() if r.next_run_at else None,
@@ -755,6 +1163,10 @@ def create_schedule(
     else:
         next_run = now_utc + timedelta(hours=interval)
 
+    intrusive = body.get("intrusive", True)
+    if not isinstance(intrusive, bool):
+        raise HTTPException(400, "intrusive must be true or false")
+
     sched = models.ScanSchedule(
         workspace_id=user["ws"],
         name=body.get("name", f"Schedule: {target}"),
@@ -767,6 +1179,7 @@ def create_schedule(
         repeat=repeat,
         enabled=body.get("enabled", True),
         next_run_at=next_run,
+        intrusive=intrusive,
     )
     db.add(sched)
     db.commit()

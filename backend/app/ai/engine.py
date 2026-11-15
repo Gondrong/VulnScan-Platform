@@ -4,15 +4,20 @@ Loads findings, builds prompts, calls AI provider, parses/stores results.
 """
 import json
 import logging
+import os
 import re
+import tempfile
 import time
+from collections import Counter
 from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.db import models
-from app.ai.providers import EmptyResponseError, get_provider
-from app.ai.prompts import build_prompt, build_poc_prompt
+from app.ai.providers import (
+    EmptyResponseError, ProviderUnavailableError, TurnLimitError, get_provider,
+)
+from app.ai.prompts import build_investigate_prompt, build_prompt, build_poc_prompt
 
 logger = logging.getLogger("vulnscan.ai.engine")
 
@@ -68,6 +73,47 @@ def _serialize_finding_from_db(f: models.Finding) -> dict:
         "remediation": f.remediation or "",
         "is_kev": f.is_kev if hasattr(f, "is_kev") else False,
     }
+
+
+# Findings that make no vulnerability claim — a check that did not run, a
+# passing check, a scanner summary — get their verdict from these rules rather
+# than from the model. Asked "true or false positive?" about "testssl.sh: no TLS
+# issues detected", models answered differently on repeated runs of the same
+# scan: 13 of the 26 verdicts that flipped across three re-run pairs were
+# findings like these, and the prompt-level rules for them (c41b88e) did not
+# stop it. A rule gives the same answer every run, at no cost.
+_DID_NOT_RUN = re.compile(r"\b(timed out|timeout|failed|failure|skipped|requires root|unreachable)\b", re.I)
+_CHECK_SUMMARY = re.compile(r"\b\d+/\d+ checks passed\b", re.I)
+# Narrow on purpose: passing CIS checks routinely carry harmless stderr such as
+# "command not found: rpm" (the rpm fallback on Debian) or "No such file" (the
+# file the check wants absent is absent). Only these mean the check could not
+# read what it was checking.
+_UNREADABLE = re.compile(r"permission denied|operation not permitted", re.I)
+
+
+def _rule_verdict(f: dict) -> dict | None:
+    """Verdict for a finding that makes no vulnerability claim, else None.
+
+    `confidence` is None, not a number: the verdict comes from a rule, and the
+    UI and reports only show a percentage when one is present.
+    """
+    title = f["title"].strip()
+    if title.startswith("SKIP:") or (f["severity"] == "info" and _DID_NOT_RUN.search(title)):
+        return {"verdict": "needs_manual", "confidence": None, "rule": "did_not_run",
+                "reasoning": "The check did not run to completion, so it confirms nothing either way."}
+    if title.startswith("PASS:"):
+        out = f["evidence"].strip()
+        if not out or _UNREADABLE.search(out):
+            return {"verdict": "needs_manual", "confidence": None, "rule": "pass_unverified",
+                    "reasoning": "Reported as passing, but the output is empty or shows the check "
+                                 "could not read what it was checking."}
+        return {"verdict": "true_positive", "confidence": None, "rule": "pass",
+                "reasoning": "Passing check; the output shows the compliant state."}
+    if f["severity"] == "info" or _CHECK_SUMMARY.search(title):
+        return {"verdict": "true_positive", "confidence": None, "rule": "observation",
+                "reasoning": "Scanner summary or inventory: it records what the tool observed "
+                             "and makes no vulnerability claim."}
+    return None
 
 
 def _extract_json(text: str) -> dict:
@@ -323,6 +369,184 @@ def _run_two_stage(db, analysis, provider, findings_data: list[dict],
     return result, tokens1 + tokens2
 
 
+# Investigate mode: batch validation (phase A), then one agentic session per
+# finding the batch left in doubt (phase B), using the read-only tools in
+# ai/tools.py. Findings the batch settled keep their batch verdict.
+INVESTIGATE_MODE = "investigate"
+
+_VERDICTS = {"true_positive", "false_positive", "needs_manual"}
+_SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+def _read_trail(path: str) -> list[dict]:
+    steps = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    steps.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    except FileNotFoundError:
+        pass
+    return steps
+
+
+def _run_investigate(db, analysis, provider, findings_data: list[dict],
+                     target: str, deadline: float) -> tuple[dict, int]:
+    # Plain values only from here on. After a commit, reading an attribute of
+    # `analysis` re-opens a transaction, and one opened just before a
+    # ten-minute CLI session would sit idle-in-transaction throughout it.
+    aid, ws_id, job_id = analysis.id, analysis.workspace_id, analysis.job_id
+    runs = settings.AI_INVESTIGATE_PHASE_A_RUNS
+    tokens = 0
+
+    # ── Phase A: batch validation ──────────────────────────────────────
+    passes: list[dict] = []
+    phase_a_meta: list[dict] = []
+    span = 35 // runs
+    for r in range(runs):
+        res, tok, _assessed = _run_batched(
+            db, analysis, provider, "validate", findings_data, target,
+            pct_from=10 + r * span, pct_to=10 + (r + 1) * span, deadline=deadline,
+            label=f"Phase A — batch validation {r + 1}/{runs}",
+        )
+        tokens += tok
+        passes.append(res.get("finding_validations") or {})
+        phase_a_meta.append({"failed_batches": res.pop("_failed_batches", []),
+                             "batches": res.pop("_batch_stats", [])})
+
+    # ── Queue: whatever phase A left in doubt ──────────────────────────
+    by_id = {str(f["id"]): f for f in findings_data}
+    queue: list[tuple[dict, list[str]]] = []
+    for fid, f in by_id.items():
+        verdicts = [p.get(fid, {}).get("verdict") for p in passes]
+        why = []
+        if None in verdicts:
+            why.append("not_assessed")
+        if len({v for v in verdicts if v}) > 1:
+            why.append("disagreement")
+        if "needs_manual" in verdicts:
+            why.append("needs_manual")
+        if "false_positive" in verdicts:
+            why.append("false_positive")
+        if why:
+            queue.append((f, why))
+    queue.sort(key=lambda item: (not item[0].get("is_kev"),
+                                 _SEV_RANK.get(item[0].get("severity"), 5),
+                                 "disagreement" not in item[1]))
+    cap = settings.AI_INVESTIGATE_MAX_FINDINGS
+    overflow = queue[cap:]
+    queue = queue[:cap]
+
+    final = {fid: dict(passes[0].get(fid) or passes[-1].get(fid) or {}) for fid in by_id}
+    stopped: dict[str, str] = {str(f["id"]): "over_cap" for f, _ in overflow}
+    sessions: dict[str, dict] = {}
+    aborted = None
+
+    if not provider.supports_tools:
+        aborted = f"provider {getattr(provider, 'name', '?')} has no tool support"
+        stopped.update({str(f["id"]): "no_tool_support" for f, _ in queue})
+        queue = []
+
+    # ── Phase B: one agentic session per queued finding ────────────────
+    for i, (f, why) in enumerate(queue):
+        fid = str(f["id"])
+        if aborted:
+            stopped[fid] = "aborted"
+            continue
+        if time.monotonic() + settings.AI_CLI_TIMEOUT > deadline:
+            stopped[fid] = "budget"
+            continue
+        _update_progress(db, analysis, {
+            "pct": 45 + 43 * i // max(1, len(queue)),
+            "step": f"Phase B — investigating {i + 1}/{len(queue)} (finding #{fid})...",
+        })
+        prior = [p[fid] for p in passes if isinstance(p.get(fid), dict)]
+        prompts = build_investigate_prompt(f, target, prior)
+        fd, trail = tempfile.mkstemp(prefix="vs-trail-", suffix=".jsonl")
+        os.close(fd)
+        t0 = time.monotonic()
+        try:
+            resp = provider.investigate(
+                *prompts, workspace_id=ws_id, job_id=job_id, trail_path=trail,
+                max_turns=settings.AI_INVESTIGATE_MAX_TURNS,
+            )
+            tokens += resp.tokens_used
+            out = _extract_json(resp.content)
+            verdict = out.get("verdict")
+            if verdict not in _VERDICTS:
+                stopped[fid] = "unparseable"
+            else:
+                entry = {"verdict": verdict, "confidence": out.get("confidence"),
+                         "reasoning": out.get("reasoning") or ""}
+                if out.get("adjusted_severity"):
+                    entry["adjusted_severity"] = out["adjusted_severity"]
+                final[fid] = entry
+                stopped[fid] = "verdict"
+            sessions[fid] = {"turns": (resp.meta or {}).get("turns"),
+                             "cost_usd": (resp.meta or {}).get("cost_usd")}
+        except ProviderUnavailableError as e:
+            # Expired login, or a model without tool calls: every later
+            # session would fail the same way, slowly.
+            aborted = str(e)
+            stopped[fid] = "aborted"
+            logger.warning("AI analysis #%s: investigation aborted: %s", aid, e)
+        except TurnLimitError:
+            stopped[fid] = "max_turns"
+        except Exception as e:
+            stopped[fid] = "error"
+            sessions[fid] = {"error": str(e)[:300]}
+            logger.warning("AI analysis #%s: investigating finding #%s failed: %s", aid, fid, e)
+        finally:
+            sessions.setdefault(fid, {})["duration_s"] = round(time.monotonic() - t0, 1)
+            sessions[fid]["steps"] = _read_trail(trail)
+            try:
+                os.unlink(trail)
+            except OSError:
+                pass
+
+    # ── Merge: every queued finding records what happened to it ─────────
+    for f, why in queue + overflow:
+        fid = str(f["id"])
+        batch = [p.get(fid, {}).get("verdict") for p in passes]
+        how = stopped.get(fid, "not_run")
+        if how != "verdict" and "disagreement" in why:
+            # Phase A split and nothing settled it: neither batch verdict is
+            # more trustworthy than the other.
+            final[fid] = {"verdict": "needs_manual", "confidence": None,
+                          "reasoning": (f"Batch passes disagreed ({' vs '.join(str(v) for v in batch)}) "
+                                        f"and the investigation did not settle it ({how}).")}
+        elif how != "verdict" and not final[fid].get("verdict"):
+            final[fid] = {"verdict": "needs_manual", "confidence": None,
+                          "reasoning": f"No batch pass assessed this finding and the "
+                                       f"investigation did not settle it ({how})."}
+        final[fid]["investigation"] = {
+            "queued_because": why,
+            "phase_a": batch,
+            "stopped": how,
+            "changed": how == "verdict" and final[fid]["verdict"] not in batch,
+            **sessions.get(fid, {}),
+        }
+
+    counts = Counter(stopped.get(str(f["id"]), "not_run") for f, _ in queue + overflow)
+    result = {
+        "finding_validations": final,
+        "_investigation": {
+            "phase_a_runs": runs,
+            "candidates": len(findings_data),
+            "queued": len(queue) + len(overflow),
+            "outcomes": dict(counts),
+            "changed": sum(1 for v in final.values()
+                           if (v.get("investigation") or {}).get("changed")),
+            "max_turns": settings.AI_INVESTIGATE_MAX_TURNS,
+            "aborted": aborted,
+        },
+        "_phase_a": phase_a_meta,
+    }
+    return result, tokens
+
+
 def _validate_result(result: dict, mode: str) -> dict:
     """Validate and normalize the AI result structure."""
     # Ensure required keys exist
@@ -400,13 +624,22 @@ def run_analysis(analysis_id: int) -> None:
 
         # Serialize findings
         findings_data = [_serialize_finding_from_db(f) for f in findings]
+        ruled = {str(f["id"]): v for f in findings_data if (v := _rule_verdict(f))}
+        findings_data = [f for f in findings_data if str(f["id"]) not in ruled]
 
         provider = get_provider(analysis.provider, workspace_id=analysis.workspace_id)
         start_time = time.time()
         # Leave headroom for parsing and the DB writes that follow the last call.
         deadline = time.monotonic() + max(60, settings.AI_ANALYSIS_TIMEOUT - 240)
 
-        if analysis.mode == TWO_STAGE_MODE:
+        if not findings_data:
+            # Every finding was decided by a rule; nothing left for the model.
+            result, tokens_used = _validate_result({}, analysis.mode), 0
+        elif analysis.mode == INVESTIGATE_MODE:
+            result, tokens_used = _run_investigate(
+                db, analysis, provider, findings_data, target, deadline=deadline,
+            )
+        elif analysis.mode == TWO_STAGE_MODE:
             result, tokens_used = _run_two_stage(
                 db, analysis, provider, findings_data, target, deadline=deadline,
             )
@@ -424,6 +657,14 @@ def run_analysis(analysis_id: int) -> None:
                 "failed_batches": result.pop("_failed_batches", []),
                 "batches": result.pop("_batch_stats", []),
             }
+        # After the last _validate_result(): it would stamp confidence=0.5 on
+        # every rule verdict.
+        result.setdefault("finding_validations", {}).update(ruled)
+        result["_rules"] = {
+            "decided": len(ruled),
+            "by_rule": {r: sum(1 for v in ruled.values() if v["rule"] == r)
+                        for r in sorted({v["rule"] for v in ruled.values()})},
+        }
         _update_progress(db, analysis, {"pct": 90, "step": "Storing results..."})
 
         duration = time.time() - start_time

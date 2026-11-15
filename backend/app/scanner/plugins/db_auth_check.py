@@ -22,6 +22,7 @@ logger = logging.getLogger("vulnscan.db_auth_check")
 
 META = PluginMeta(
     plugin_id="infra.db.auth_check",
+    intrusive=True,
     name="Database Authentication Checker",
     category="network",
     depends_on=["net.port.discovery.v2"],

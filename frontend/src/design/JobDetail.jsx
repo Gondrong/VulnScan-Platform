@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons, Sev, Risk, Status } from "./icons.jsx";
-import { scanApi, aiApi, canEdit } from "../api.js";
+import { scanApi, aiApi, agenticApi, exploitApi, canEdit } from "../api.js";
 import { parseProgress } from "./Jobs.jsx";
 import { ReportPreviewModal } from "./Assets.jsx";
 
@@ -111,6 +111,10 @@ export function JobDetail({ job: jobProp, back, openDrawer }) {
       </div>
 
       {(job.status === "running" || job.status === "queued") && <ScanProgressCard job={job}/>}
+
+      {job.status === "awaiting_approval" && <AgenticPlanCard job={job} onChange={refresh}/>}
+
+      {job.status === "awaiting_action" && <ExploitActionCard job={job} onChange={refresh}/>}
 
       <AIAnalysisBanner job={job}/>
 
@@ -261,7 +265,7 @@ function AIAnalysisBanner({ job }) {
       .then(r => {
         const list = r.providers || [];
         setProviders(list);
-        if (list.length > 0) setProvider(list[0].id);
+        if (list.length > 0) setProvider(list[0].key || list[0].id);
       })
       .catch(e => setError(e.message));
     refreshHistory();
@@ -323,7 +327,10 @@ function AIAnalysisBanner({ job }) {
         </div>
         {providers.length > 0 && (
           <select className="form-input" style={{height: 28, fontSize: 12, maxWidth: 180}} value={provider} onChange={e => setProvider(e.target.value)} disabled={busy}>
-            {providers.map(p => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}
+            {/* value must be p.key (the provider type), not p.id: for
+                DB-configured providers p.id is the row id, which /ai/analyze
+                rejects. */}
+            {providers.map(p => <option key={p.id} value={p.key || p.id}>{p.name || p.id}</option>)}
           </select>
         )}
         <button className="btn btn-sm" disabled={busy || providers.length === 0 || job.status !== "done"} onClick={() => startAnalysis("validate")}>
@@ -888,6 +895,181 @@ function FindingAITab({ loading, error, match, finding }) {
       <div style={{marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--line)", fontSize: 11, color: "var(--text-3)", fontFamily: "var(--font-mono)"}}>
         From AI analysis #{match.analysis.id} · {match.analysis.provider} · {match.analysis.mode}
         {match.analysis.finished_at && ` · ${new Date(match.analysis.finished_at).toLocaleString()}`}
+      </div>
+    </div>
+  );
+}
+
+// ── Agentic plugin plan: review + approve/reject before anything intrusive ──
+function AgenticPlanCard({ job, onChange }) {
+  const [plan, setPlan] = useState(null);
+  const [sel, setSel] = useState(new Set());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    agenticApi.getPlan(job.id)
+      .then(p => { setPlan(p); setSel(new Set((p.plan || []).map(x => x.plugin_id))); })
+      .catch(e => setErr(e.message || "Failed to load plan"));
+  }, [job.id]);
+
+  if (!plan) return null;
+  const items = plan.plan || [];
+  const toggle = (pid) => setSel(s => { const n = new Set(s); n.has(pid) ? n.delete(pid) : n.add(pid); return n; });
+
+  const approve = async () => {
+    setBusy(true); setErr("");
+    try { await agenticApi.approve(job.id, { approved_plugins: [...sel] }); onChange && onChange(); }
+    catch (e) { setErr(e.message || "Approve failed"); setBusy(false); }
+  };
+  const reject = async () => {
+    setBusy(true); setErr("");
+    try { await agenticApi.reject(job.id); onChange && onChange(); }
+    catch (e) { setErr(e.message || "Reject failed"); setBusy(false); }
+  };
+
+  return (
+    <div className="card" style={{marginBottom: 20, border: "1px solid var(--brand-line)"}}>
+      <div style={{padding: "14px 16px"}}>
+        <div style={{display: "flex", alignItems: "center", gap: 8, marginBottom: 8}}>
+          <Icons.Brain size={16} color="var(--brand-text)"/>
+          <div style={{fontSize: 14, fontWeight: 600}}>AI proposed a scan plan — your approval is needed</div>
+        </div>
+        {plan.summary && (
+          <div style={{fontSize: 12.5, color: "var(--text-1)", marginBottom: 10, lineHeight: 1.5}}>{plan.summary}</div>
+        )}
+        {plan.error && (
+          <div className="form-help" style={{color: "var(--err)", marginBottom: 8}}>Planner note: {plan.error}</div>
+        )}
+
+        {items.length === 0 ? (
+          <div className="form-help">
+            The AI proposed no active plugins — recon found nothing that warrants intrusive testing. Reject to close this job.
+          </div>
+        ) : (
+          <div style={{display: "flex", flexDirection: "column", gap: 6, margin: "8px 0"}}>
+            {items.map(p => (
+              <label key={p.plugin_id}
+                     style={{display: "flex", gap: 8, alignItems: "flex-start", padding: "8px 10px", background: "var(--surface-1)", borderRadius: 7, cursor: "pointer"}}>
+                <input type="checkbox" checked={sel.has(p.plugin_id)} onChange={() => toggle(p.plugin_id)} style={{marginTop: 3}}/>
+                <div style={{flex: 1}}>
+                  <div style={{fontSize: 12.5, fontWeight: 600}}>
+                    {p.name}
+                    <span className="mono" style={{fontWeight: 400, color: "var(--text-3)", fontSize: 11, marginLeft: 6}}>{p.plugin_id}</span>
+                    <span className="tag" style={{fontSize: 10, marginLeft: 6}}>{p.risk}</span>
+                  </div>
+                  {p.reason && <div style={{fontSize: 11.5, color: "var(--text-2)", marginTop: 2}}>{p.reason}</div>}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {err && <div style={{color: "var(--err)", fontSize: 12, margin: "6px 0"}}><Icons.AlertTriangle size={12}/> {err}</div>}
+
+        <div style={{display: "flex", gap: 8, marginTop: 10}}>
+          <button className="btn btn-primary btn-sm" disabled={busy || sel.size === 0} onClick={approve}>
+            <Icons.Check size={13}/> Setujui &amp; jalankan ({sel.size})
+          </button>
+          <button className="btn btn-sm" disabled={busy} onClick={reject}><Icons.X size={13}/> Tolak</button>
+        </div>
+        <div className="form-help" style={{marginTop: 8}}>
+          These are VulnScan's own vetted plugins — they honour the allowlist, intrusive rules and timeouts. Only the ones you check will run.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Mode B: approve/reject each agent-crafted exploit action; kill switch ────
+function ExploitActionCard({ job, onChange }) {
+  const [info, setInfo] = useState(null);
+  const [actions, setActions] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(() => {
+    exploitApi.getAction(job.id).then(setInfo).catch(e => setErr(e.message || "load failed"));
+    exploitApi.listActions(job.id).then(r => setActions(r.actions || [])).catch(() => {});
+  }, [job.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const approve = async () => {
+    setBusy(true); setErr("");
+    try { await exploitApi.approve(job.id); onChange && onChange(); }
+    catch (e) { setErr(e.message || "approve failed"); setBusy(false); }
+  };
+  const reject = async () => {
+    setBusy(true); setErr("");
+    try { await exploitApi.reject(job.id, { reason }); onChange && onChange(); }
+    catch (e) { setErr(e.message || "reject failed"); setBusy(false); }
+  };
+  const kill = async () => {
+    if (!window.confirm("Kill this exploit session? No further actions will run.")) return;
+    setBusy(true); setErr("");
+    try { await exploitApi.kill(job.id); onChange && onChange(); }
+    catch (e) { setErr(e.message || "kill failed"); setBusy(false); }
+  };
+
+  if (!info) return null;
+  const p = info.pending;
+  const a = (p && p.action) || {};
+  const qs = a.query && Object.keys(a.query).length
+    ? "?" + Object.entries(a.query).map(([k, v]) => `${k}=${v}`).join("&") : "";
+
+  return (
+    <div className="card" style={{marginBottom: 20, border: "1px solid var(--err)"}}>
+      <div style={{padding: "14px 16px"}}>
+        <div style={{display: "flex", alignItems: "center", gap: 8, marginBottom: 8}}>
+          <Icons.AlertTriangle size={16} color="var(--err)"/>
+          <div style={{fontSize: 14, fontWeight: 600}}>Exploit action awaiting your approval</div>
+          <span className="tag" style={{marginLeft: "auto"}}>action #{info.action_count + 1}</span>
+          <button className="btn btn-sm" disabled={busy} onClick={kill}
+                  style={{color: "var(--err)", borderColor: "var(--err)"}}>
+            <Icons.X size={12}/> Kill session
+          </button>
+        </div>
+
+        {!p ? (
+          <div className="form-help">No action pending (session may be resuming). Refresh in a moment.</div>
+        ) : (
+          <>
+            {p.rationale && <div style={{fontSize: 12.5, color: "var(--text-1)", marginBottom: 8}}>{p.rationale}</div>}
+            <div style={{fontSize: 11, color: "var(--text-3)", marginBottom: 4}}>Exact request that will be sent (proof-only, code-validated, host pinned to target):</div>
+            <pre style={{background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 7, padding: "10px 12px", fontSize: 11.5, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word"}}>
+{`${a.method || "GET"} ${a.path || "/"}${qs}`}
+{a.headers && Object.keys(a.headers).length ? "\n" + Object.entries(a.headers).map(([k, v]) => `${k}: ${v}`).join("\n") : ""}
+{a.body ? "\n\n" + a.body : ""}
+            </pre>
+
+            <input className="form-input" placeholder="Reason (optional, for reject)"
+                   value={reason} onChange={e => setReason(e.target.value)} style={{marginTop: 8}}/>
+            {err && <div style={{color: "var(--err)", fontSize: 12, margin: "6px 0"}}><Icons.AlertTriangle size={12}/> {err}</div>}
+            <div style={{display: "flex", gap: 8, marginTop: 10}}>
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={approve}>
+                <Icons.Check size={13}/> Setujui &amp; jalankan
+              </button>
+              <button className="btn btn-sm" disabled={busy} onClick={reject}><Icons.X size={13}/> Tolak</button>
+            </div>
+          </>
+        )}
+
+        {actions.length > 0 && (
+          <div style={{marginTop: 14}}>
+            <div style={{fontSize: 11, fontWeight: 600, color: "var(--text-2)", marginBottom: 6}}>Action history ({actions.length})</div>
+            <div style={{display: "flex", flexDirection: "column", gap: 4}}>
+              {actions.map(ac => (
+                <div key={ac.seq} style={{fontSize: 11, padding: "6px 8px", background: "var(--surface-1)", borderRadius: 6, display: "flex", gap: 8, alignItems: "baseline"}}>
+                  <span className="mono" style={{color: "var(--text-3)"}}>#{ac.seq}</span>
+                  <span className="tag" style={{fontSize: 9}}>{ac.decision}</span>
+                  <span style={{flex: 1, color: "var(--text-1)"}} className="mono">{(ac.payload?.method || "")} {(ac.payload?.path || "")}</span>
+                  <span style={{color: "var(--text-3)"}}>{ac.response_summary || ac.validation_reason || ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

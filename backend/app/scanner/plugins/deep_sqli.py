@@ -19,6 +19,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.deep_sqli",
+    intrusive=True,
     name="Deep SQL Injection Scanner",
     category="web",
     depends_on=["fingerprint.http"],

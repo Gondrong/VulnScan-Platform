@@ -45,6 +45,21 @@ class Settings(BaseModel):
         "10.0.0.0/8,192.168.0.0/16,172.16.0.0/12,127.0.0.0/8,.internal.local,.local",
     )
 
+    # ── Agentic active exploitation (Mode B) ────────────────────────────────
+    # Master switch for the most dangerous capability: an AI agent that crafts
+    # its own payloads against a live target. OFF by default and server-level on
+    # purpose — enabling it requires editing .env, not a click in the browser.
+    # Even when on, every attacking action still needs per-action human approval,
+    # the target must be in the DB-managed exploit allowlist (fail-closed), and
+    # the execution layer enforces target-pinning + the destructive deny-list.
+    ENABLE_AGENTIC_EXPLOIT: bool = os.getenv("ENABLE_AGENTIC_EXPLOIT", "false").strip().lower() in ("1", "true", "yes", "on")
+    # Bounds for an exploit session (anti-runaway / anti-flood).
+    EXPLOIT_MAX_ACTIONS: int = int(os.getenv("EXPLOIT_MAX_ACTIONS", "40"))
+    EXPLOIT_MAX_TURNS_PER_RUN: int = int(os.getenv("EXPLOIT_MAX_TURNS_PER_RUN", "12"))
+    EXPLOIT_SESSION_DEADLINE: int = int(os.getenv("EXPLOIT_SESSION_DEADLINE", "7200"))
+    EXPLOIT_MIN_SECONDS_BETWEEN_ACTIONS: float = float(os.getenv("EXPLOIT_MIN_SECONDS_BETWEEN_ACTIONS", "1.0"))
+    EXPLOIT_MAX_RESPONSE_BYTES: int = int(os.getenv("EXPLOIT_MAX_RESPONSE_BYTES", str(64 * 1024)))
+
     SCAN_TIMEOUT_SECONDS: int = int(os.getenv("SCAN_TIMEOUT_SECONDS", "15"))
     # Global scan budget: maximum wall-clock time for the entire scan (all plugins).
     # Must be LESS than RQ job_timeout to allow graceful completion.
@@ -93,7 +108,7 @@ class Settings(BaseModel):
 
     # ── Platform Update ────────────────────────────────────────────
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "Gondrong/VulnScan-Platform")
-    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.1.0")
+    PLATFORM_VERSION: str = os.getenv("PLATFORM_VERSION", "3.3.0")
 
     # ── AI Providers ──────────────────────────────────────────────
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
@@ -127,6 +142,19 @@ class Settings(BaseModel):
     # 8192, GLM 5.3 Flash spent 6.6k-8.6k tokens reasoning over a 30-finding
     # validate batch and was cut off (finish_reason=length) before answering.
     AI_MAX_TOKENS: int = int(os.getenv("AI_MAX_TOKENS", "16384"))
+
+    # Investigate mode: batch validation first, then one agentic session per
+    # finding that the batch passes left in doubt.
+    # Batch validation passes before the queue is built. With 2, findings the
+    # passes disagree on are investigated too. Whether one model disagrees
+    # with itself often enough to pay for the second pass has not been
+    # measured yet — the 12% disagreement seen earlier was Qwen against GLM.
+    AI_INVESTIGATE_PHASE_A_RUNS: int = max(1, min(2, int(os.getenv("AI_INVESTIGATE_PHASE_A_RUNS", "2"))))
+    # Turn budget per investigation session. A tool call costs a turn.
+    AI_INVESTIGATE_MAX_TURNS: int = max(2, int(os.getenv("AI_INVESTIGATE_MAX_TURNS", "10")))
+    # Cap on sessions per analysis; beyond it the queue is cut by KEV, then
+    # severity, and the rest keep their batch verdict.
+    AI_INVESTIGATE_MAX_FINDINGS: int = max(1, int(os.getenv("AI_INVESTIGATE_MAX_FINDINGS", "20")))
 
     # GeoIP — path to GeoLite2-City.mmdb for IP → City/Country resolution
     GEOIP_DB_PATH: str = os.getenv("GEOIP_DB_PATH", "/data/GeoLite2-City.mmdb")

@@ -17,6 +17,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.advanced_xss",
+    intrusive=True,
     name="Advanced XSS Scanner",
     category="web",
     depends_on=["fingerprint.http"],

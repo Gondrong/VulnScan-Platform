@@ -23,6 +23,7 @@ logger = logging.getLogger("vulnscan.crlf_injection")
 
 META = PluginMeta(
     plugin_id="web.crlf_injection",
+    intrusive=True,
     name="CRLF Injection Scanner",
     category="web",
     depends_on=["fingerprint.http"],

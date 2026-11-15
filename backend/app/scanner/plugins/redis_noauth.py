@@ -22,6 +22,7 @@ logger = logging.getLogger("vulnscan.redis_noauth")
 
 META = PluginMeta(
     plugin_id="infra.redis.deep",
+    intrusive=True,
     name="Redis No-Auth Deep Scanner",
     category="network",
     depends_on=["net.port.discovery.v2"],

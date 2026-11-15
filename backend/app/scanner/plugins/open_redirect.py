@@ -12,6 +12,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.open_redirect",
+    intrusive=True,
     name="Open Redirect Scanner",
     category="web",
     depends_on=["fingerprint.http"],

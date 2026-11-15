@@ -18,6 +18,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.deep_cmdi",
+    intrusive=True,
     name="Deep Command Injection Scanner",
     category="web",
     depends_on=["fingerprint.http"],

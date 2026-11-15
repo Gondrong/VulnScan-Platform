@@ -31,6 +31,7 @@ logger = logging.getLogger("vulnscan.waf_detection")
 
 META = PluginMeta(
     plugin_id="web.waf.detection",
+    intrusive=True,
     name="WAF Detection & Bypass Scanner",
     category="web",
     depends_on=["fingerprint.http"],

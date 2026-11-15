@@ -23,6 +23,7 @@ logger = logging.getLogger("vulnscan.plugin.sqlmap")
 
 META = PluginMeta(
     plugin_id="ext.sqlmap",
+    intrusive=True,
     name="sqlmap SQL Injection Scanner",
     category="web",
     provides=["sqlmap.findings"],

@@ -20,6 +20,7 @@ logger = logging.getLogger("vulnscan.plugin.ffuf")
 
 META = PluginMeta(
     plugin_id="ext.ffuf",
+    intrusive=True,
     name="ffuf Web Fuzzer",
     category="recon",
     provides=["ffuf.directories", "recon.directories"],

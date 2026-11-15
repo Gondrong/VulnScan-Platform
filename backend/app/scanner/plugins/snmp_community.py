@@ -22,6 +22,7 @@ logger = logging.getLogger("vulnscan.snmp_community")
 
 META = PluginMeta(
     plugin_id="infra.snmp.community",
+    intrusive=True,
     name="SNMP Community String Scanner",
     category="network",
     depends_on=["net.port.discovery.v2"],

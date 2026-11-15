@@ -5,6 +5,464 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.3.0 — 2026-11-15
+
+This release makes scanning and analysis **agentic** and adds a **source-code
+scanner**. An AI agent can now triage findings, choose which plugins to run, and
+— off by default, behind per-action human approval — probe a target with its own
+proof-only payloads. All of it is gated so a clean, observation-only workflow is
+unchanged unless you opt in.
+
+### Added
+
+**Agentic analysis — `investigate` mode**
+
+- After the usual batch validation, one read-only agent session runs per doubtful
+  finding, with tools to read the finding, search sibling findings, look up a CVE
+  in local threat-intel, check a finding's history, and query the attack graph.
+  Works on Claude CLI (via a hand-rolled MCP server, `ai/mcp_server.py`) and on
+  OpenAI-compatible providers (in-process tool loop).
+- Findings with no vulnerability claim (`SKIP:`/`PASS:`/info summaries) get a
+  deterministic verdict from `engine._rule_verdict()`, not the model.
+- Validated on a production scan: GLM and DeepSeek independently flagged all six
+  "boolean-blind SQLi" findings as false positives (Cloudflare 403s, not
+  injection).
+
+**Agentic active scan — Mode A (plugin orchestration)**
+
+- New "Agentic" option in the New Scan dialog: a non-intrusive recon runs first,
+  the AI proposes which active plugins to run against the target and why, and the
+  scan pauses at *awaiting approval*. You approve the plan (or a subset) before
+  anything intrusive runs. The payloads are still VulnScan's own vetted plugins,
+  so they honour the allowlist, intrusive rules and timeouts.
+
+**Agentic active exploitation — Mode B (off by default)**
+
+- The AI agent crafts its own proof-only payloads. Disabled unless
+  `ENABLE_AGENTIC_EXPLOIT=true` is set server-side, and then only against hosts on
+  a fail-closed exploit allowlist (Settings → Agentic Exploit; empty = none).
+- Every attacking action needs **per-action human approval** — the exact request
+  bytes are shown before you approve — and the whole session can be killed
+  instantly. Safety is enforced in code, not the prompt: structural
+  target-pinning (the tool takes a path, never a host), a destructive deny-list
+  (DB-mutating SQL, file writes, reverse shells, state-changing verbs) matched on
+  raw *and* url-decoded requests, size caps, rate/volume bounds, and a full audit
+  trail (`agentic_actions`) of every payload, verdict, approver and response.
+- Confirmed issues become normal findings via a `report_finding` tool; the
+  session summary is saved as an info finding.
+
+**Source-code scanner — `scan_type = "source_code"`**
+
+- Scan a codebase from an uploaded zip or a git URL (GitHub / GitLab / Bitbucket
+  / any https or ssh repo), with a pre-flight credential check for private repos.
+- **SCA track**: parses lockfiles (npm, PyPI, Go, Ruby, PHP, Rust, …) and matches
+  pinned versions against a new OSV advisory dataset (`scripts/osv_fetch.py`,
+  refreshed with the other datasets).
+- **Agentic track**: the configured AI provider reads the source with read-only
+  file tools and reports logic, secret, injection and auth issues. Full-coverage
+  by default — an unknown file type is read, not skipped — with every excluded
+  path listed in a coverage finding.
+
+**Non-intrusive scan mode**
+
+- Chosen per scan. Plugins that attack, guess credentials, write to the target or
+  brute-force paths are skipped (plus anything that hard-depends on them), and the
+  results list exactly what was skipped so a clean report is never mistaken for a
+  tested one. `PluginMeta.intrusive` marks the 24 active-testing plugins.
+
+**AI providers**
+
+- Edit an existing provider in place (API key left blank keeps the stored one),
+  and support for OpenAI-compatible endpoints such as Netra.
+
+### Changed / Fixed
+
+- **Dataset refresh auto-prunes superseded rows.** Every refresh left a disabled
+  row behind; they all pointed at the same overwritten file, so the Datasets page
+  grew without bound (300+ rows seen). A successful refresh now deletes every
+  superseded row of that kind (`DATASET_KEEP_DISABLED`, default 0); the active
+  row is never touched.
+- **Neo4j healthcheck fixed.** The `neo4j:5` image has no `curl`, so the
+  healthcheck failed tens of thousands of times in a row; switched to `wget`.
+- **Rescan is handled per scan type.** Upload/config-driven scans (API, IaC,
+  source-code) can't be rescanned (their input isn't retained) and now say so
+  instead of failing obscurely; agentic jobs rescan as a fresh agentic session
+  rather than a plain scan with no profile.
+
+---
+## v3.2.1 — 2026-10-26
+
+Dataset refresh had stopped completing, and when it did finish it produced a
+dataset that was quietly missing CVEs. The active NVD dataset held 49,794 of
+52,760 CVEs — 2,966 short — with nothing in the UI to suggest anything was
+wrong.
+
+### Fixed
+
+**NVD paging no longer completes at `resultsPerPage=2000`**
+
+- Measured from the platform host: a 2000-item page did not finish in 155s,
+  while a 200-item page took 9.8s. The request timeout was 60s, so every page
+  after the first timed out, retried, and timed out again.
+- Page size is now 200 (`NVD_PAGE_SIZE`) and the timeout 120s
+  (`NVD_PAGE_TIMEOUT`). Larger pages were measured and are slower overall:
+  200/500/1000 items took 5.5s/16.2s/38.1s, so fewer-but-bigger pages lose.
+
+**`IncompleteRead` escaped the retry loop entirely**
+
+- `http.client.IncompleteRead` — the connection dropping mid-body — derives
+  from `HTTPException`, not from `URLError`/`OSError`, so the retry handler
+  never caught it. The page failed on its first attempt while the caller still
+  logged "failed after retries".
+- It is now retried like any other transport error. In one full refresh this
+  recovered **28 pages**, roughly 10% of all requests.
+
+**A partial fetch was swapped in as if it were complete**
+
+- Pages that failed after retries were logged at warning level and skipped; the
+  remaining pages were flattened and installed as the active dataset. Nothing
+  downstream could tell a complete dataset from one missing thousands of CVEs.
+- The refresh now fails and leaves the previous dataset in place, reporting how
+  many pages and CVEs it actually got.
+
+**Refresh could not finish inside the job timeout**
+
+- NVD throttles sustained paging: measured at 7.9s per page early in a run and
+  ~61s per page thereafter, steady for hours. A full refresh takes ~4.5 hours
+  against a 2-hour RQ `job_timeout`, so it could never complete — and with the
+  guard above, that meant it would never install a dataset either.
+- Each page is now written to disk as it arrives (via a temp file and rename,
+  so a kill mid-write cannot leave a truncated page that later looks valid),
+  and a manifest records the query window it belongs to. An interrupted run
+  resumes from the first missing page rather than starting over.
+- A resumed run reuses the stored `pubStartDate`/`pubEndDate`: those move with
+  wall-clock time, and a shifted window would change what page N means. Windows
+  older than `NVD_RESUME_MAX_AGE_HOURS` (48) are discarded instead.
+- Side effect: 265 pages no longer accumulate in memory, which is what had been
+  exhausting RAM on the host.
+
+**Refresh lock expired mid-run**
+
+- The Redis lock was held for 3600s while `job_timeout` was 7200s, so a long
+  refresh could lose its lock and a second trigger would start a concurrent run
+  writing to the same files. The lock now matches the job timeout.
+
+**Neo4j never reported healthy**
+
+- The healthcheck ran `curl -sf http://localhost:7474`, but the `neo4j:5`
+  image ships no curl. Every probe exited with `curl: not found`, so the
+  container sat at `unhealthy` from first boot — 28,771 consecutive failures
+  on the running instance. Neo4j itself was serving normally throughout.
+- The cost was not cosmetic: `depends_on: condition: service_healthy` can
+  never resolve for a service whose probe cannot pass, so nothing waiting on
+  Neo4j had its start order honoured.
+- The probe now uses `wget`, which the image does provide. Verify a probe
+  against the image before trusting it: a healthcheck that cannot run is
+  indistinguishable from a dependency that is genuinely down.
+
+### Added
+
+**Scheduled dataset refresh**
+
+- `GET`/`PUT /settings/dataset-refresh` (`enabled`, `interval_hours` 1–168),
+  and a scheduler feature that enqueues a refresh per workspace on that
+  interval. Defaults to **off**.
+- Without it, CVE data was only as fresh as the last time someone remembered to
+  press the button — which is how a four-day-old, silently incomplete dataset
+  ended up in production.
+- The existing Redis lock means a trigger that lands while a refresh is still
+  running is a no-op rather than a clash.
+- A control on the Datasets page toggles the schedule and picks the interval
+  from a preset list, so the endpoint is no longer the only way in. Every
+  preset sits inside the 1–168 range the API accepts, so the control cannot
+  submit a value the backend will reject. Reading the schedule is open to
+  viewers; changing it needs analyst or admin, matching the route's own roles.
+- The interval is counted in scheduler ticks from backend start, not against
+  wall-clock time, so "every 8 hours" means 8 hours since the last restart and
+  a restart shifts the schedule. The UI says so rather than implying a fixed
+  time of day.
+
+### Security
+
+**CVE-2026-111497 — Brotli decoder out-of-bounds write (CVSS 4.0: 9.2)**
+
+- A malformed Brotli stream can write past an internal decoder buffer, allowing
+  memory disclosure, a crash, or remote code execution. Affects Brotli 1.0.3
+  through 1.2.0.
+- `libbrotli1` moves to Debian's patched `1.1.0-2+deb13u1`, which also covers
+  the bundled `curl` — the one component here that decodes Brotli from scan
+  targets, since it links libbrotli and sends `Accept-Encoding: br`.
+- Node.js moves from 20.x to **24.22.1** (`node:24-slim`, `setup_24.x`). Node 20
+  reached end of life in March 2026 and has no fixed release: its last build,
+  v20.20.2, predates the October 2026 security releases by seven months.
+- The Python scanner was never exposed: `httpx` advertises only
+  `gzip, deflate` and no Brotli module is installed, so a malicious scan target
+  could not have reached the decoder through it. `nuclei`, `httpx`, `ffuf` and
+  `subfinder` do not link libbrotli either.
+
+**Version strings do not reveal either fix.** A patched Node 24.22.1 still
+reports `process.versions.brotli == 1.2.0`, and the patched Debian package still
+reads as 1.1.0 — both sit inside the vulnerable range. Confirming the fix meant
+reading the Debian changelog, and for Node, locating the cherry-pick commit
+(2026-10-20) and verifying it is an ancestor of the v24.22.1 tag but not of
+v24.22.0. Version-range matching alone reports both as vulnerable.
+
+### Upgrade notes
+
+- Node.js 24 replaces Node.js 20 in both images. Verified against this
+  deployment: Claude CLI (2.1.310) and the Vite 5.4 / React 18 frontend both run
+  unchanged.
+- Rebuilding is required for the Brotli fixes — patching a running container
+  does not survive the next rebuild.
+- New optional settings: `NVD_PAGE_SIZE` (200), `NVD_PAGE_TIMEOUT` (120),
+  `NVD_RESUME_MAX_AGE_HOURS` (48). All have defaults.
+- A full NVD refresh takes roughly 4.5 hours against the 2-hour job timeout, so
+  it completes across two triggers. With scheduling enabled at an 8-hour
+  interval the dataset lands about once a day; at 24 hours it takes two to
+  three days to catch up, then stays current.
+- Enable scheduling deliberately — it is off after upgrading.
+
+### Known limitations
+
+- The manifest is only written after page 1 succeeds. A run killed while page 1
+  is still retrying leaves nothing to resume from and starts over.
+- NVD's ~61s per page is not something this release can tune away; it is the
+  observed cost of sustained paging from the host.
+
+---
+## v3.2.0 — 2026-09-30
+
+Follow-up to v3.1.0. Three things that looked like they worked were producing
+wrong output rather than errors: the AI prompt silently discarded findings, an
+empty model reply was accepted as a set of default verdicts, and scanners
+reported clean results from runs that had actually failed.
+
+### Added
+
+**Batched analysis — every finding actually reaches the model**
+
+- Findings are sent in batches of `AI_BATCH_SIZE` (default 30, matching
+  `prompts.MAX_FULL_DETAIL`) instead of one oversized prompt. Applies to both
+  stages and to the single-stage modes. Per-finding maps are merged,
+  cross-finding narratives concatenated.
+- The loop refuses to start a batch that cannot finish inside the job budget, so
+  an overrun degrades to a partial-but-saved result instead of an RQ SIGKILL
+  that loses everything.
+- **Impact:** on a 96-finding scan, verdict coverage went from 80 to 96 — and
+  detected false positives went from 1–3 to 21, because findings that used to
+  arrive as bare titles now carry their evidence.
+
+**Stale-scan watchdog**
+
+- RQ SIGKILLs a work-horse that overruns `SCAN_JOB_TIMEOUT`, and a SIGKILLed
+  process runs no Python, so `run_scan_job`'s error handler never fires and the
+  row sat at `running` forever while the Failed tab stayed empty.
+- The scheduler closes them out, measuring from the new `scan_jobs.started_at`
+  so a job still queued is never touched. Threshold
+  `SCAN_STALE_AFTER_SECONDS`, which must exceed `SCAN_JOB_TIMEOUT`.
+- Recorded progress is preserved: "Scan stopped responding at 68% (step 47/69,
+  plugin ext.ffuf)". No new UI — it flows into the existing `error_info`.
+
+**OpenRouter, and multiple providers of the same type**
+
+- OpenRouter is a first-class entry in Add provider: endpoint prefilled,
+  `vendor/model` ID format signposted. Stored as `openai_compat`.
+- Providers added through the UI are addressed by row (`db:<id>`), so two
+  OpenRouter models are both selectable. Bare types still resolve, for settings
+  saved before this.
+- A "Default for auto-analysis" dropdown in Settings > AI Providers writes the
+  same `auto_ai_analysis.provider` the Auto AI panel edits. It deliberately
+  does not touch `enabled`.
+
+**`AI_MAX_TOKENS`**
+
+- Reasoning models bill their reasoning trace against `max_tokens`. Too low and
+  the reply comes back empty or cut mid-JSON — GLM 5.3 Flash did this on every
+  30-finding batch at 8192. Default raised to 16384 and made configurable.
+
+### Fixed
+
+**AI providers configured through the UI could never be used**
+
+- `/ai/providers` returned the DB row id as the option value while
+  `/ai/analyze` validated against `provider_type`, so picking any UI-added
+  provider failed with a bare HTTP 400.
+- The Auto AI Analysis dropdown was built from env vars only and never read
+  `ai_provider_configs`.
+- Two providers of the same type collapsed into one option and resolved to
+  whichever was added last.
+- An endpoint pasted from a provider's docs (`…/v1/chat/completions`) produced
+  a doubled path and a bare 404. Endpoints are normalised to the base URL.
+
+**Prompt truncation silently discarded findings**
+
+- `build_prompt` sent the first 30 findings in full, the next 50 as title-only
+  summaries with no evidence, and dropped the rest. On a 100-finding scan that
+  meant 50 findings judged on their title and 20 never seen.
+- `_two_stage` metadata reported findings *submitted* rather than *assessed*.
+  It now carries `submitted_to_model`, `verdicts_returned`, `not_assessed`,
+  `deep_analysed` and `batch_size`.
+- An empty or truncated model reply was parsed into default verdicts.
+  `OpenAIProvider` raises `EmptyResponseError` and the batch is recorded in
+  `failed_batches` instead.
+- `AI_CLI_TIMEOUT` is no longer derived from an assumed two calls per job.
+
+**Scanners reporting results from runs that failed**
+
+- `httpx` reported "0 live" for a run that had errored; it now uses `-json`
+  and surfaces the failure.
+- `nuclei` scans only the ports `httpx` confirmed as HTTP.
+- Web scanners no longer target `unknown://`.
+- CIS checks whose files a non-root user cannot read are SKIPped rather than
+  reported as FAIL without evidence.
+- AI verdict rules for findings that are not vulnerabilities.
+
+### Upgrade notes
+
+- New optional settings: `AI_BATCH_SIZE`, `AI_MAX_TOKENS`,
+  `SCAN_STALE_AFTER_SECONDS`. All have defaults.
+- `scan_jobs.started_at` is added by the startup migrations; no manual step.
+- Batching raises token use: a 96-finding two-stage analysis went from ~16k
+  tokens in 2 calls to ~33k in 7. Raising `AI_BATCH_SIZE` above 30 without also
+  raising `prompts.MAX_FULL_DETAIL` re-introduces title-only findings.
+- Rebuild every service that builds from `./backend` — each worker has its own
+  image: `docker compose build backend worker-ai worker-scan worker-data`.
+
+### Known limitations
+
+- A bare provider type (rather than `db:<id>`) resolves to the most recently
+  added row of that type — kept only for settings saved before row-addressing.
+
+---
+## v3.1.0 — 2026-08-27
+
+Reliability release. Several features turned out to have never worked in
+production: auto AI analysis raised `NameError` on every scan, the Neo4j graph
+was never populated, and internal scans were killed at 70–88% before saving a
+single finding. All silent — the failures were swallowed at `debug` level or
+mislabelled by the stale-analysis watchdog.
+
+### Added
+
+**Two-Stage AI Analysis — `validate_then_exploit`**
+
+- New analysis mode: run `validate` over all findings first, drop the confirmed
+  false positives, then run `full_exploit` only on what survived. Attack chains
+  and PoCs are no longer built on top of false positives.
+- Stage 1 verdicts are preserved for *every* finding, so the UI can still
+  explain why something was dropped.
+- Skips stage 2 entirely when every finding is refuted.
+- Degrades to a plain `full_exploit` run if stage 1's response cannot be parsed —
+  findings are never silently dropped.
+- **Impact:** verdict coverage rose from 20/91 to 76/76 on a comparable scan, at
+  roughly 2.4× the tokens.
+
+**`app/core/net.py` — client IP resolution behind proxies**
+
+- `X-Forwarded-For` is honoured only when the request actually arrived from a
+  proxy listed in the new `TRUSTED_PROXIES` setting; the chain is walked from the
+  right, discarding trusted hops. Malformed entries are ignored.
+- The bundled Vite proxy now sets `xfwd: true`, so per-client rate limiting works.
+
+**Configurable timeout hierarchies**
+
+- AI: `AI_CLI_TIMEOUT` < `AI_ANALYSIS_TIMEOUT` < `AI_STALE_AFTER_SECONDS`, order
+  enforced at load time and sized for the two calls the new mode makes.
+- Scan: `SCAN_JOB_TIMEOUT` replaces `SCAN_BUDGET_SECONDS + 300`, which had been
+  copy-pasted into six modules.
+- `AI_WORKERS` runs AI workers in parallel; the single serial worker meant queued
+  analyses were failed by the watchdog before they ever started.
+- `scan_jobs.started_at` / `ai_analyses.started_at`: the watchdog now measures
+  running time instead of time-since-created.
+
+### Fixed
+
+**Features that had never run**
+
+- `worker_tasks.py` used `Queue`, `Redis`, `settings` and `severity` without
+  importing them. Auto AI analysis raised `NameError` on every scan (warning
+  level), leaving an `ai_analyses` row stuck at `queued`; the Neo4j
+  `upsert_finding` call failed at `debug` level, so the attack graph was never
+  populated from a scan.
+- Claude CLI ran with `--max-turns 5` and no tool restrictions, so the model
+  spent its turns on tool calls and exited with `Error: Reached max turns` on
+  **stdout with return code 0**. Tools are now disabled for what is a plain
+  text-in/text-out completion.
+- `run_analysis`'s error handler touched `analysis` before it was bound and
+  committed on a failed transaction, so failures were never recorded.
+
+**Scans killed at 70–88%**
+
+- The progress callback opened a DB session per plugin transition (~142 per
+  scan) on the event loop; once the pool drained, each call blocked for
+  `pool_timeout` and the failure was swallowed at `debug` level. Now throttled
+  and run off the loop.
+- `run_scan_job` held a transaction for the whole scan: reading `job`/`prof`
+  after the earlier commit made SQLAlchemy re-open one to refresh the expired
+  objects. Startup DDL then queued behind it, and a queued ACCESS EXCLUSIVE lock
+  blocks every later reader — freezing the application.
+- Startup migrations now `SET lock_timeout` so idempotent DDL gives up instead of
+  blocking the world.
+- `ssl_grading` and `tls_basic` called blocking sockets inline inside `async def`,
+  which froze the event loop and made the engine's `asyncio.wait_for` unable to
+  fire its per-plugin timeout.
+- nuclei now runs with `-duc`; it was contacting GitHub for template updates on
+  every run.
+
+**Authentication and rate limiting**
+
+- The rate limiter recorded rejected requests and refreshed the key's TTL, so a
+  60-second throttle became an indefinite lockout for as long as a client kept
+  retrying. `Retry-After` always computed to `0`.
+- A new Redis client was built per request and never closed.
+- The DB engine had no pool configuration: 5 + 10 connections with a 30-second
+  `pool_timeout`, so an exhausted pool made requests hang for 30 seconds.
+- The audit middleware performed a synchronous DB write inside async middleware,
+  blocking the event loop and holding a pool connection on every mutating request.
+
+**Other**
+
+- The scheduler leaked a DB connection per failing tick (`db.close()` was inside
+  `try`, not `finally`).
+- `get_provider()` leaked a session when its lookup raised, logging at `debug`.
+- `trigger_update` raised `UnboundLocalError` on a corrupt `update-result.json`.
+- `_update_progress` now logs; a lock-blocked commit previously went silent.
+- `_two_stage` metadata reported findings *submitted* rather than *assessed*,
+  overstating coverage when the prompt truncated.
+
+### Security
+
+- `python-multipart` 0.0.9 → 0.0.20 (CVE-2024-53981).
+- `cryptography` 42.0.8 → 44.0.1.
+- `paramiko` 3.4.0 → 3.5.1.
+- Claude CLI pinned to v2 (a v2-written profile is unreadable by a v1 CLI).
+- `.env` is no longer tracked by git. **Rotate every credential that was in it.**
+- 2,500 generated files (`.pyc`, `node_modules/`, `dist/`, `.bak`) untracked.
+
+### Upgrade notes
+
+- **`.env`:** `CLAUDE_CONFIG_DIR` is the Claude CLI's *own* variable and must be
+  the container path (`/root/.claude`). Use the new `CLAUDE_PROFILE_DIR` for the
+  host path. Leave `CLAUDE_CODE_OAUTH_TOKEN` empty when authenticating by profile
+  login — a stale token overrides the profile and every call fails with 401.
+- New optional settings: `TRUSTED_PROXIES`, `AI_WORKERS`, `AI_CLI_TIMEOUT`,
+  `AI_STALE_AFTER_SECONDS`, `SCAN_JOB_TIMEOUT`, `DB_POOL_SIZE`,
+  `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`. All have defaults.
+- Rebuild every service that builds from `./backend` — each worker has its own
+  image, so `docker compose build backend` alone is not enough:
+  `docker compose build backend worker-ai worker-scan worker-data`.
+- `started_at` columns are added by the startup migrations; no manual step.
+
+### Known limitations
+
+- `MAX_FULL_DETAIL` (30) + `MAX_SUMMARY` (50) caps prompts at 80 findings, so a
+  100-finding scan sends only 80 to the AI and the remaining 20 are promoted by
+  the `needs_manual` default without ever being assessed. `_two_stage.not_assessed`
+  now reports this. Batching is the fix and is not in this release.
+- `scan_jobs` has no stale-job watchdog: a work-horse killed by RQ cannot write
+  its own status, so such a job stays `running` in the UI.
+
+---
 ## v3.0.6 — 2026-08-12
 
 ### Added

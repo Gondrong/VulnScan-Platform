@@ -215,7 +215,7 @@ async def create_api_scan_job(
         q = Queue("scans", connection=redis_conn)
         from app.worker_tasks import run_scan_job
         q.enqueue(run_scan_job, job.id,
-                  job_timeout=settings.SCAN_BUDGET_SECONDS + 300)
+                  job_timeout=settings.SCAN_JOB_TIMEOUT)
         logger.info("API scan job #%d queued: target=%s checks=%s", job.id, base_url, requested_checks)
     except Exception as e:
         job.status = "failed"

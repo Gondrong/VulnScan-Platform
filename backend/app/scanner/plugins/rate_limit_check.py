@@ -14,6 +14,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.rate_limit",
+    intrusive=True,
     name="Rate Limiting Check",
     category="web",
     depends_on=["fingerprint.http"],

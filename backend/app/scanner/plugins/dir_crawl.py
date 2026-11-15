@@ -21,6 +21,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="recon.directory.crawl",
+    intrusive=True,
     name="Directory Crawling & Discovery",
     category="recon",
     depends_on=["fingerprint.http"],

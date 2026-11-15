@@ -40,6 +40,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="owasp.web.scanner",
+    intrusive=True,
     name="OWASP Top 10 (2025) Web Scanner",
     category="vuln_scan",
     depends_on=["fingerprint.http"],

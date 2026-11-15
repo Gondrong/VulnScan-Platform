@@ -20,6 +20,7 @@ logger = logging.getLogger("vulnscan.mqtt")
 
 META = PluginMeta(
     plugin_id="iot.mqtt_scanner",
+    intrusive=True,
     name="MQTT Anonymous Access & Security",
     category="iot",
     depends_on=["net.port.discovery.v2"],

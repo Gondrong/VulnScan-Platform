@@ -23,6 +23,7 @@ logger = logging.getLogger("vulnscan.host_header_injection")
 
 META = PluginMeta(
     plugin_id="web.host_header_injection",
+    intrusive=True,
     name="Host Header Injection Scanner",
     category="web",
     depends_on=["fingerprint.http"],

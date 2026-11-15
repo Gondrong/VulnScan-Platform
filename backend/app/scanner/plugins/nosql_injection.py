@@ -14,6 +14,7 @@ from app.scanner.context import stable_fingerprint
 
 META = PluginMeta(
     plugin_id="web.nosql_injection",
+    intrusive=True,
     name="NoSQL Injection Scanner",
     category="web",
     depends_on=["fingerprint.http"],

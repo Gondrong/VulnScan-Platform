@@ -384,14 +384,16 @@ def trigger_update(user=Depends(require_role("admin"))):
         raise HTTPException(409, "Update already triggered — waiting for host updater to process")
 
     if os.path.exists(result_path):
+        status = None
         try:
             with open(result_path) as f:
                 status = json.load(f)
-            if status.get("status") == "updating":
-                raise HTTPException(409, f"Update in progress: {status.get('message', '...')}")
-        except (json.JSONDecodeError, HTTPException):
-            if isinstance(status, dict) and status.get("status") == "updating":
-                raise
+        except (OSError, json.JSONDecodeError) as exc:
+            # Corrupt or unreadable result file — treat it as "no update in
+            # progress" instead of blocking the trigger.
+            logger.warning("Ignoring unreadable %s: %s", result_path, exc)
+        if isinstance(status, dict) and status.get("status") == "updating":
+            raise HTTPException(409, f"Update in progress: {status.get('message', '...')}")
 
     # Write trigger file
     trigger_data = {
@@ -513,6 +515,49 @@ def _set_setting(db: Session, ws: int, key: str, value: dict) -> None:
     db.commit()
 
 
+# ─── Agentic Exploit (Mode B) — allowlist + capability status ───────────────────
+
+@router.get("/exploit-allowlist")
+def get_exploit_allowlist(user=Depends(require_role("admin", "analyst", "viewer")),
+                          db: Session = Depends(get_db)):
+    """Current exploit allowlist (DB) and whether the master switch is on.
+
+    Fail-closed: an empty list means NO target may be actively exploited, even
+    when the master switch is on."""
+    cfg = _get_setting(db, user["ws"], "exploit_allowlist", {})
+    entries = [str(e).strip() for e in (cfg.get("entries") or []) if str(e).strip()]
+    return {
+        "enabled": bool(settings.ENABLE_AGENTIC_EXPLOIT),
+        "entries": entries,
+        "count": len(entries),
+        "note": "Empty = no target allowed (fail-closed). Master switch is set server-side via ENABLE_AGENTIC_EXPLOIT.",
+    }
+
+
+class ExploitAllowlistUpdate(BaseModel):
+    entries: list[str]
+
+
+@router.put("/exploit-allowlist")
+def update_exploit_allowlist(body: ExploitAllowlistUpdate,
+                             user=Depends(require_role("admin")),
+                             db: Session = Depends(get_db)):
+    """Replace the exploit allowlist (admin only). Entries are hosts, domain
+    suffixes (.example.com) or CIDRs."""
+    cleaned = []
+    for e in body.entries:
+        e = (e or "").strip().lower().rstrip(".")
+        if e:
+            cleaned.append(e)
+    # de-dupe, keep order
+    seen = set()
+    cleaned = [e for e in cleaned if not (e in seen or seen.add(e))]
+    _set_setting(db, user["ws"], "exploit_allowlist", {"entries": cleaned})
+    logger.warning("Exploit allowlist updated by %s: %s",
+                   user.get("email") or user.get("uid"), cleaned)
+    return {"entries": cleaned, "count": len(cleaned)}
+
+
 @router.get("/sla")
 def get_sla(user=Depends(require_role("admin", "analyst", "viewer")), db: Session = Depends(get_db)):
     return _get_setting(db, user["ws"], "sla", DEFAULT_SLA)
@@ -617,9 +662,33 @@ def get_auto_ai(
 ):
     """Return auto AI analysis configuration."""
     config = _get_setting(db, user["ws"], "auto_ai_analysis", DEFAULT_AUTO_AI)
-    # Also return available providers for the UI
+    # Providers offered to the UI. `available_ai_providers()` only knows about
+    # env-configured ones, so anything added through Settings > AI Providers
+    # (OpenRouter, a local LLM, …) has to be merged in here — otherwise it can
+    # never be picked for post-scan analysis.
     from app.core.config import settings as app_settings
-    config["available_providers"] = app_settings.available_ai_providers()
+    env_providers = app_settings.available_ai_providers()
+
+    # One entry per row, addressed by row id — two OpenRouter models must both
+    # be selectable, not collapse into a single "openai_compat" option.
+    from app.ai.providers import DB_PROVIDER_PREFIX
+    db_providers = []
+    for r in (
+        db.query(models.AiProviderConfig)
+        .filter(
+            models.AiProviderConfig.workspace_id == user["ws"],
+            models.AiProviderConfig.enabled == True,
+        )
+        .order_by(models.AiProviderConfig.id)
+        .all()
+    ):
+        db_providers.append({
+            "id": f"{DB_PROVIDER_PREFIX}{r.id}",
+            "name": r.name,
+            "model": r.model,
+        })
+
+    config["available_providers"] = db_providers + env_providers
     return config
 
 
@@ -639,8 +708,9 @@ def put_auto_ai(
     current = _get_setting(db, user["ws"], "auto_ai_analysis", DEFAULT_AUTO_AI)
     incoming = body.dict(exclude_unset=True)
 
-    if "mode" in incoming and incoming["mode"] not in ("validate", "full", "full_exploit"):
-        raise HTTPException(400, "Mode must be: validate, full, or full_exploit")
+    _valid_modes = ("validate", "full", "full_exploit", "validate_then_exploit")
+    if "mode" in incoming and incoming["mode"] not in _valid_modes:
+        raise HTTPException(400, f"Mode must be one of: {', '.join(_valid_modes)}")
 
     current.update(incoming)
     _set_setting(db, user["ws"], "auto_ai_analysis", current)
@@ -686,6 +756,45 @@ def put_sla_alert(
 
 
 # ── Auto Report Generation ─────────────────────────────────────────────────
+
+DEFAULT_DATASET_REFRESH = {
+    "enabled": False,
+    "interval_hours": 24,
+}
+
+
+@router.get("/dataset-refresh")
+def get_dataset_refresh(
+    user=Depends(require_role("admin", "analyst", "viewer")),
+    db: Session = Depends(get_db),
+):
+    """Return scheduled dataset refresh configuration."""
+    return _get_setting(db, user["ws"], "dataset_refresh", DEFAULT_DATASET_REFRESH)
+
+
+class DatasetRefreshUpdate(BaseModel):
+    enabled: bool | None = None
+    interval_hours: int | None = None
+
+
+@router.put("/dataset-refresh")
+def put_dataset_refresh(
+    body: DatasetRefreshUpdate,
+    user=Depends(require_role("admin", "analyst")),
+    db: Session = Depends(get_db),
+):
+    """Update scheduled dataset refresh configuration."""
+    current = _get_setting(db, user["ws"], "dataset_refresh", DEFAULT_DATASET_REFRESH)
+    incoming = body.dict(exclude_unset=True)
+    if "interval_hours" in incoming:
+        iv = incoming["interval_hours"]
+        if not isinstance(iv, int) or not (1 <= iv <= 168):
+            raise HTTPException(400, "interval_hours must be between 1 and 168")
+    current.update(incoming)
+    _set_setting(db, user["ws"], "dataset_refresh", current)
+    logger.info("Dataset refresh schedule updated by %s: %s", user.get("sub", "?"), current)
+    return current
+
 
 DEFAULT_AUTO_REPORT = {
     "enabled": False,

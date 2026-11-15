@@ -73,8 +73,16 @@ class ScanJob(Base):
     scan_type: Mapped[str] = mapped_column(String(20), default="internal")  # internal|external
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Stamped when a worker picks the job up. The stale-job watchdog measures
+    # from here: a job still waiting behind a busy queue has not started
+    # spending its budget yet.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Agentic plugin-orchestration scans (Mode A). Holds {phase, provider, plan,
+    # approved_plugins, ...}. A dedicated column because meta_json is overwritten
+    # by progress/summary during the run, and the plan must survive to approval.
+    agentic_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Asset(Base):
@@ -100,6 +108,31 @@ class WorkspaceSetting(Base):
     key: Mapped[str] = mapped_column(String(100), index=True)
     value_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgenticAction(Base):
+    """Immutable audit trail for Mode B (agent-crafted exploit) actions.
+
+    One row per proposed attacking action: what the agent wanted to send, the
+    code validation verdict, who approved/rejected it, and a response summary.
+    """
+    __tablename__ = "agentic_actions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("scan_jobs.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer, default=0)
+    tool: Mapped[str] = mapped_column(String(64), default="send_payload")
+    target_host: Mapped[str] = mapped_column(String(512), default="")
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")        # the exact proposed request
+    rationale: Mapped[str] = mapped_column(Text, default="")             # the agent's stated reason
+    validation_verdict: Mapped[str] = mapped_column(String(32), default="")  # allowed|blocked
+    validation_reason: Mapped[str] = mapped_column(Text, default="")
+    decision: Mapped[str] = mapped_column(String(32), default="pending")  # pending|approved|rejected|blocked
+    approver: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ReportTemplate(Base):
@@ -171,6 +204,9 @@ class ScanSchedule(Base):
     # For custom: specific datetime + optional repeat
     custom_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     repeat: Mapped[bool] = mapped_column(Boolean, default=True)  # False = run once then disable
+    # False = run the scheduled scans in non-intrusive mode; copied into
+    # each job's meta_json when the scheduler creates it.
+    intrusive: Mapped[bool] = mapped_column(Boolean, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -227,5 +263,9 @@ class AiAnalysis(Base):
     token_usage: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Set when a worker actually picks the analysis up. The stale-analysis
+    # watchdog measures from here, not from created_at — otherwise an analysis
+    # still waiting behind a busy queue gets failed before it ever runs.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

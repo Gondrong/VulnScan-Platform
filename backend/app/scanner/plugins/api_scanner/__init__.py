@@ -20,6 +20,7 @@ logger = logging.getLogger("vulnscan.api_scanner")
 
 META = PluginMeta(
     plugin_id="api.scanner",
+    intrusive=True,
     name="API Security Scanner",
     category="api",
     depends_on=["fingerprint.http"],
