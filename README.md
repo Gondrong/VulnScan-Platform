@@ -1,5 +1,5 @@
 <p align="center">
-  <img <img width="1464" height="670" alt="image" src="https://github.com/user-attachments/assets/ef32ef29-2758-4bcb-bbdf-499f632bc844" />
+  <img alt="VulnScan Platform — Dashboard" src="docs/dashboard-preview.png" />
 </p>
 
 <h1 align="center">VulnScan Platform</h1>
