@@ -280,6 +280,13 @@ export const codeScannerApi = {
   createJob: (formData)            => api("/scan/code/jobs",      { method: "POST", body: formData }),
 };
 
+// ── IaC Scanner ─────────────────────────────────────────────────────
+export const iacScannerApi = {
+  kinds:     ()                    => api("/scan/iac/kinds"),
+  parse:     (formData)            => api("/scan/iac/parse",  { method: "POST", body: formData }),
+  createJob: (formData)            => api("/scan/iac/jobs",   { method: "POST", body: formData }),
+};
+
 // ── Agentic scan (Mode A: AI orchestrates plugins, plan then approve) ──
 export const agenticApi = {
   createJob: (body)   => api("/scan/agentic/jobs",            { method: "POST", body }),

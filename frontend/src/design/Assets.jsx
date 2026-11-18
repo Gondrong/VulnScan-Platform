@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons, Pip, Risk, Status } from "./icons.jsx";
-import { scanApi, assetsApi, reportsApi, apiScannerApi, codeScannerApi, agenticApi, exploitApi, settingsApi, credentialsApi, aiApi, webAuthApi, canEdit } from "../api.js";
+import { scanApi, assetsApi, reportsApi, apiScannerApi, codeScannerApi, iacScannerApi, agenticApi, exploitApi, settingsApi, credentialsApi, aiApi, webAuthApi, canEdit } from "../api.js";
 
 export function Assets({ openAsset }) {
   const [view, setView] = useState("grid");
@@ -481,6 +481,13 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const [codePreflight, setCodePreflight] = useState(null); // {status, message}
   const [codePreflighting, setCodePreflighting] = useState(false);
 
+  // ── IaC scan state (only used when scanKind === "iac") ──────────────────
+  const [iacFile, setIacFile]               = useState(null);
+  const [iacKinds, setIacKinds]             = useState([]);     // from /scan/iac/kinds
+  const [iacSelectedKinds, setIacSelectedKinds] = useState(new Set());
+  const [iacPreview, setIacPreview]         = useState(null);   // parse result
+  const [iacPreviewing, setIacPreviewing]   = useState(false);
+
   // ── Agentic scan: Mode A (plugins) / Mode B (exploit) ────────────────────
   const [agentic, setAgentic]               = useState(false);
   const [agenticProvider, setAgenticProvider] = useState("");
@@ -496,8 +503,9 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
       credentialsApi.list().catch(() => []),
       aiApi.providers().catch(() => ({ providers: [] })),
       settingsApi.getExploitAllowlist().catch(() => ({ enabled: false })),
+      iacScannerApi.kinds().catch(() => ({ kinds: [] })),
     ])
-      .then(([list, ass, chk, cs, prov, exp]) => {
+      .then(([list, ass, chk, cs, prov, exp, iacK]) => {
         setExploitEnabled(!!(exp && exp.enabled));
         setProfiles(list || []);
         if (list && list.length > 0) setProfileId(list[0].id);
@@ -508,6 +516,9 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
         setCreds(cs || []);
         const provs = Array.isArray(prov) ? prov : (prov.providers || []);
         setAiProviders(provs);
+        const kinds = iacK.kinds || [];
+        setIacKinds(kinds);
+        setIacSelectedKinds(new Set(kinds.map(k => k.id)));
       })
       .catch(e => setError(e.message || "Failed to load form data"));
   }, []);
@@ -697,6 +708,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
     { id: "iot",     label: "IoT",     icon: Icons.Chip,   desc: "MQTT, CoAP, gateways" },
     { id: "cloud",   label: "Cloud",   icon: Icons.Cloud,  desc: "AWS / Azure / GCP misconfigs" },
     { id: "code",    label: "Source Code", icon: Icons.FileText, desc: "Upload or clone a repo — AI agent + dependency (SCA) review" },
+    { id: "iac",     label: "IaC", icon: Icons.Layers, desc: "Terraform, Dockerfile, Kubernetes, CloudFormation, Compose, Helm — misconfig detection" },
   ];
   const activeKind = SCAN_KINDS.find(k => k.id === scanKind) || SCAN_KINDS[0];
 
@@ -718,8 +730,43 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
     setCodePreflighting(false);
   };
 
+  const runIacPreview = async () => {
+    if (!iacFile) return;
+    setIacPreviewing(true); setIacPreview(null);
+    try {
+      const fd = new FormData();
+      fd.append("upload", iacFile);
+      const r = await iacScannerApi.parse(fd);
+      setIacPreview(r);
+    } catch (e) {
+      setIacPreview({ error: e.message || "Preview failed" });
+    }
+    setIacPreviewing(false);
+  };
+
   const submit = async () => {
     setError("");
+
+    // ── IaC scan → dedicated endpoint ─────────────────────────────
+    if (scanKind === "iac") {
+      if (!iacFile) { setError("Upload a file or .zip archive"); return; }
+      if (iacSelectedKinds.size === 0) { setError("Select at least one IaC format to scan"); return; }
+      setSubmitting(true);
+      try {
+        const fd = new FormData();
+        fd.append("upload", iacFile);
+        const cfg = {};
+        if (iacSelectedKinds.size < iacKinds.length) {
+          cfg.kinds = [...iacSelectedKinds];
+        }
+        fd.append("config_json", JSON.stringify(cfg));
+        await iacScannerApi.createJob(fd);
+        onCreated ? onCreated() : close();
+      } catch (e) {
+        setError(e.message || "Failed to create IaC scan"); setSubmitting(false);
+      }
+      return;
+    }
 
     // ── API scan → dedicated endpoint ─────────────────────────────
     if (scanKind === "api") {
@@ -934,7 +981,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
 
           <div>
             <label className="form-label">Scan type</label>
-            <div style={{display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6}}>
+            <div style={{display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6}}>
               {SCAN_KINDS.map(k => {
                 const I = k.icon; const active = scanKind === k.id;
                 return (
@@ -1209,6 +1256,78 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
                 </div>
               )}
             </div>
+          ) : scanKind === "iac" ? (
+            <div style={{display: "flex", flexDirection: "column", gap: 14}}>
+              {/* File upload */}
+              <div>
+                <label className="form-label">Upload IaC file or archive</label>
+                <label htmlFor="iac-file"
+                       style={{display: "block", padding: "18px 16px", border: "1.5px dashed var(--line-strong)", borderRadius: 8, textAlign: "center", cursor: "pointer", background: "var(--surface-1)"}}>
+                  <Icons.FilePlus size={20} color="var(--text-3)"/>
+                  <div style={{fontSize: 13, color: "var(--text-1)", marginTop: 6, fontWeight: 500}}>
+                    {iacFile ? iacFile.name : "Drop a config file or .zip archive"}
+                  </div>
+                  <div style={{fontSize: 11.5, color: "var(--text-3)", marginTop: 3}}>
+                    Terraform · Dockerfile · Kubernetes · Compose · CloudFormation · Helm — up to 5 MB
+                  </div>
+                  <input id="iac-file" type="file" accept=".tf,.tfvars,.yaml,.yml,.json,.zip,Dockerfile,.dockerfile" style={{display: "none"}}
+                         onChange={e => { setIacFile(e.target.files?.[0] || null); setIacPreview(null); }}/>
+                </label>
+              </div>
+
+              {/* Preview button */}
+              {iacFile && (
+                <div style={{display: "flex", alignItems: "center", gap: 8}}>
+                  <button className="btn btn-sm" onClick={runIacPreview} disabled={iacPreviewing}>
+                    {iacPreviewing ? <><Icons.Refresh size={12} className="spin"/> Analyzing…</> : <><Icons.Search size={12}/> Preview files</>}
+                  </button>
+                  {iacPreview && !iacPreview.error && (
+                    <span style={{fontSize: 12, color: "var(--ok)", fontWeight: 600}}>
+                      {iacPreview.files_scannable} scannable of {iacPreview.files_total} files
+                    </span>
+                  )}
+                  {iacPreview?.error && (
+                    <span style={{fontSize: 12, color: "var(--err)", fontWeight: 600}}>{iacPreview.error}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Preview details */}
+              {iacPreview && !iacPreview.error && iacPreview.summary && (
+                <div style={{padding: "10px 12px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6}}>
+                  <div style={{fontSize: 12, fontWeight: 600, color: "var(--text-0)", marginBottom: 6}}>File inventory</div>
+                  <div style={{display: "flex", flexWrap: "wrap", gap: 6}}>
+                    {Object.entries(iacPreview.summary).map(([kind, count]) => (
+                      <span key={kind} className="tag" style={{fontSize: 11}}>
+                        {kind} <span style={{fontWeight: 700, marginLeft: 3}}>{count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Kinds filter */}
+              <div>
+                <label className="form-label">IaC formats to scan</label>
+                <div style={{display: "flex", flexDirection: "column", gap: 4}}>
+                  {iacKinds.map(k => (
+                    <label key={k.id} style={{display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 10px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6, cursor: "pointer"}}>
+                      <input type="checkbox" checked={iacSelectedKinds.has(k.id)}
+                             onChange={e => {
+                               const next = new Set(iacSelectedKinds);
+                               e.target.checked ? next.add(k.id) : next.delete(k.id);
+                               setIacSelectedKinds(next);
+                             }}
+                             style={{marginTop: 2}}/>
+                      <div style={{flex: 1, minWidth: 0}}>
+                        <div style={{fontSize: 13, fontWeight: 600, color: "var(--text-0)"}}>{k.name}</div>
+                        <div style={{fontSize: 11.5, color: "var(--text-3)", marginTop: 1}}>{k.description}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : (
             <div>
               <label className="form-label">Target</label>
@@ -1230,7 +1349,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
             </div>
           )}
 
-          {scanKind !== "api" && scanKind !== "code" && !(agentic && agenticMode === "exploit") && (
+          {scanKind !== "api" && scanKind !== "code" && scanKind !== "iac" && !(agentic && agenticMode === "exploit") && (
           <div>
             <label className="form-label">Scan profile</label>
             {profiles.length === 0 ? (
@@ -1246,7 +1365,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
           )}
 
           {/* ── Scan Depth ────────────────────────────────────────────── */}
-          {scanKind !== "api" && scanKind !== "code" && (
+          {scanKind !== "api" && scanKind !== "code" && scanKind !== "iac" && (
           <div>
             <label className="form-label">Scan depth</label>
             <select className="form-input" value={scanDepth} onChange={e => setScanDepth(e.target.value)}>
@@ -1571,6 +1690,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
           </div>
           )}
 
+          {scanKind !== "iac" && (
           <div style={{padding: "14px 16px", background: "var(--brand-soft)", border: "1px solid var(--brand-line)", borderRadius: 8}}>
             <label className="form-label" style={{display: "flex", alignItems: "center", gap: 6, color: "var(--brand-text)"}}>
               <Icons.Folder size={13}/> Add to asset folder (optional)
@@ -1603,7 +1723,9 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
             )}
             <div className="form-help" style={{marginTop: 8, color: "var(--text-2)"}}>Tagging a scan to a folder lets it appear in the folder's scan history and rollups.</div>
           </div>
+          )}
 
+          {scanKind !== "iac" && (
           <div>
             <label className="form-label">Schedule</label>
             <div style={{display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10}}>
@@ -1644,6 +1766,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
                   : `Recurring scan. The platform's scheduler dispatches a new job ${scheduleMode === "hourly" ? "every hour" : scheduleMode === "daily" ? "every 24 hours" : scheduleMode === "weekly" ? "every 7 days" : "every 30 days"}. Manage from the Scan Jobs → Schedule button.`}
             </div>
           </div>
+          )}
         </div>
         {error && (
           <div style={{padding: "10px 24px", borderTop: "1px solid var(--line)", color: "var(--err)", fontSize: 12.5, display: "flex", alignItems: "center", gap: 8, background: "var(--sev-critical-bg)"}}>
@@ -1652,18 +1775,20 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
         )}
         <div style={{padding: "14px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 8, justifyContent: "flex-end", background: "var(--surface-1)"}}>
           <button className="btn" onClick={close} disabled={submitting}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={submitting || (scanKind !== "api" && scanKind !== "code" && profiles.length === 0 && !(agentic && agenticMode === "exploit"))}>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting || (scanKind !== "api" && scanKind !== "code" && scanKind !== "iac" && profiles.length === 0 && !(agentic && agenticMode === "exploit"))}>
             {submitting
-              ? <><Icons.Refresh size={12} className="spin"/> {(scanKind === "api" || scanKind === "code") ? "Launching…" : scheduleMode === "now" ? "Creating…" : "Scheduling…"}</>
+              ? <><Icons.Refresh size={12} className="spin"/> {(scanKind === "api" || scanKind === "code" || scanKind === "iac") ? "Launching…" : scheduleMode === "now" ? "Creating…" : "Scheduling…"}</>
               : scanKind === "api"
                 ? <><Icons.Play size={12}/> Launch API scan</>
                 : scanKind === "code"
                   ? <><Icons.Play size={12}/> Launch code scan</>
-                  : agentic
-                    ? <><Icons.Play size={12}/> Launch agentic scan</>
-                    : scheduleMode === "now"
-                      ? <><Icons.Play size={12}/> Run scan</>
-                      : <><Icons.Clock size={12}/> Create schedule</>}
+                  : scanKind === "iac"
+                    ? <><Icons.Play size={12}/> Launch IaC scan</>
+                    : agentic
+                      ? <><Icons.Play size={12}/> Launch agentic scan</>
+                      : scheduleMode === "now"
+                        ? <><Icons.Play size={12}/> Run scan</>
+                        : <><Icons.Clock size={12}/> Create schedule</>}
           </button>
         </div>
       </div>

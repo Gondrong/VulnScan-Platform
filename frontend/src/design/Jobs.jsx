@@ -155,7 +155,10 @@ export function Jobs({ openJob }) {
                     <td><span className="mono" style={{color: "var(--brand-text)"}}>#{j.id}</span></td>
                     <td>
                       <div style={{display: "flex", alignItems: "center", gap: 8}}>
-                        {j.scan_type === "external" ? <Icons.Globe size={14} color="var(--text-3)"/> : <Icons.Server size={14} color="var(--text-3)"/>}
+                        {j.scan_type === "iac" ? <Icons.Layers size={14} color="var(--text-3)"/>
+                          : j.scan_type === "source_code" ? <Icons.FileText size={14} color="var(--text-3)"/>
+                          : j.scan_type === "external" ? <Icons.Globe size={14} color="var(--text-3)"/>
+                          : <Icons.Server size={14} color="var(--text-3)"/>}
                         <span className="mono">{j.target}</span>
                       </div>
                     </td>
