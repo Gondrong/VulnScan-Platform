@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Icons, Status, Empty } from "./icons.jsx";
+import { Icons, Status, Empty, toast } from "./icons.jsx";
 import { scanApi, canEdit } from "../api.js";
 import { NewScanModal } from "./Assets.jsx";
 
@@ -122,7 +122,17 @@ export function Jobs({ openJob }) {
             </div>
           )}
           {loading && jobs.length === 0 ? (
-            <div style={{padding: "60px 18px", textAlign: "center", color: "var(--text-3)"}}>Loading scans…</div>
+            <div style={{padding: "12px 0"}}>
+              {[...Array(5)].map((_, i) => (
+                <div className="skel-row" key={i}>
+                  <div className="skel skel-line w30" style={{width: 60}}/>
+                  <div className="skel skel-line w80" style={{flex: 1}}/>
+                  <div className="skel skel-line w40" style={{width: 80}}/>
+                  <div className="skel skel-line w30" style={{width: 90}}/>
+                  <div className="skel skel-line w30" style={{width: 70}}/>
+                </div>
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
             <Empty icon={Icons.Search} title="No scans match" body={jobs.length === 0 ? "No scans yet. Click \"New scan\" to start." : "Try clearing your filters or broadening the search."}/>
           ) : (
@@ -141,7 +151,7 @@ export function Jobs({ openJob }) {
               </thead>
               <tbody>
                 {filtered.map(j => (
-                  <tr key={j.id} className="clickable" onClick={() => openJob(j)}>
+                  <tr key={j.id} className="clickable row-hover" onClick={() => openJob(j)}>
                     <td><span className="mono" style={{color: "var(--brand-text)"}}>#{j.id}</span></td>
                     <td>
                       <div style={{display: "flex", alignItems: "center", gap: 8}}>
@@ -195,7 +205,7 @@ export function Jobs({ openJob }) {
                           <button className="btn btn-icon btn-ghost btn-sm" title="Re-scan"
                                   onClick={async e => {
                                     e.stopPropagation();
-                                    try { await scanApi.rescanJob(j.id); refresh(); } catch (err) { alert(err.message); }
+                                    try { const r = await scanApi.rescanJob(j.id); refresh(); toast.success("Re-scan queued", `New job #${r.id || ""} created.`); } catch (err) { toast.error("Re-scan failed", err.message); }
                                   }}
                                   style={{color: "var(--text-3)"}}>
                             <Icons.Refresh size={12}/>
@@ -219,14 +229,14 @@ export function Jobs({ openJob }) {
       {cancelTarget && <CancelScanModal job={cancelTarget}
         close={() => setCancelTarget(null)}
         onConfirm={async () => {
-          try { await scanApi.cancelJob(cancelTarget.id); setCancelTarget(null); refresh(); }
-          catch (e) { alert(e.message); }
+          try { await scanApi.cancelJob(cancelTarget.id); setCancelTarget(null); refresh(); toast.success("Scan cancelled", `Job #${cancelTarget.id} has been cancelled.`); }
+          catch (e) { toast.error("Cancel failed", e.message); }
         }}/>}
       {deleteTarget && <DeleteScanModal job={deleteTarget}
         close={() => setDeleteTarget(null)}
         onConfirm={async () => {
-          try { await scanApi.deleteJob(deleteTarget.id); setDeleteTarget(null); refresh(); }
-          catch (e) { alert(e.message); }
+          try { await scanApi.deleteJob(deleteTarget.id); setDeleteTarget(null); refresh(); toast.success("Scan deleted", `Job #${deleteTarget.id} has been removed.`); }
+          catch (e) { toast.error("Delete failed", e.message); }
         }}/>}
       {showNewScan && <NewScanModal close={() => setShowNewScan(false)} onCreated={() => { setShowNewScan(false); refresh(); }}/>}
       {showSchedules && <SchedulesModal close={() => setShowSchedules(false)}/>}

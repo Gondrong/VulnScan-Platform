@@ -36,6 +36,7 @@ export default defineConfig({
       "/events":        proxyOpts,
       "/threat-intel":  proxyOpts,
       "/analytics":     proxyOpts,
+      "/pentest":       proxyOpts,
     },
   },
   build: {

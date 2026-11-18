@@ -700,14 +700,17 @@ def run_scan_job(job_id: int) -> None:
 
         job.status = "done"
         job.finished_at = datetime.now(timezone.utc)
-        job.meta_json = json.dumps(
-            {
-                "findings_total": len(findings),
-                "findings_saved": saved_count,
-                "findings_dropped": dropped_count,
-                "min_confidence_threshold": min_confidence,
-            }
-        )
+        _final_meta = {
+            "findings_total": len(findings),
+            "findings_saved": saved_count,
+            "findings_dropped": dropped_count,
+            "min_confidence_threshold": min_confidence,
+        }
+        # Carry forward fields from the original meta that downstream stages need.
+        for _keep in ("scan_depth", "web_auth", "ai_provider"):
+            if _job_meta_in.get(_keep):
+                _final_meta[_keep] = _job_meta_in[_keep]
+        job.meta_json = json.dumps(_final_meta)
         db.commit()
 
         # Send notifications
@@ -877,12 +880,69 @@ def run_scan_job(job_id: int) -> None:
                 except Exception as e:
                     logger.warning("Failed to run integration %s for job #%d: %s", integ.provider, job_id, e)
 
-        # ── Auto AI Analysis ─────────────────────────────────────────────
+        # ── Scan Depth auto-chain: standard/deep → auto AI analysis ─────
+        _depth = _job_meta_in.get("scan_depth")
+        _depth_ai_queued = False
+        if _depth in ("standard", "deep") and saved_count > 0:
+            try:
+                _depth_provider = (_job_meta_in.get("ai_provider") or "").strip()
+                _depth_avail = settings.available_ai_providers()
+                for _pref in ["claude_cli", "claude_api", "azure_openai", "gemini"]:
+                    if any(p["id"] == _pref for p in _depth_avail):
+                        _depth_provider = _pref
+                        break
+                if not _depth_provider:
+                    # Try DB providers
+                    _db_prov = db.query(models.AiProviderConfig).filter(
+                        models.AiProviderConfig.workspace_id == ws_id,
+                        models.AiProviderConfig.enabled == True,
+                    ).first()
+                    if _db_prov:
+                        _depth_provider = f"db:{_db_prov.id}"
+                    elif _depth_avail:
+                        _depth_provider = _depth_avail[0]["id"]
+
+                if _depth_provider:
+                    _existing_ai = db.query(models.AiAnalysis).filter(
+                        models.AiAnalysis.job_id == job_id,
+                        models.AiAnalysis.status.in_(["queued", "running"]),
+                    ).first()
+                    if not _existing_ai:
+                        _depth_mode = "validate_then_exploit" if _depth == "deep" else "validate"
+                        _depth_analysis = models.AiAnalysis(
+                            workspace_id=ws_id,
+                            job_id=job_id,
+                            provider=_depth_provider,
+                            mode=_depth_mode,
+                            status="queued",
+                            progress_json=json.dumps({"pct": 0, "step": f"Auto-queued (scan_depth={_depth})..."}),
+                        )
+                        db.add(_depth_analysis)
+                        db.commit()
+                        db.refresh(_depth_analysis)
+
+                        _depth_ai_q = Queue("ai", connection=Redis.from_url(settings.REDIS_URL))
+                        _depth_ai_q.enqueue(run_ai_analysis, _depth_analysis.id, job_timeout=settings.AI_ANALYSIS_TIMEOUT)
+
+                        job.status = "analyzing"
+                        db.commit()
+                        _depth_ai_queued = True
+                        logger.info(
+                            "Scan depth=%s: auto AI analysis #%d queued for job #%d (provider=%s mode=%s)",
+                            _depth, _depth_analysis.id, job_id, _depth_provider, _depth_mode,
+                        )
+                else:
+                    logger.info("Scan depth=%s: no AI provider available — auto analysis skipped", _depth)
+            except Exception as e:
+                logger.warning("Scan depth auto-AI failed for job #%d: %s", job_id, e)
+
+        # ── Auto AI Analysis (workspace setting) ────────────────────────
         # If workspace has auto_ai_analysis enabled, queue AI analysis
         # immediately after scan completes (only if findings exist).
+        # Skipped if scan_depth already queued one above.
         try:
             auto_ai = _get_setting(db, ws_id, "auto_ai_analysis", {})
-            if auto_ai.get("enabled") and saved_count > 0:
+            if auto_ai.get("enabled") and saved_count > 0 and not _depth_ai_queued:
                 ai_provider = auto_ai.get("provider", "")
                 ai_mode = auto_ai.get("mode", "validate")
 
@@ -1840,4 +1900,12 @@ def run_ai_poc(analysis_id: int, finding_id: int) -> None:
     """RQ task — generates PoC for a single finding."""
     from app.ai.engine import generate_poc
     generate_poc(analysis_id, finding_id)
+
+
+def run_pentest(job_id: int) -> None:
+    """RQ task — one burst of the VAPT pentest pipeline (auto-verify →
+    post-exploit → chain execution). Same pause/resume pattern as Mode B
+    exploit: pauses for per-action human approval, re-enqueues to resume."""
+    from app.pentest.runner import run_session
+    run_session(job_id)
 

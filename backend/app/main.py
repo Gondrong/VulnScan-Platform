@@ -29,6 +29,7 @@ from app.api.routes_assets import router as assets_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_events import router as events_router
 from app.api.routes_analytics import router as analytics_router
+from app.api.routes_pentest import router as pentest_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vulnscan")
@@ -36,7 +37,7 @@ logger = logging.getLogger("vulnscan")
 app = FastAPI(
     title="VulnScan Platform",
     version=settings.PLATFORM_VERSION,
-    description="Enterprise Risk-Based Vulnerability Management Platform",
+    description="VAPT Platform — Vulnerability Assessment & Penetration Testing",
 )
 
 # ─── CORS ──────────────────────────────────────────────────────────────────────
@@ -887,4 +888,5 @@ app.include_router(assets_router)
 app.include_router(reports_router)
 app.include_router(events_router)
 app.include_router(analytics_router)
+app.include_router(pentest_router)
 

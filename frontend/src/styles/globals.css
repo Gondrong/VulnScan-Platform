@@ -309,15 +309,7 @@ table { border-collapse: collapse; width: 100%; }
   background: var(--surface-2);
   color: var(--text-0);
 }
-.nav-item.active::before {
-  content: "";
-  position: absolute;
-  left: -8px;
-  top: 8px; bottom: 8px;
-  width: 2px;
-  background: var(--brand);
-  border-radius: 2px;
-}
+.nav-item.active::before { display: none; }
 .nav-icon {
   width: 16px; height: 16px;
   flex-shrink: 0;
@@ -1053,7 +1045,7 @@ input[type="time"].form-input::-webkit-calendar-picker-indicator {
 .login-field:focus-within {
   border-color: var(--brand);
   background: var(--surface-0);
-  box-shadow: 0 0 0 3px var(--brand-soft);
+  box-shadow: 0 0 0 3px var(--brand-soft), 0 0 16px rgba(91,141,239,0.12);
 }
 .login-field svg { color: var(--text-3); flex-shrink: 0; }
 .login-field input,
@@ -1166,6 +1158,14 @@ input[type="time"].form-input::-webkit-calendar-picker-indicator {
   margin-top: 4px;
 }
 .login-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.login-submit { position: relative; overflow: hidden; }
+.login-ripple {
+  position: absolute; border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  transform: scale(0); pointer-events: none;
+  animation: login-ripple-out 0.6s ease-out forwards;
+}
+@keyframes login-ripple-out { to { transform: scale(4); opacity: 0; } }
 
 .login-foot-cta {
   font-size: 12.5px;
@@ -1371,4 +1371,234 @@ input[type="time"].form-input::-webkit-calendar-picker-indicator {
 @media (max-width: 960px) {
   .nav-user-menu { left: 4px; right: 4px; }
   .nav-user-menu-item span:not(.mono) { display: none; }
+}
+
+/* ── Dashboard animations ────────────────────────────────────────── */
+@keyframes dash-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes dash-slide-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes donut-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes kev-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50%      { box-shadow: 0 0 6px 2px rgba(255,77,106,0.25); }
+}
+.dash-enter {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: dash-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.dash-slide-right {
+  opacity: 0;
+  transform: translateX(24px);
+  animation: dash-slide-right 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.donut-arc-anim {
+  animation: donut-draw 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.kev-glow { animation: kev-glow 3s ease-in-out infinite; }
+.sev-badge.critical { animation: kev-glow 3s ease-in-out infinite; }
+/* ── Page transition ──────────────────────────────────────────────── */
+.page-enter-anim {
+  animation: page-fade-in 0.25s ease-out;
+}
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-enter, .dash-slide-right {
+    opacity: 1 !important; transform: none !important; animation: none !important;
+  }
+  .donut-arc-anim { animation: none !important; }
+  .kev-glow, .sev-badge.critical { animation: none !important; }
+  .page-enter-anim { animation: none !important; }
+}
+
+/* ── 1. Login particles + button ripple ──────────────────────────── */
+canvas.login-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── 2. Skeleton loading ─────────────────────────────────────────── */
+.skel {
+  border-radius: 4px;
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+}
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--surface-3) 50%, transparent 100%);
+  animation: skel-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.skel-line { height: 12px; border-radius: 3px; }
+.skel-line.w80 { width: 80%; }
+.skel-line.w60 { width: 60%; }
+.skel-line.w40 { width: 40%; }
+.skel-line.w30 { width: 30%; }
+.skel-circle { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.skel-stat { height: 88px; border-radius: var(--r-3); }
+.skel-card { height: 200px; border-radius: var(--r-3); }
+.skel-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+@media (max-width: 700px) { .skel-grid { grid-template-columns: repeat(2, 1fr); } }
+.skel-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+.skel-row:last-child { border-bottom: none; }
+
+/* ── 4. Progress ring ────────────────────────────────────────────── */
+.ring-track { stroke: var(--surface-2); }
+.ring-fill {
+  transition: stroke-dashoffset 1s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center;
+  transform: rotate(-90deg);
+}
+.ring-text { font-family: var(--font-display); font-weight: 700; fill: var(--text-0); }
+.ring-sub  { font-family: var(--font-sans); font-weight: 400; fill: var(--text-3); }
+
+/* ── 5. Sidebar sliding indicator ────────────────────────────────── */
+.nav-indicator {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  background: var(--brand);
+  border-radius: 0 2px 2px 0;
+  transition: top 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              height 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ── 6. Toast notifications ──────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  max-width: 400px;
+  width: calc(100% - 40px);
+  pointer-events: none;
+}
+@media (max-width: 600px) {
+  .toast-container { left: 20px; right: 20px; width: auto; }
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-0);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.1);
+  font-size: 13px;
+  color: var(--text-0);
+  pointer-events: auto;
+  animation: toast-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+  position: relative;
+  overflow: hidden;
+}
+.toast-exit { animation: toast-out 0.3s ease-in forwards !important; }
+@keyframes toast-in  { to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(50px) scale(0.95); } }
+.toast-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.toast-icon.success { background: var(--sev-low-bg); color: var(--ok); }
+.toast-icon.error   { background: var(--sev-critical-bg); color: var(--err); }
+.toast-icon.warning { background: var(--sev-medium-bg); color: var(--sev-medium); }
+.toast-icon.info    { background: var(--brand-soft, rgba(91,141,239,0.12)); color: var(--brand); }
+.toast-body { flex: 1; min-width: 0; }
+.toast-title { font-weight: 600; font-size: 13px; }
+.toast-msg { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+.toast-close {
+  background: none; border: none; color: var(--text-3); cursor: pointer;
+  padding: 2px; border-radius: 4px; flex-shrink: 0;
+}
+.toast-close:hover { color: var(--text-1); background: var(--surface-1); }
+.toast-bar {
+  position: absolute; bottom: 0; left: 0; height: 2px;
+  border-radius: 0 0 8px 8px;
+  animation: toast-countdown 4s linear forwards;
+}
+.toast-bar.success { background: var(--ok); }
+.toast-bar.error   { background: var(--err); }
+.toast-bar.warning { background: var(--sev-medium); }
+.toast-bar.info    { background: var(--brand); }
+@keyframes toast-countdown { from { width: 100%; } to { width: 0%; } }
+
+/* ── 7. Row hover + status pills ─────────────────────────────────── */
+.row-hover {
+  transition: background 0.15s, transform 0.15s;
+}
+.row-hover:hover {
+  background: var(--surface-1);
+  transform: translateX(3px);
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  transition: background 0.4s, color 0.4s;
+}
+.status-pill.queued   { background: var(--surface-2); color: var(--text-3); }
+.status-pill.running  { background: var(--brand-soft, rgba(91,141,239,0.12)); color: var(--brand-text, var(--brand)); }
+.status-pill.done     { background: var(--sev-low-bg); color: var(--ok); }
+.status-pill.failed   { background: var(--sev-critical-bg); color: var(--err); }
+.status-pill .pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+.status-pill.running .pulse-dot {
+  animation: pill-dot-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pill-dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ── Reduced motion: all new animations ──────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .login-ripple { animation: none !important; }
+  .skel::after { animation: none !important; }
+  .ring-fill { transition: none !important; }
+  .nav-indicator { transition: none !important; }
+  .toast { animation: none !important; opacity: 1 !important; transform: none !important; }
+  .toast-exit { animation: none !important; }
+  .toast-bar { animation: none !important; }
+  .row-hover { transition: none !important; }
+  .row-hover:hover { transform: none !important; }
+  .status-pill { transition: none !important; }
+  .status-pill.running .pulse-dot { animation: none !important; }
 }

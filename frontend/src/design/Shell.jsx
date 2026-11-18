@@ -1,8 +1,27 @@
-import React, { useState, useEffect, Fragment } from "react";
+import React, { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { Icons } from "./icons.jsx";
 import { eventsApi, getUser } from "../api.js";
 
 export function Nav({ page, setPage, onSignOut, counts = {}, version = "" }) {
+  const scrollRef = useRef(null);
+  const indRef = useRef(null);
+
+  const positionIndicator = useCallback(() => {
+    const scroll = scrollRef.current;
+    const ind = indRef.current;
+    if (!scroll || !ind) return;
+    const active = scroll.querySelector(".nav-item.active");
+    if (active) {
+      ind.style.top = active.offsetTop + "px";
+      ind.style.height = active.offsetHeight + "px";
+      ind.style.opacity = "1";
+    } else {
+      ind.style.opacity = "0";
+    }
+  }, []);
+
+  useEffect(() => { positionIndicator(); }, [page, positionIndicator]);
+
   const NAV_ITEMS = [
     { section: "Overview", items: [
       { id: "dashboard", label: "Dashboard", icon: Icons.Dashboard },
@@ -36,7 +55,8 @@ export function Nav({ page, setPage, onSignOut, counts = {}, version = "" }) {
         <input placeholder="Jump to…" />
         <span className="kbd">⌘K</span>
       </div>
-      <div className="nav-scroll">
+      <div className="nav-scroll" ref={scrollRef} style={{position: "relative"}}>
+        <div className="nav-indicator" ref={indRef}/>
         {NAV_ITEMS.map(g => (
           <div key={g.section}>
             <div className="nav-section">{g.section}</div>

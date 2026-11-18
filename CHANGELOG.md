@@ -5,6 +5,88 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.4.0 — 2026-11-18
+
+Feature release: **VAPT automation pipeline**, **structured steps-to-reproduce**,
+and a **UI/UX overhaul** with animations and polish across every screen.
+
+### Added
+
+**VAPT Pentest Pipeline — automated exploit verification**
+
+- New `POST /pentest/jobs/{id}/start` endpoint starts an automated pentest on an
+  existing done scan job, pulling findings + steps-to-reproduce from the AI
+  analysis result.
+- Three-phase execution: **verify** (replay steps-to-reproduce per finding),
+  **post-exploit** (deeper enumeration on confirmed vulns), **chain** (combine
+  proven vulns into multi-step attack chains). Each phase is optional, chosen at
+  start.
+- Reuses Mode B's exploit harness: same `exploit_guard.validate_action` at
+  propose AND execute, same target-pinning via `build_url`, same per-action human
+  approval, same full audit trail in `agentic_actions`.
+- Master switch `ENABLE_PENTEST` (env, **off by default**, server-side) + the
+  existing fail-closed exploit allowlist.
+- Phase advancement: when the agent calls `finish` or returns no tool calls, the
+  runner checks `_advance_phase()`. Post-exploit and chain phases are skipped if
+  no findings were confirmed in verify.
+- State stored in `agentic_json` with `mode: "pentest"`.
+
+**Structured steps-to-reproduce**
+
+- All 4 AI analysis modes (`validate`, `full`, `full_exploit`,
+  `validate_then_exploit`) now produce structured steps-to-reproduce: each step
+  includes a human-readable description, a concrete HTTP action
+  (`method`/`path`/`query`/`headers`/`body`), and expected-response matchers for
+  both the vulnerable and safe cases.
+- Steps are displayed in the frontend JobDetail finding drawer with syntax
+  highlighting and copy buttons.
+- Included in all 3 export formats (CSV, HTML, PDF).
+- The VAPT verify phase can directly execute structured steps instead of relying
+  on the methodology playbook.
+
+**Source-code scan verification runner**
+
+- New `verify_runner.py` for running targeted verification passes on source-code
+  scan findings.
+
+### Improved
+
+**UI/UX overhaul — animations & polish**
+
+All animations respect `prefers-reduced-motion`. 18 CSS keyframe definitions,
+no JavaScript animation libraries.
+
+- **Dashboard animations** — staggered card entrance (`dash-enter`), animated
+  count-up numbers with eased timing (`useCountUp`), SVG donut chart stroke-draw,
+  KEV badge pulse glow (`kev-glow`), Threat Intel tile slide-in from right.
+- **Skeleton loading** — shimmer placeholder states for dashboard stat tiles,
+  target table, donut chart, recent scans, findings list, and Jobs page table
+  rows. Replaces the old "Loading…" text with contextual shimmer shapes.
+- **Login particle background** — canvas-based floating dot network with
+  accent-colored connection lines; sits behind the existing grid overlay.
+- **Login button ripple** — click-positioned radial ripple on the sign-in button.
+- **Page transitions** — fade + slide-up animation on every page navigation,
+  triggered by React `key` prop re-mount.
+- **Sidebar sliding indicator** — smooth animated active-page marker that tracks
+  the selected nav item's position and height with spring easing.
+- **Toast notification system** — module-level event emitter (no React Context
+  needed), 4 severities (success/error/warn/info), auto-dismiss with countdown
+  bar, max 4 visible. Used in Jobs page for cancel/delete/rescan feedback.
+- **Progress ring** — SVG circular progress indicator for running scans in
+  JobDetail, with smooth `stroke-dashoffset` transition.
+- **Row hover** — job table rows shift right 3px on hover for tactile feedback.
+
+### Fixed
+
+- **Dashboard stats showed 0 under React.StrictMode.** The `useCountUp` hook
+  used a `useRef` flag (`ran`) to run the animation only once, but StrictMode
+  double-invokes effects: the first run set `ran = true` and started a timeout,
+  cleanup cancelled the timeout, and the second run saw `ran = true` and bailed —
+  leaving `display` at its initial value of `0`. Fixed by removing the ref
+  entirely and properly cancelling both `setTimeout` and `requestAnimationFrame`
+  in cleanup.
+
+---
 ## v3.3.1 — 2026-11-15
 
 Patch release fixing critical issues found after v3.3.0 and improving the

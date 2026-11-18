@@ -287,9 +287,18 @@ def create_job(
         # ends (any status). Only valid when web_auth references a credential_id.
         if web_auth_ephemeral and web_auth_override.get("credential_id"):
             meta_payload["web_auth_credential_ephemeral"] = True
-    # Non-intrusive mode skips plugins flagged PluginMeta.intrusive. Only
-    # recorded when the caller chose; absent means intrusive, as before.
-    if "intrusive" in body:
+    # Scan depth: quick / standard / deep.  Overrides the bare `intrusive`
+    # boolean when present.  quick = non-intrusive only; standard = intrusive +
+    # auto AI analysis; deep = intrusive + auto AI analysis + auto VAPT pentest.
+    scan_depth = body.get("scan_depth")
+    if scan_depth and scan_depth in ("quick", "standard", "deep"):
+        meta_payload["scan_depth"] = scan_depth
+        meta_payload["intrusive"] = scan_depth != "quick"
+        ai_prov = (body.get("ai_provider") or "").strip()
+        if ai_prov:
+            meta_payload["ai_provider"] = ai_prov
+    elif "intrusive" in body:
+        # Legacy / explicit intrusive flag — still supported when no depth given.
         if not isinstance(body["intrusive"], bool):
             raise HTTPException(400, "intrusive must be true or false")
         meta_payload["intrusive"] = body["intrusive"]
@@ -439,6 +448,7 @@ def job_detail(
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "finished_at": job.finished_at.isoformat() if job.finished_at else None,
             "meta_json": job.meta_json,
+            "agentic_mode": _agentic_mode(job.agentic_json),
             "error_info": error_info,
         },
         "findings": [
@@ -897,6 +907,24 @@ def create_exploit_job(
     if scan_type not in ("internal", "external"):
         scan_type = "external"
 
+    # Optional web auth for greybox/whitebox exploitation
+    web_auth = body.get("web_auth")
+    if web_auth and isinstance(web_auth, dict):
+        allowed_keys = {"method", "login_url", "username_field", "password_field",
+                        "username", "password", "token", "cookie_name", "cookie_value",
+                        "header_name", "header_value", "csrf_field"}
+        web_auth = {k: v for k, v in web_auth.items() if k in allowed_keys and v}
+    else:
+        web_auth = None
+
+    init_state = {
+        "mode": "exploit", "phase": "run", "provider": provider,
+        "kill": False, "action_count": 0, "seq": 0,
+        "scope_acknowledged_by": user.get("email") or user.get("uid"),
+    }
+    if web_auth:
+        init_state["web_auth"] = web_auth
+
     job = models.ScanJob(
         workspace_id=user["ws"],
         target=target,
@@ -904,11 +932,7 @@ def create_exploit_job(
         status="queued",
         scan_type=scan_type,
         created_by_user_id=user.get("uid") or _resolve_user_id(db, user),
-        agentic_json=json.dumps({
-            "mode": "exploit", "phase": "run", "provider": provider,
-            "kill": False, "action_count": 0, "seq": 0,
-            "scope_acknowledged_by": user.get("email") or user.get("uid"),
-        }),
+        agentic_json=json.dumps(init_state),
     )
     db.add(job)
     db.commit()
@@ -971,6 +995,15 @@ def _safe_json(s):
         return json.loads(s)
     except Exception:
         return {}
+
+
+def _agentic_mode(agentic_json: str | None) -> str | None:
+    if not agentic_json:
+        return None
+    try:
+        return json.loads(agentic_json).get("mode")
+    except Exception:
+        return None
 
 
 def _decide_action(db, ws, job_id, approve: bool, approver: str, reason: str | None):

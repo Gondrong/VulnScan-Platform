@@ -40,6 +40,8 @@ def _finalize_job_after_ai(db, job_id: int) -> None:
 
     Only transitions if no other AI analyses are still queued/running
     for this job (in case multiple analyses were triggered).
+
+    When scan_depth == "deep", auto-triggers the VAPT pentest pipeline.
     """
     try:
         job = db.query(models.ScanJob).filter(models.ScanJob.id == job_id).first()
@@ -54,8 +56,134 @@ def _finalize_job_after_ai(db, job_id: int) -> None:
             job.status = "done"
             db.commit()
             logger.info("Job #%d status: analyzing -> done (AI complete)", job_id)
+
+            # Deep scan: auto-trigger VAPT pentest pipeline
+            _auto_pentest_if_deep(db, job)
     except Exception as e:
         logger.warning("Failed to finalize job #%d after AI: %s", job_id, e)
+
+
+def _auto_pentest_if_deep(db, job) -> None:
+    """If scan_depth == 'deep', automatically start the VAPT pentest pipeline."""
+    import json as _json
+    from app.core.config import settings
+
+    try:
+        meta = _json.loads(job.meta_json or "{}")
+    except Exception:
+        return
+    if meta.get("scan_depth") != "deep":
+        return
+    if not settings.ENABLE_PENTEST:
+        logger.info("Job #%d: scan_depth=deep but ENABLE_PENTEST is off — skipping auto pentest", job.id)
+        return
+
+    # Check exploit allowlist
+    from app.ai.exploit_guard import target_host, check_target_allowed
+    host = target_host(job.target)
+    allowed, reason = check_target_allowed(db, job.workspace_id, host)
+    if not allowed:
+        logger.info("Job #%d: scan_depth=deep but target not in exploit allowlist (%s) — skipping", job.id, reason)
+        return
+
+    # Already a pentest running?
+    if job.agentic_json:
+        try:
+            existing = _json.loads(job.agentic_json)
+            if existing.get("mode") == "pentest":
+                return
+        except Exception:
+            pass
+
+    # Find most recent completed AI analysis
+    analysis = (
+        db.query(models.AiAnalysis)
+        .filter(models.AiAnalysis.job_id == job.id, models.AiAnalysis.status == "done")
+        .order_by(models.AiAnalysis.finished_at.desc())
+        .first()
+    )
+    if not analysis:
+        return
+
+    # Build findings data from AI analysis result
+    findings_data = []
+    attack_chains = []
+    try:
+        result = _json.loads(analysis.result_json or "{}")
+        for fv in (result.get("finding_validations") or []):
+            if fv.get("steps_to_reproduce"):
+                findings_data.append({
+                    "id": fv.get("finding_id"),
+                    "title": fv.get("title", ""),
+                    "severity": fv.get("adjusted_severity") or fv.get("severity", "info"),
+                    "verdict": fv.get("verdict", ""),
+                    "steps_to_reproduce": fv.get("steps_to_reproduce", []),
+                    "affected_endpoint": fv.get("affected_endpoint", ""),
+                    "auth_required": fv.get("auth_required", False),
+                    "request_example": fv.get("request_example", ""),
+                })
+        attack_chains = result.get("attack_chains") or []
+    except Exception:
+        pass
+
+    if not findings_data:
+        db_findings = (
+            db.query(models.Finding)
+            .filter(models.Finding.job_id == job.id)
+            .all()
+        )
+        for f in db_findings:
+            if f.severity in ("critical", "high", "medium"):
+                findings_data.append({
+                    "id": f.id, "title": f.title, "severity": f.severity,
+                    "verdict": "", "steps_to_reproduce": [], "affected_endpoint": "",
+                })
+
+    if not findings_data:
+        logger.info("Job #%d: scan_depth=deep but no findings to pentest — skipping", job.id)
+        return
+
+    state = {
+        "mode": "pentest",
+        "provider": analysis.provider,
+        "workflow": True,
+        "phases": ["recon", "enum", "verify", "exploit", "creative"],
+        "phase": "recon",
+        "findings": findings_data,
+        "attack_chains": attack_chains,
+        "messages": None,
+        "action_count": 0,
+        "finding_count": 0,
+        "seq": 0,
+        "verified": [],
+        "post_exploit_results": {},
+        "chain_results": [],
+        "workflow_progress": {},
+        "started_by": "auto:scan_depth=deep",
+    }
+    # Carry forward web_auth so the pentest runner can test behind login
+    if meta.get("web_auth"):
+        state["web_auth"] = meta["web_auth"]
+
+    job.agentic_json = _json.dumps(state)
+    job.status = "running"
+    job.finished_at = None
+    db.commit()
+
+    try:
+        import redis
+        from rq import Queue
+        q = Queue("scans", connection=redis.from_url(settings.REDIS_URL))
+        from app.worker_tasks import run_pentest
+        q.enqueue(run_pentest, job.id, job_timeout=settings.PENTEST_SESSION_DEADLINE + 60)
+        logger.info(
+            "Scan depth=deep: auto VAPT pentest started for job #%d (provider=%s, %d findings)",
+            job.id, analysis.provider, len(findings_data),
+        )
+    except Exception as e:
+        logger.warning("Auto pentest enqueue failed for job #%d: %s", job.id, e)
+        job.status = "done"
+        db.commit()
 
 
 def _serialize_finding_from_db(f: models.Finding) -> dict:

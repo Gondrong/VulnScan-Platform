@@ -5,7 +5,7 @@ Standalone-only plugin (not registered in the engine plugin loader), invoked
 from /scan/code/jobs via worker_tasks.run_scan_job when a scan job has
 scan_type == "source_code".
 
-Two independent tracks run over one ingested working tree:
+Three tracks run over one ingested working tree:
 
   1. SCA (deterministic) — parse dependency manifests/lockfiles, match pinned
      versions against the OSV dataset. This is the "time bomb" track: it finds
@@ -14,7 +14,11 @@ Two independent tracks run over one ingested working tree:
 
   2. Agentic source read — the configured AI provider reads the first-party
      source with read-only file tools (list/read/grep) and reports logic bugs,
-     hardcoded secrets, injection, and auth flaws. (Phase 2.)
+     hardcoded secrets, injection, and auth flaws.
+
+  3. Verification (adversarial) — SCA reachability check + a second AI agent
+     that tries to DISPROVE each serious finding from tracks 1-2.  Adjusts
+     confidence and severity in-place.
 
 config shape (built by routes_code_scanner):
   {
@@ -45,7 +49,7 @@ class Check:
         workspace_id: int | None = None,
     ) -> list[Finding]:
         source = config.get("source") or {}
-        tracks = set(config.get("tracks") or ["sca", "agent"])
+        tracks = set(config.get("tracks") or ["sca", "agent", "verify"])
 
         all_findings: list[Finding] = []
 
@@ -59,8 +63,10 @@ class Check:
             except Exception:
                 pass
 
+        total_steps = 5 if "verify" in tracks else 4
+
         # ── Ingest: resolve source → working tree → file inventory ──────────
-        await _progress(1, 4, "code.ingest", "Preparing source tree", "running")
+        await _progress(1, total_steps, "code.ingest", "Preparing source tree", "running")
         # Re-resolve the credential (if any) in memory — the plaintext secret is
         # never stored in meta_json, only its credential_id.
         src = dict(source)
@@ -81,11 +87,11 @@ class Check:
             return all_findings
 
         all_findings.append(_coverage_finding(tree))
-        await _progress(1, 4, "code.ingest", f"{len(tree.source_files)} source files", "done")
+        await _progress(1, total_steps, "code.ingest", f"{len(tree.source_files)} source files", "done")
 
         # ── Track 1: SCA (deterministic) ────────────────────────────────────
         if "sca" in tracks and workspace_id is not None:
-            await _progress(2, 4, "code.sca", "Dependency analysis (SCA)", "running")
+            await _progress(2, total_steps, "code.sca", "Dependency analysis (SCA)", "running")
             try:
                 from . import sca
                 all_findings += sca.run_sca(tree, workspace_id)
@@ -99,11 +105,11 @@ class Check:
                     affected=tree.label,
                     fingerprint=stable_fingerprint(tree.label, "code.sca.error", 0),
                 ))
-            await _progress(2, 4, "code.sca", "Dependency analysis (SCA)", "done")
+            await _progress(2, total_steps, "code.sca", "Dependency analysis (SCA)", "done")
 
         # ── Track 2: agentic source read (Phase 2) ─────────────────────────
         if "agent" in tracks:
-            await _progress(3, 4, "code.agent", "Agentic source review", "running")
+            await _progress(3, total_steps, "code.agent", "Agentic source review", "running")
             try:
                 from . import agent_runner
                 all_findings += await agent_runner.run_agent_scan(
@@ -122,9 +128,32 @@ class Check:
                     affected=tree.label,
                     fingerprint=stable_fingerprint(tree.label, "code.agent.error", 0),
                 ))
-            await _progress(3, 4, "code.agent", "Agentic source review", "done")
+            await _progress(3, total_steps, "code.agent", "Agentic source review", "done")
 
-        await _progress(4, 4, "code.done", "Scan complete", "done")
+        # ── Track 3: verification (adversarial sub-agent) ─────────────────
+        if "verify" in tracks:
+            await _progress(4, total_steps, "code.verify", "Adversarial verification", "running")
+            try:
+                from . import verify_runner
+                verify_findings = await verify_runner.run_verification(
+                    tree, all_findings, config,
+                    job_id=job_id, workspace_id=workspace_id,
+                    progress=_progress,
+                )
+                all_findings += verify_findings
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Verify track failed for job %s: %s", job_id, e)
+                all_findings.append(Finding(
+                    plugin_id="code.verify.error",
+                    title="Adversarial verification did not complete",
+                    severity="info",
+                    description=f"The verification track raised an error and was skipped: {e}",
+                    affected=tree.label,
+                    fingerprint=stable_fingerprint(tree.label, "code.verify.error", 0),
+                ))
+            await _progress(4, total_steps, "code.verify", "Adversarial verification", "done")
+
+        await _progress(total_steps, total_steps, "code.done", "Scan complete", "done")
         return all_findings
 
     async def run(self, target: str, ctx: Any) -> Any:

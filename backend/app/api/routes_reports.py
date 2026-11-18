@@ -540,10 +540,15 @@ def _as_csv(findings: list[models.Finding], ai_lookup: dict | None = None) -> st
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["id", "severity", "title", "target", "plugin_id", "cvss", "risk", "confidence",
-                "is_kev", "sla_days", "fingerprint", "ai_verdict", "ai_confidence", "ai_reasoning"])
+                "is_kev", "sla_days", "fingerprint", "ai_verdict", "ai_confidence", "ai_reasoning",
+                "steps_to_reproduce"])
     for f in findings:
         cvss_val = _cvss_or_baseline(f)
         ai_entry = _ai_match(ai_lookup or {}, f)
+        steps = ""
+        if ai_entry and ai_entry.get("steps_to_reproduce"):
+            raw = ai_entry["steps_to_reproduce"]
+            steps = "\n".join(raw) if isinstance(raw, list) else str(raw)
         w.writerow([
             f.id, f.severity, f.title, f.target, f.plugin_id,
             cvss_val if cvss_val is not None else "",
@@ -555,6 +560,7 @@ def _as_csv(findings: list[models.Finding], ai_lookup: dict | None = None) -> st
             (ai_entry.get("verdict") or "") if ai_entry else "",
             (ai_entry.get("confidence") or "") if ai_entry else "",
             (ai_entry.get("reasoning") or "") if ai_entry else "",
+            steps,
         ])
     return buf.getvalue()
 
@@ -756,6 +762,18 @@ def _as_markdown(job: models.ScanJob, findings: list[models.Finding], template: 
                 if ai_entry.get("reasoning") or ai_entry.get("explanation"):
                     lines.append("")
                     lines.append(ai_entry.get("reasoning") or ai_entry.get("explanation"))
+                if ai_entry.get("steps_to_reproduce"):
+                    raw_steps = ai_entry["steps_to_reproduce"]
+                    if isinstance(raw_steps, list) and raw_steps:
+                        lines.append("")
+                        lines.append("**Steps to Reproduce**")
+                        lines.append("")
+                        for s in raw_steps:
+                            step_text = str(s).strip()
+                            if step_text and step_text[0].isdigit():
+                                lines.append(step_text)
+                            else:
+                                lines.append(f"- {step_text}")
                 if ai_entry.get("recommendation"):
                     lines.append("")
                     lines.append(f"**AI recommendation:** {ai_entry['recommendation']}")
@@ -1016,6 +1034,14 @@ def _as_pdf(job: models.ScanJob, findings: list[models.Finding], template: dict,
                     reasoning = ai_entry.get("reasoning") or ai_entry.get("explanation")
                     if reasoning:
                         block.append(Paragraph(_esc(reasoning).replace("\n", "<br/>"), Meta))
+                    if ai_entry.get("steps_to_reproduce"):
+                        raw_steps = ai_entry["steps_to_reproduce"]
+                        if isinstance(raw_steps, list) and raw_steps:
+                            block.append(Spacer(1, 4))
+                            block.append(Paragraph("<b>Steps to Reproduce</b>", Meta))
+                            for s in raw_steps:
+                                step_text = str(s).strip()
+                                block.append(Paragraph(f"&bull; {_esc(step_text)}", Meta))
                     if ai_entry.get("recommendation"):
                         block.append(Paragraph(f"<b>AI recommendation:</b> {_esc(ai_entry['recommendation'])}", Meta))
                     poc_obj = ai_entry.get("poc_code")

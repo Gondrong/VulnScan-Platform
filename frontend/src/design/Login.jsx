@@ -1,6 +1,63 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "./icons.jsx";
 import { login as apiLogin, eventsApi } from "../api.js";
+
+function ParticleBackground() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let raf, particles = [];
+    const N = 35;
+    const resize = () => {
+      const r = canvas.parentElement.getBoundingClientRect();
+      canvas.width = r.width;
+      canvas.height = r.height;
+    };
+    resize();
+    for (let i = 0; i < N; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        r: Math.random() * 1.5 + 0.5,
+      });
+    }
+    const draw = () => {
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      for (let i = 0; i < N; i++) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h) p.vy *= -1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(108,140,255,0.5)";
+        ctx.fill();
+        for (let j = i + 1; j < N; j++) {
+          const q = particles[j];
+          const dx = p.x - q.x, dy = p.y - q.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+            ctx.strokeStyle = `rgba(108,140,255,${0.12 * (1 - dist / 120)})`;
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    window.addEventListener("resize", resize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+  return <canvas ref={canvasRef} style={{position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none"}}/>;
+}
 
 export function LoginPage({ onLogin, version = "" }) {
   const [email, setEmail] = useState("");
@@ -24,9 +81,23 @@ export function LoginPage({ onLogin, version = "" }) {
     }
   };
 
+  const ripple = (e) => {
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const span = document.createElement("span");
+    span.className = "login-ripple";
+    const size = Math.max(rect.width, rect.height) * 2;
+    span.style.width = span.style.height = size + "px";
+    span.style.left = (e.clientX - rect.left - size / 2) + "px";
+    span.style.top = (e.clientY - rect.top - size / 2) + "px";
+    btn.appendChild(span);
+    setTimeout(() => span.remove(), 600);
+  };
+
   return (
     <div className="login-shell-centered">
       <div className="login-bg-grid"/>
+      <ParticleBackground/>
 
       <div className="login-card">
         <div className="login-brand">
@@ -35,7 +106,7 @@ export function LoginPage({ onLogin, version = "" }) {
             <div style={{fontSize: 16, fontWeight: 600, color: "var(--text-0)", letterSpacing: "-0.01em"}}>
               VulnScan <span style={{color: "var(--text-3)", fontWeight: 400, fontSize: 12, marginLeft: 4}}>{version ? `v${version}` : ""}</span>
             </div>
-            <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 1}}>Risk Based Vulnerability Management — Security operations console</div>
+            <div style={{fontSize: 12, color: "var(--text-3)", marginTop: 1}}>AI-Driven Vulnerability Assessment & Penetration Testing</div>
           </div>
         </div>
 
@@ -100,7 +171,7 @@ export function LoginPage({ onLogin, version = "" }) {
                 </div>
               )}
 
-              <button type="submit" className="btn btn-primary login-submit" disabled={loading || !email || !password}>
+              <button type="submit" className="btn btn-primary login-submit" disabled={loading || !email || !password} onClick={ripple}>
                 {loading ? <><Icons.Refresh size={13} className="spin"/> Signing in…</> : <>Sign in <Icons.ArrowRight size={13}/></>}
               </button>
             </form>
@@ -176,7 +247,7 @@ export function LoginPage({ onLogin, version = "" }) {
 
         <div className="login-foot">
           <div className="login-foot-meta">
-            © 2026 VulnScan Platform by Gondrong
+            © 2026 VulnScan — VAPT Automation Platform by Gondrong
           </div>
         </div>
       </div>

@@ -428,6 +428,8 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   // Non-intrusive by default: someone clicking through without choosing gets
   // the mode that cannot hurt a production target.
   const [intrusive, setIntrusive] = useState(false);
+  const [scanDepth, setScanDepth] = useState("quick");
+  const [depthProvider, setDepthProvider] = useState("");
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduleConfig, setScheduleConfig] = useState({
     interval_hours: 24,
@@ -473,7 +475,8 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const [codeFile, setCodeFile]       = useState(null);
   const [codeCredId, setCodeCredId]   = useState("");
   const [codeProvider, setCodeProvider] = useState("");
-  const [codeTracks, setCodeTracks]   = useState({ sca: true, agent: true });
+  const [verifyProvider, setVerifyProvider] = useState("");  // "" = same as codeProvider
+  const [codeTracks, setCodeTracks]   = useState({ sca: true, agent: true, verify: true });
   const [aiProviders, setAiProviders] = useState([]);
   const [codePreflight, setCodePreflight] = useState(null); // {status, message}
   const [codePreflighting, setCodePreflighting] = useState(false);
@@ -508,6 +511,11 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
       })
       .catch(e => setError(e.message || "Failed to load form data"));
   }, []);
+
+  // Auto-select first AI provider for scan depth Standard/Deep
+  useEffect(() => {
+    if (aiProviders.length && !depthProvider) setDepthProvider(aiProviders[0].key || aiProviders[0].id);
+  }, [aiProviders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-prefill the login URL field from the target when the user types it
   useEffect(() => {
@@ -745,12 +753,15 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
       if (codeSource === "git" && !codeGitUrl.trim()) { setError("Git URL is required"); return; }
       if (codeSource === "zip" && !codeFile) { setError("Upload a .zip archive"); return; }
       if (codeTracks.agent && !codeProvider) { setError("Agentic review needs an AI provider — pick one or turn the Agent track off"); return; }
+      if (codeTracks.verify && !codeTracks.agent && !codeTracks.sca) { setError("Verification needs at least one other track (SCA or Agent) to produce findings first"); return; }
+      if (codeTracks.verify && codeTracks.agent && !codeProvider) { setError("Adversarial verification needs an AI provider for the agent findings it will review"); return; }
       setSubmitting(true);
       try {
         const fd = new FormData();
         fd.append("source_type", codeSource);
         fd.append("tracks", tracks.join(","));
         if (codeProvider) fd.append("provider", codeProvider);
+        if (codeTracks.verify && verifyProvider) fd.append("verify_provider", verifyProvider);
         if (codeSource === "git") {
           fd.append("git_url", codeGitUrl.trim());
           if (codeCredId) fd.append("credential_id", codeCredId);
@@ -773,6 +784,7 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
     let finalTarget = target.trim();
     if (!finalTarget) { setError("Target is required"); return; }
     if (!profileId)   { setError("Pick a scan profile"); return; }
+    if (scanDepth !== "quick" && !depthProvider) { setError("Standard/Deep scan needs an AI provider — pick one above"); return; }
 
     // ── Agentic scan → dedicated endpoint ──────────────────────────────
     if (agentic) {
@@ -859,14 +871,19 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
 
       const scanType = scanTypeFor(scanKind);
 
+      // Derive intrusive from scan depth for non-api/non-code scan kinds
+      const effectiveIntrusive = (scanKind !== "api" && scanKind !== "code") ? scanDepth !== "quick" : intrusive;
+
       if (scheduleMode === "now") {
         const jobBody = {
           target: finalTarget,
           profile_id: profileId,
           scan_type: scanType,
           asset_id: finalAssetId || null,
-          intrusive,
+          intrusive: effectiveIntrusive,
+          scan_depth: scanDepth,
         };
+        if (scanDepth !== "quick" && depthProvider) jobBody.ai_provider = depthProvider;
         if (webAuth) jobBody.web_auth = webAuth;
         // Ephemeral cleanup: backend deletes the linked credential when the scan ends
         if (webAuth && waEphemeral && webAuth.credential_id) {
@@ -880,8 +897,10 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
           profile_id: profileId,
           scan_type: scanType,
           enabled: true,
-          intrusive,
+          intrusive: effectiveIntrusive,
+          scan_depth: scanDepth,
         };
+        if (scanDepth !== "quick" && depthProvider) schedulePayload.ai_provider = depthProvider;
         if (scheduleMode === "once") {
           if (!scheduleConfig.custom_datetime) throw new Error("Pick a date/time for the scheduled run");
           schedulePayload.schedule_type = "custom";
@@ -1140,22 +1159,26 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
               {/* Tracks */}
               <div>
                 <label className="form-label">What to run</label>
-                <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
-                  {[
-                    {id: "sca",   label: "Dependency (SCA)", desc: "Known-CVE lockfile scan via OSV"},
-                    {id: "agent", label: "Agentic review",   desc: "AI agent reads source for logic / secret / injection bugs"},
-                  ].map(t => {
-                    const on = codeTracks[t.id];
-                    return (
-                      <button key={t.id} className={`btn ${on ? "btn-primary" : ""}`}
-                              style={{flexDirection: "column", height: "auto", padding: "10px 12px", gap: 4, alignItems: "flex-start"}}
-                              onClick={() => setCodeTracks(s => ({...s, [t.id]: !s[t.id]}))}>
-                        <div style={{fontSize: 12, fontWeight: 600}}>{t.label}</div>
-                        <div style={{fontSize: 11, fontWeight: 400, opacity: 0.8, textAlign: "left"}}>{t.desc}</div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <select className="form-input" value={
+                  codeTracks.sca && codeTracks.agent && codeTracks.verify ? "all" :
+                  codeTracks.sca && codeTracks.agent ? "sca_agent" :
+                  codeTracks.sca ? "sca" :
+                  codeTracks.agent && codeTracks.verify ? "agent_verify" :
+                  codeTracks.agent ? "agent" : "sca"
+                } onChange={e => {
+                  const v = e.target.value;
+                  setCodeTracks({
+                    sca:    ["all", "sca_agent", "sca"].includes(v),
+                    agent:  ["all", "sca_agent", "agent_verify", "agent"].includes(v),
+                    verify: ["all", "agent_verify"].includes(v),
+                  });
+                }}>
+                  <option value="sca">Dependency scan (SCA) — known-CVE lockfile scan via OSV</option>
+                  <option value="agent">Agentic review — AI agent reads source for logic/secret/injection bugs</option>
+                  <option value="sca_agent">SCA + Agentic review</option>
+                  <option value="agent_verify">Agentic review + Verification — adversarial sub-agent disproves false positives</option>
+                  <option value="all">Full analysis — SCA + Agentic review + Verification</option>
+                </select>
               </div>
 
               {/* AI provider (only for the agentic track) */}
@@ -1169,6 +1192,20 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
                     ))}
                   </select>
                   <div className="form-help">Use an OpenRouter / Netra / OpenAI-compatible provider. Claude CLI code-scan is coming soon.</div>
+                </div>
+              )}
+
+              {/* AI provider for verification (optional, defaults to same as agentic) */}
+              {codeTracks.verify && (codeTracks.agent || codeTracks.sca) && (
+                <div>
+                  <label className="form-label">AI provider (for verification)</label>
+                  <select className="form-input" value={verifyProvider} onChange={e => setVerifyProvider(e.target.value)}>
+                    <option value="">{codeProvider ? `Same as agentic (${aiProviders.find(p => p.key === codeProvider)?.model || codeProvider})` : "Select a provider…"}</option>
+                    {aiProviders.filter(p => p.enabled !== false).map(p => (
+                      <option key={p.key} value={p.key}>{p.name} · {p.model}</option>
+                    ))}
+                  </select>
+                  <div className="form-help">Use a different model for adversarial review — different blind spots catch more false positives. Leave blank to reuse the agentic provider.</div>
                 </div>
               )}
             </div>
@@ -1208,102 +1245,39 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
           </div>
           )}
 
-          {scanKind !== "api" && scanKind !== "code" && !agentic && (
-          <div>
-            <label className="form-label">Scan mode</label>
-            <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
-              {[
-                { id: false, label: "Non-intrusive", desc: "Observe only: headers, TLS, ports, fingerprints, version-based CVEs" },
-                { id: true,  label: "Intrusive",     desc: "Attack payloads, credential guessing, path brute-force" },
-              ].map(o => {
-                const active = intrusive === o.id;
-                return (
-                  <button key={o.label} type="button" onClick={() => setIntrusive(o.id)}
-                          className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
-                          style={{flexDirection: "column", alignItems: "flex-start", height: "auto", padding: "10px 12px", gap: 2, textAlign: "left"}}>
-                    <div style={{fontSize: 13, fontWeight: 600}}>{o.label}</div>
-                    <div style={{fontSize: 11, opacity: active ? 0.85 : 0.6, fontWeight: 400}}>{o.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="form-help" style={{marginTop: 6, color: intrusive ? "var(--err)" : "var(--text-3)"}}>
-              {intrusive
-                ? "Sends SQLi/XSS/command-injection payloads, tries default credentials, brute-forces paths and may write to the target. Run only with the target owner's agreement."
-                : "Plugins that attack, guess credentials or write to the target are skipped. The results list which ones, so a clean report is not mistaken for a tested one."}
-            </div>
-          </div>
-          )}
-
-          {/* ── Agentic scan (AI plans which plugins to run) ───────────── */}
+          {/* ── Scan Depth ────────────────────────────────────────────── */}
           {scanKind !== "api" && scanKind !== "code" && (
           <div>
-            <label className="form-label">Agentic scan</label>
-            <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
-              {[
-                { on: false, label: "Off",     desc: "Run the scan profile as-is" },
-                { on: true,  label: "Agentic", desc: "AI reads recon, proposes which active plugins to run — you approve before anything intrusive runs" },
-              ].map(o => {
-                const active = agentic === o.on;
-                return (
-                  <button key={String(o.on)} type="button" onClick={() => setAgentic(o.on)}
-                          className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
-                          style={{flexDirection: "column", alignItems: "flex-start", height: "auto", padding: "10px 12px", gap: 2, textAlign: "left"}}>
-                    <div style={{fontSize: 13, fontWeight: 600}}>{o.label}</div>
-                    <div style={{fontSize: 11, opacity: active ? 0.85 : 0.6, fontWeight: 400}}>{o.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-            {agentic && (
-              <div style={{marginTop: 10, display: "flex", flexDirection: "column", gap: 10}}>
-                {/* Mode A (plugins) vs Mode B (exploit) */}
-                <div style={{display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8}}>
-                  {[
-                    { id: "plugins", label: "Plugins", desc: "AI picks which vetted plugins to run · approve the plan", enabled: true },
-                    { id: "exploit", label: "Exploit", desc: exploitEnabled ? "AI crafts its own payloads · approve EACH action" : "Disabled — set ENABLE_AGENTIC_EXPLOIT on the server", enabled: exploitEnabled },
-                  ].map(m => {
-                    const active = agenticMode === m.id;
-                    return (
-                      <button key={m.id} type="button" disabled={!m.enabled}
-                              onClick={() => m.enabled && setAgenticMode(m.id)}
-                              className={`btn ${active ? "btn-primary" : "btn-ghost"}`}
-                              style={{flexDirection: "column", alignItems: "flex-start", height: "auto", padding: "10px 12px", gap: 2, textAlign: "left", opacity: m.enabled ? 1 : 0.5, cursor: m.enabled ? "pointer" : "not-allowed"}}>
-                        <div style={{fontSize: 12.5, fontWeight: 600}}>{m.label}</div>
-                        <div style={{fontSize: 10.5, opacity: active ? 0.85 : 0.6, fontWeight: 400}}>{m.desc}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <select className="form-input" value={agenticProvider} onChange={e => setAgenticProvider(e.target.value)}>
+            <label className="form-label">Scan depth</label>
+            <select className="form-input" value={scanDepth} onChange={e => setScanDepth(e.target.value)}>
+              <option value="quick">Quick — non-intrusive scan only</option>
+              <option value="standard">Standard — intrusive scan + AI Analysis</option>
+              <option value="deep">Deep — full VAPT pipeline (scan + AI + pentest)</option>
+            </select>
+            {scanDepth === "quick" && (
+              <div className="form-help" style={{marginTop: 6}}>
+                No attacking payloads are sent. Safe for production targets.
+              </div>
+            )}
+            {scanDepth === "standard" && (
+              <div className="form-help" style={{marginTop: 6, color: "var(--warn, #d97706)"}}>
+                Sends SQLi/XSS/injection payloads and brute-forces paths. Run only with the target owner's agreement. AI analysis starts automatically after the scan completes.
+              </div>
+            )}
+            {scanDepth === "deep" && (
+              <div className="form-help" style={{marginTop: 6, color: "#8b5cf6"}}>
+                Full VAPT pipeline: intrusive scan → AI analysis → workflow pentest (recon → enum → verify → exploit → creative hunting). Requires target in exploit allowlist and ENABLE_PENTEST=true.
+              </div>
+            )}
+            {scanDepth !== "quick" && (
+              <div style={{marginTop: 10}}>
+                <label className="form-label" style={{fontSize: 12}}>AI provider</label>
+                <select className="form-input" value={depthProvider} onChange={e => setDepthProvider(e.target.value)}>
                   <option value="">Select AI provider…</option>
                   {aiProviders.filter(p => p.enabled !== false).map(p => (
-                    <option key={p.key} value={p.key}>{p.name} · {p.model}</option>
+                    <option key={p.key || p.id} value={p.key || p.id}>{p.name || p.id}{p.model ? ` · ${p.model}` : ""}</option>
                   ))}
                 </select>
-
-                {agenticMode === "plugins" ? (
-                  <div className="form-help">
-                    A non-intrusive recon runs first, then the AI proposes a plugin plan. The scan pauses at
-                    "awaiting approval" — open the job to approve or reject before any active plugin runs.
-                  </div>
-                ) : (
-                  <div style={{padding: "10px 12px", background: "var(--surface-1)", border: "1px solid var(--err)", borderRadius: 8}}>
-                    <div style={{fontSize: 12, fontWeight: 600, color: "var(--err)", marginBottom: 6}}>
-                      <Icons.AlertTriangle size={13}/> Active exploitation — agent crafts payloads
-                    </div>
-                    <div style={{fontSize: 11.5, color: "var(--text-1)", lineHeight: 1.5, marginBottom: 8}}>
-                      The AI will propose real attack payloads against this target. Every action needs your approval
-                      before it is sent; destructive payloads are blocked in code, and the target must be on the
-                      exploit allowlist (Settings → Agentic Exploit).
-                    </div>
-                    <label style={{display: "flex", gap: 8, alignItems: "flex-start", fontSize: 11.5, cursor: "pointer"}}>
-                      <input type="checkbox" checked={scopeAck} onChange={e => setScopeAck(e.target.checked)} style={{marginTop: 2}}/>
-                      <span>I am authorised to actively test this target (rules of engagement in place).</span>
-                    </label>
-                  </div>
-                )}
               </div>
             )}
           </div>

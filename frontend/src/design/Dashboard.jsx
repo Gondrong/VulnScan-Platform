@@ -3,38 +3,64 @@ import { Icons, Sev, Pip, Risk, Status, Donut, Sparkline } from "./icons.jsx";
 import { scanApi, settingsApi, threatIntelApi } from "../api.js";
 import { LiveActivityFeed } from "./Login.jsx";
 
-function TiMiniTile({ label, value, accent, hint, onClick }) {
+function useCountUp(target, duration = 900, delay = 0) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    if (target == null || typeof target !== "number") return;
+    if (target === 0) { setDisplay(0); return; }
+    let raf, timeout;
+    timeout = setTimeout(() => {
+      const start = performance.now();
+      function tick(now) {
+        const t = Math.min((now - start) / duration, 1);
+        const ease = 1 - Math.pow(1 - t, 3);
+        setDisplay(Math.round(ease * target));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+    }, delay);
+    return () => { clearTimeout(timeout); if (raf) cancelAnimationFrame(raf); };
+  }, [target, duration, delay]);
+  return target != null && typeof target === "number" ? display : target;
+}
+
+function TiMiniTile({ label, value, accent, hint, onClick, animDelay = 0 }) {
+  const display = useCountUp(value, value > 1000 ? 1400 : 900, animDelay + 300);
   return (
     <div onClick={onClick}
+         className="dash-slide-right"
          style={{
            padding: "10px 12px", background: "var(--surface-1)", border: "1px solid var(--line)",
            borderRadius: 6, cursor: onClick ? "pointer" : "default",
            transition: "border-color 0.15s, background 0.15s",
+           animationDelay: `${animDelay}ms`,
          }}
          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--line-strong, var(--brand))"; }}
          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--line)"; }}>
       <div style={{fontSize: 10.5, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600}}>
         {label}
       </div>
-      <div style={{fontSize: 22, fontWeight: 700, color: accent || "var(--text-0)", lineHeight: 1.1, marginTop: 4}}>
-        {(value ?? 0).toLocaleString()}
+      <div style={{fontSize: 22, fontWeight: 700, color: accent || "var(--text-0)", lineHeight: 1.1, marginTop: 4, fontVariantNumeric: "tabular-nums"}}>
+        {(display ?? 0).toLocaleString()}
       </div>
       {hint && <div style={{fontSize: 11, color: "var(--text-3)", marginTop: 4}}>{hint}</div>}
     </div>
   );
 }
 
-function StatTile({ label, value, delta, deltaDir, accent, icon, sparkData, onClick, hint }) {
+function StatTile({ label, value, delta, deltaDir, accent, icon, sparkData, onClick, hint, animDelay = 0 }) {
   const I = icon;
   const clickable = typeof onClick === "function";
+  const numValue = typeof value === "number" ? value : null;
+  const display = useCountUp(numValue, numValue > 100 ? 1200 : 900, animDelay + 200);
   return (
-    <div className={`stat ${accent}`}
+    <div className={`stat ${accent} dash-enter`}
          onClick={clickable ? onClick : undefined}
-         style={clickable ? {cursor: "pointer"} : undefined}
+         style={{ cursor: clickable ? "pointer" : undefined, animationDelay: `${animDelay}ms` }}
          title={hint}>
       <div className="accent-bar" />
       <div className="label">{I && <I size={12}/>} {label}</div>
-      <div className="value">{value}</div>
+      <div className="value" style={{fontVariantNumeric: "tabular-nums"}}>{numValue != null ? display : value}</div>
       {delta && <div className={`delta ${deltaDir}`}>{deltaDir === "up" ? "↑" : deltaDir === "down" ? "↓" : "→"} {delta}</div>}
       {hint && !delta && <div style={{fontSize: 10.5, color: "var(--text-3)", marginTop: 6, fontWeight: 400}}>{hint}</div>}
       {sparkData && <div style={{marginTop: 8}}><Sparkline data={sparkData} w={180} h={28} color={accent === "critical" ? "var(--sev-critical)" : "var(--brand)"}/></div>}
@@ -46,7 +72,7 @@ export function Dashboard({ openDrawer, setPage }) {
   const [jobs, setJobs] = useState([]);
   const [stats, setStats] = useState(null);
   const [recentFindings, setRecentFindings] = useState([]);
-  const [tiStats, setTiStats] = useState(null);  // threat intel summary
+  const [tiStats, setTiStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -64,7 +90,6 @@ export function Dashboard({ openDrawer, setPage }) {
         setStats(s);
         setTiStats(ti);
 
-        // Pull findings from the most recent done job for the priority list
         const lastDone = (allJobs || []).find(j => j.status === "done");
         if (lastDone) {
           try {
@@ -101,7 +126,6 @@ export function Dashboard({ openDrawer, setPage }) {
     { value: sevCounts.low,      color: "var(--sev-low)",      label: "Low" },
   ];
 
-  // Aggregate top targets from jobs
   const topTargets = useMemo(() => {
     const byTarget = {};
     for (const j of jobs) {
@@ -135,19 +159,29 @@ export function Dashboard({ openDrawer, setPage }) {
 
       {error && <div style={{color: "var(--err)", marginBottom: 14, fontSize: 13}}><Icons.AlertTriangle size={13}/> {error}</div>}
 
+      {/* Animation 1: Staggered card entrance + Animation 2: Count-up numbers */}
       <div className="grid-stat">
-        <StatTile label="Total scans"    value={stats?.jobs_total ?? "—"}  accent="brand"   icon={Icons.Scan}/>
-        <StatTile label="Done"           value={stats?.jobs_done  ?? "—"}  accent="low"     icon={Icons.Check}/>
-        <StatTile label="Failed"         value={stats?.jobs_failed ?? "—"} accent="critical" icon={Icons.AlertTriangle}/>
-        <StatTile label="Findings"       value={stats?.findings   ?? "—"}  accent="high"    icon={Icons.Activity}/>
-        <StatTile label="KEV (last scan)" value={sevCounts.kev}            accent="critical" icon={Icons.Target}/>
+        {loading && !stats ? (
+          <>
+            {[0,1,2,3,4].map(i => <div key={i} className="skel skel-stat dash-enter" style={{animationDelay: `${i * 80}ms`}}/>)}
+          </>
+        ) : (
+          <>
+            <StatTile label="Total scans"     value={stats?.jobs_total ?? "—"}  accent="brand"    icon={Icons.Scan}          animDelay={0}/>
+            <StatTile label="Done"            value={stats?.jobs_done  ?? "—"}  accent="low"      icon={Icons.Check}         animDelay={80}/>
+            <StatTile label="Failed"          value={stats?.jobs_failed ?? "—"} accent="critical"  icon={Icons.AlertTriangle} animDelay={160}/>
+            <StatTile label="Findings"        value={stats?.findings   ?? "—"}  accent="high"     icon={Icons.Activity}      animDelay={240}/>
+            <StatTile label="KEV (last scan)" value={sevCounts.kev}                  accent="critical"  icon={Icons.Target}        animDelay={320}/>
+          </>
+        )}
       </div>
 
-      {/* ── Threat Intel summary band ────────────────────────────────────── */}
+      {/* Animation 5: Threat Intel tiles slide-in from right */}
       {tiStats && tiStats.total_cves > 0 && (
-        <div style={{
+        <div className="dash-enter" style={{
           background: "var(--surface-0)", border: "1px solid var(--line)",
           borderRadius: 10, padding: "14px 16px", marginTop: 14,
+          animationDelay: "400ms",
         }}>
           <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12}}>
             <div style={{display: "flex", alignItems: "center", gap: 8}}>
@@ -170,6 +204,7 @@ export function Dashboard({ openDrawer, setPage }) {
               accent="var(--brand)"
               hint={tiStats.new_kev_7d > 0 ? "Recently exploited — review now" : "No new KEV this week"}
               onClick={() => setPage && setPage("threat-intel")}
+              animDelay={500}
             />
             <TiMiniTile
               label="KEV due in 7 days"
@@ -177,6 +212,7 @@ export function Dashboard({ openDrawer, setPage }) {
               accent="#e8a03c"
               hint="Federal SLA approaching"
               onClick={() => setPage && setPage("threat-intel")}
+              animDelay={600}
             />
             <TiMiniTile
               label="Ransomware-known"
@@ -184,6 +220,7 @@ export function Dashboard({ openDrawer, setPage }) {
               accent="var(--err)"
               hint="Patch first — confirmed in ransomware ops"
               onClick={() => setPage && setPage("threat-intel")}
+              animDelay={700}
             />
             <TiMiniTile
               label="High EPSS (≥50%)"
@@ -191,13 +228,15 @@ export function Dashboard({ openDrawer, setPage }) {
               accent="var(--text-1)"
               hint="High exploit probability"
               onClick={() => setPage && setPage("threat-intel")}
+              animDelay={800}
             />
           </div>
         </div>
       )}
 
       <div className="grid-2">
-        <div className="card">
+        {/* Animation 1: Staggered entrance on cards */}
+        <div className="card dash-enter" style={{animationDelay: "450ms"}}>
           <div className="card-head">
             <div>
               <div className="card-title">Top targets by activity</div>
@@ -207,9 +246,13 @@ export function Dashboard({ openDrawer, setPage }) {
           </div>
           <div className="card-body flush">
             {topTargets.length === 0 ? (
-              <div style={{padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>
-                {loading ? "Loading…" : "No scans yet."}
-              </div>
+              loading ? (
+                <div style={{padding: 8}}>
+                  {[0,1,2,3].map(i => <div key={i} className="skel-row"><div className="skel skel-circle"/><div style={{flex:1,display:'flex',flexDirection:'column',gap:6}}><div className="skel skel-line w80"/><div className="skel skel-line w40"/></div><div className="skel skel-line" style={{width:50}}/></div>)}
+                </div>
+              ) : (
+                <div style={{padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>No scans yet.</div>
+              )
             ) : (
               <table className="tbl">
                 <thead>
@@ -244,7 +287,8 @@ export function Dashboard({ openDrawer, setPage }) {
           </div>
         </div>
 
-        <div className="card">
+        {/* Animation 3: Donut chart stroke draw */}
+        <div className="card dash-enter" style={{animationDelay: "550ms"}}>
           <div className="card-head">
             <div>
               <div className="card-title">Last scan distribution</div>
@@ -253,12 +297,19 @@ export function Dashboard({ openDrawer, setPage }) {
           </div>
           <div className="card-body">
             {recentFindings.length === 0 ? (
-              <div style={{padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>
-                {loading ? "Loading…" : "No completed scans yet."}
-              </div>
+              loading ? (
+                <div style={{display:'flex',alignItems:'center',gap:24,padding:12}}>
+                  <div className="skel" style={{width:130,height:130,borderRadius:'50%'}}/>
+                  <div style={{flex:1,display:'flex',flexDirection:'column',gap:10}}>
+                    {[0,1,2,3].map(i => <div key={i} style={{display:'flex',alignItems:'center',gap:8}}><div className="skel" style={{width:8,height:8,borderRadius:2}}/><div className="skel skel-line w60"/></div>)}
+                  </div>
+                </div>
+              ) : (
+                <div style={{padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>No completed scans yet.</div>
+              )
             ) : (
               <div className="donut-wrap">
-                <Donut size={130} thickness={18} segments={segments}/>
+                <Donut size={130} thickness={18} segments={segments} animate/>
                 <div className="donut-legend">
                   {segments.map(s => (
                     <div key={s.label} className="donut-row">
@@ -277,16 +328,20 @@ export function Dashboard({ openDrawer, setPage }) {
       <div style={{height: 16}}/>
 
       <div className="grid-3">
-        <div className="card">
+        <div className="card dash-enter" style={{animationDelay: "600ms"}}>
           <div className="card-head">
             <div className="card-title">Recent scans</div>
             <button className="btn btn-ghost btn-sm" onClick={() => setPage && setPage("jobs")}>View jobs <Icons.ChevronRight size={12}/></button>
           </div>
           <div className="card-body flush">
             {jobs.length === 0 ? (
-              <div style={{padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>
-                {loading ? "Loading…" : "No scans yet."}
-              </div>
+              loading ? (
+                <div style={{padding: 8}}>
+                  {[0,1,2].map(i => <div key={i} className="skel-row"><div className="skel skel-line w30"/><div className="skel skel-line" style={{flex:1}}/><div className="skel skel-line" style={{width:60}}/></div>)}
+                </div>
+              ) : (
+                <div style={{padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>No scans yet.</div>
+              )
             ) : (
               <table className="tbl">
                 <thead><tr><th>Job</th><th>Target</th><th>Status</th></tr></thead>
@@ -304,15 +359,22 @@ export function Dashboard({ openDrawer, setPage }) {
           </div>
         </div>
 
-        <div className="card">
+        {/* Animation 4: KEV badge pulse glow */}
+        <div className="card dash-enter" style={{animationDelay: "700ms"}}>
           <div className="card-head">
             <div className="card-title">Top findings (last scan)</div>
           </div>
           <div className="card-body flush">
             {recentFindings.length === 0 ? (
-              <div style={{padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>
-                {loading ? "Loading…" : "No findings to show."}
-              </div>
+              loading ? (
+                <div>
+                  {[0,1,2].map(i => <div key={i} style={{padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12}}>
+                    <div className="skel" style={{width:60,height:22,borderRadius:4}}/><div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}><div className="skel skel-line w80"/><div className="skel skel-line w40"/></div><div className="skel" style={{width:50,height:14}}/>
+                  </div>)}
+                </div>
+              ) : (
+                <div style={{padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13}}>No findings to show.</div>
+              )
             ) : (
               <div style={{display: "flex", flexDirection: "column"}}>
                 {recentFindings.map(f => (
@@ -327,7 +389,7 @@ export function Dashboard({ openDrawer, setPage }) {
                        onMouseEnter={e => e.currentTarget.style.background = "var(--surface-1)"}
                        onMouseLeave={e => e.currentTarget.style.background = ""}>
                     <Sev s={f.severity}/>
-                    {f.is_kev && <span className="kev">KEV</span>}
+                    {f.is_kev && <span className="kev kev-glow">KEV</span>}
                     <div style={{flex: 1, minWidth: 0}}>
                       <div style={{color: "var(--text-0)", fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{f.title}</div>
                       <div style={{fontSize: 11.5, color: "var(--text-3)", marginTop: 2, fontFamily: "var(--font-mono)"}}>{f._target}</div>
@@ -340,7 +402,9 @@ export function Dashboard({ openDrawer, setPage }) {
           </div>
         </div>
 
-        <LiveActivityFeed/>
+        <div className="dash-enter" style={{animationDelay: "800ms"}}>
+          <LiveActivityFeed/>
+        </div>
       </div>
     </>
   );

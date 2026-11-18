@@ -1900,7 +1900,7 @@ function IntegrationsPanel() {
   return (
     <>
       <div className="card-head" style={{display: "flex", justifyContent: "space-between", alignItems: "center"}}>
-        <div><div className="card-title">Integrations</div><div className="card-sub" style={{marginTop: 0}}>Connect VulnScan to chat, email, and custom HTTP endpoints.</div></div>
+        <div><div className="card-title">Integrations</div><div className="card-sub" style={{marginTop: 0}}>Connect to chat, email, and custom HTTP endpoints.</div></div>
         <span className="tag brand">{apps.filter(a => a.status === "connected").length} connected</span>
       </div>
       <div className="card-body">

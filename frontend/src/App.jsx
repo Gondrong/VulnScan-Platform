@@ -9,6 +9,7 @@ import { ThreatIntel } from "./design/ThreatIntel.jsx";
 import { AttackGraph } from "./design/AttackGraph.jsx";
 import { Analytics } from "./design/Analytics.jsx";
 import { LoginPage } from "./design/Login.jsx";
+import { ToastContainer } from "./design/icons.jsx";
 import {
   getToken, logout as apiLogout,
   scanApi, credentialsApi, datasetsApi, assetsApi, reportsApi, threatIntelApi,
@@ -91,7 +92,8 @@ export default function App() {
       }}/>
       <div className="main">
         <Topbar crumbs={crumbs} setPage={setPageWrap}/>
-        <div className="page">
+        <div className="page" key={page + (openedJob ? `:j${openedJob.id}` : '') + (openedAsset ? `:a${openedAsset.name}` : '')}>
+          <div className="page-enter-anim">
           {page === "dashboard"   && <Dashboard openDrawer={setDrawerFinding} setPage={setPageWrap}/>}
           {page === "assets" && !openedAsset && <Assets openAsset={setOpenedAsset}/>}
           {page === "assets" &&  openedAsset && <AssetDetail asset={openedAsset} back={() => setOpenedAsset(null)}/>}
@@ -106,9 +108,11 @@ export default function App() {
           {page === "attack-graph"&& <AttackGraph/>}
           {page === "analytics"  && <Analytics/>}
           {page === "settings"    && <Settings initialTab={settingsTab}/>}
+          </div>
         </div>
       </div>
       {drawerFinding && <FindingDrawer finding={drawerFinding} close={() => setDrawerFinding(null)}/>}
+      <ToastContainer/>
     </div>
   );
 }

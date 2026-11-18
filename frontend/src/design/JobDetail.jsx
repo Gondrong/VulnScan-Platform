@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons, Sev, Risk, Status } from "./icons.jsx";
-import { scanApi, aiApi, agenticApi, exploitApi, canEdit } from "../api.js";
+import { scanApi, aiApi, agenticApi, exploitApi, pentestApi, canEdit } from "../api.js";
 import { parseProgress } from "./Jobs.jsx";
 import { ReportPreviewModal } from "./Assets.jsx";
 
@@ -114,7 +114,9 @@ export function JobDetail({ job: jobProp, back, openDrawer }) {
 
       {job.status === "awaiting_approval" && <AgenticPlanCard job={job} onChange={refresh}/>}
 
-      {job.status === "awaiting_action" && <ExploitActionCard job={job} onChange={refresh}/>}
+      {job.status === "awaiting_action" && job.agentic_mode === "exploit" && <ExploitActionCard job={job} onChange={refresh}/>}
+
+      <PentestPanel job={job} onChange={refresh}/>
 
       <AIAnalysisBanner job={job}/>
 
@@ -180,6 +182,21 @@ export function JobDetail({ job: jobProp, back, openDrawer }) {
   );
 }
 
+function ProgressRing({ pct, size = 56, stroke = 5 }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  return (
+    <svg width={size} height={size} style={{flexShrink: 0}}>
+      <circle className="ring-track" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke}/>
+      <circle className="ring-fill" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke}
+              stroke="var(--brand)" strokeLinecap="round"
+              strokeDasharray={c} strokeDashoffset={offset}/>
+      <text className="ring-text" x="50%" y="50%" textAnchor="middle" dy="0.35em" fontSize={size * 0.24}>{pct}%</text>
+    </svg>
+  );
+}
+
 function ScanProgressCard({ job }) {
   const p = parseProgress(job.meta_json);
   const pct = p?.pct ?? (job.status === "queued" ? 0 : 0);
@@ -190,9 +207,7 @@ function ScanProgressCard({ job }) {
     <div className="card" style={{marginBottom: 16, borderColor: "var(--brand-line)"}}>
       <div style={{padding: "16px 20px"}}>
         <div style={{display: "flex", alignItems: "center", gap: 14, marginBottom: 14}}>
-          <div style={{width: 36, height: 36, borderRadius: 8, background: "var(--brand-soft)", color: "var(--brand)", display: "grid", placeItems: "center"}}>
-            <Icons.Refresh size={16} className="spin"/>
-          </div>
+          <ProgressRing pct={pct}/>
           <div style={{flex: 1, minWidth: 0}}>
             <div style={{fontSize: 13, fontWeight: 600, color: "var(--text-0)"}}>
               {job.status === "queued" ? "Queued — waiting for a worker" : `Scanning · ${pct}% complete`}
@@ -534,6 +549,19 @@ function AIResultModal({ analysisId, close }) {
                           {f.title && <span style={{fontSize: 13, color: "var(--text-0)", fontWeight: 500}}>{f.title}</span>}
                         </div>
                         {f.reasoning && <div style={{fontSize: 13, color: "var(--text-1)", lineHeight: 1.6, whiteSpace: "pre-wrap"}}>{f.reasoning}</div>}
+                        {f.steps_to_reproduce && f.steps_to_reproduce.length > 0 && (
+                          <div style={{marginTop: 10, padding: "10px 14px", background: "var(--surface-0)", border: "1px solid var(--brand-line)", borderRadius: 6}}>
+                            <div style={{fontSize: 12, fontWeight: 600, color: "var(--brand)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6}}>
+                              <Icons.List size={12}/> Steps to Reproduce
+                            </div>
+                            <ol style={{paddingLeft: 18, fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.7, fontFamily: "var(--font-mono)", margin: 0}}>
+                              {f.steps_to_reproduce.map((s, j) => {
+                                const text = typeof s === "string" ? s.replace(/^\d+\.\s*/, "") : JSON.stringify(s);
+                                return <li key={j} style={{marginBottom: 4}}>{text}</li>;
+                              })}
+                            </ol>
+                          </div>
+                        )}
                         {f.recommendation && (
                           <div style={{marginTop: 8, padding: 10, background: "rgba(95,184,122,0.06)", border: "1px solid rgba(95,184,122,0.2)", borderRadius: 6, fontSize: 12.5, color: "var(--text-1)"}}>
                             <strong>Recommendation:</strong> {f.recommendation}
@@ -845,6 +873,25 @@ function FindingAITab({ loading, error, match, finding }) {
         )}
       </div>
 
+      {e.steps_to_reproduce && e.steps_to_reproduce.length > 0 && (
+        <div style={{padding: "12px 14px", background: "var(--surface-0)", border: "1px solid var(--brand-line)", borderRadius: 8, marginBottom: 16}}>
+          <div style={{fontSize: 11, fontWeight: 600, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6}}>
+            <Icons.List size={11}/> Steps to Reproduce
+          </div>
+          <ol style={{paddingLeft: 18, fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.8, fontFamily: "var(--font-mono)", margin: 0}}>
+            {e.steps_to_reproduce.map((s, j) => {
+              const text = typeof s === "string" ? s.replace(/^\d+\.\s*/, "") : JSON.stringify(s);
+              return <li key={j} style={{marginBottom: 4}}>{text}</li>;
+            })}
+          </ol>
+          <div style={{display: "flex", gap: 8, marginTop: 10}}>
+            <button className="btn btn-sm" onClick={() => navigator.clipboard?.writeText(e.steps_to_reproduce.join("\n"))}>
+              <Icons.Copy size={11}/> Copy steps
+            </button>
+          </div>
+        </div>
+      )}
+
       {recommendation && (
         <div style={{padding: "12px 14px", background: "rgba(95,184,122,0.06)", border: "1px solid rgba(95,184,122,0.2)", borderRadius: 8, marginBottom: 16}}>
           <div style={{fontSize: 11, fontWeight: 600, color: "var(--ok)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6}}>
@@ -980,6 +1027,342 @@ function AgenticPlanCard({ job, onChange }) {
     </div>
   );
 }
+
+// ── VAPT Pentest Pipeline Panel ─────────────────────────────────────────────
+function PentestPanel({ job, onChange }) {
+  const [info, setInfo] = useState(null);
+  const [actions, setActions] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [provider, setProvider] = useState("");
+  const [providers, setProviders] = useState([]);
+  const [workflow, setWorkflow] = useState(true);
+  const [phases, setPhases] = useState({ recon: true, enum: true, verify: true, exploit: true, creative: true });
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMethod, setAuthMethod] = useState("none");
+  const [authFields, setAuthFields] = useState({});
+
+  const isPentest = useCallback(() => {
+    return job.agentic_mode === "pentest";
+  }, [job.agentic_mode]);
+
+  const load = useCallback(() => {
+    if (!isPentest()) return;
+    pentestApi.status(job.id).then(setInfo).catch(e => setErr(e.message || "load failed"));
+    pentestApi.actions(job.id).then(r => setActions(r.actions || [])).catch(() => {});
+  }, [job.id, isPentest]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    aiApi.providers().then(r => {
+      const list = r.providers || r || [];
+      setProviders(list);
+      if (list.length > 0 && !provider) setProvider(list[0].key || list[0].id);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isPentest()) return;
+    if (!["running", "queued", "awaiting_action"].includes(job.status)) return;
+    const t = setInterval(load, 3000);
+    return () => clearInterval(t);
+  }, [job.status, load, isPentest]);
+
+  const approve = async () => {
+    setBusy(true); setErr("");
+    try { await pentestApi.approveAction(job.id); onChange && onChange(); }
+    catch (e) { setErr(e.message || "approve failed"); }
+    finally { setBusy(false); }
+  };
+  const reject = async () => {
+    setBusy(true); setErr("");
+    try { await pentestApi.rejectAction(job.id, { reason }); onChange && onChange(); }
+    catch (e) { setErr(e.message || "reject failed"); }
+    finally { setBusy(false); }
+  };
+  const kill = async () => {
+    if (!window.confirm("Kill this pentest session? No further actions will run.")) return;
+    setBusy(true); setErr("");
+    try { await pentestApi.kill(job.id); onChange && onChange(); }
+    catch (e) { setErr(e.message || "kill failed"); }
+    finally { setBusy(false); }
+  };
+  const start = async () => {
+    setStarting(true); setErr("");
+    const selectedPhases = Object.entries(phases).filter(([, v]) => v).map(([k]) => k);
+    const payload = { provider, phases: selectedPhases, workflow };
+    if (authMethod !== "none") {
+      payload.web_auth = { method: authMethod, ...authFields };
+    }
+    try {
+      await pentestApi.start(job.id, payload);
+      onChange && onChange();
+    } catch (e) { setErr(e.message || "start failed"); }
+    setStarting(false);
+  };
+
+  const WF_LABELS = { recon: "Recon", enum: "Enum", verify: "Verify", exploit: "Exploit", creative: "Creative" };
+  const WF_ORDER = ["recon", "enum", "verify", "exploit", "creative"];
+  const LEGACY_LABELS = { verify: "Auto-Verify", post_exploit: "Post-Exploit", chain: "Chain Execute" };
+  const LEGACY_ORDER = ["verify", "post_exploit", "chain"];
+  const PHASE_LABELS = workflow ? WF_LABELS : LEGACY_LABELS;
+  const PHASE_ORDER = workflow ? WF_ORDER : LEGACY_ORDER;
+
+  if (job.status === "done" && !isPentest()) {
+    return (
+      <div className="card" style={{marginBottom: 16, background: "linear-gradient(180deg, rgba(139,92,246,0.06) 0%, transparent 100%)", borderColor: "var(--brand-line)"}}>
+        <div style={{padding: "16px 20px"}}>
+          <div style={{display: "flex", alignItems: "center", gap: 10, marginBottom: 10}}>
+            <div style={{width: 36, height: 36, borderRadius: 8, background: "rgba(139,92,246,0.15)", display: "grid", placeItems: "center", color: "#8b5cf6"}}>
+              <Icons.Shield size={18}/>
+            </div>
+            <div style={{flex: 1}}>
+              <div style={{fontSize: 13, fontWeight: 600, color: "var(--text-0)"}}>VAPT Automation Pipeline</div>
+              <div style={{fontSize: 12.5, color: "var(--text-2)"}}>
+                Automated vulnerability verification, exploitation and creative hunting.
+              </div>
+            </div>
+          </div>
+          <div style={{display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap"}}>
+            <select className="form-input" style={{height: 28, fontSize: 12, maxWidth: 140}}
+                    value={workflow ? "workflow" : "legacy"}
+                    onChange={e => {
+                      const wf = e.target.value === "workflow";
+                      setWorkflow(wf);
+                      setPhases(wf
+                        ? { recon: true, enum: true, verify: true, exploit: true, creative: true }
+                        : { verify: true, post_exploit: true, chain: true });
+                    }}>
+              <option value="workflow">Workflow (5-phase)</option>
+              <option value="legacy">Legacy (3-phase)</option>
+            </select>
+            <div style={{display: "flex", gap: 4}}>
+              {PHASE_ORDER.map(p => (
+                <button key={p} className={`btn btn-sm ${phases[p] ? "" : "btn-ghost"}`}
+                        style={{fontSize: 11, ...(phases[p] ? {background: "rgba(139,92,246,0.15)", color: "#8b5cf6", borderColor: "rgba(139,92,246,0.3)"} : {})}}
+                        onClick={() => setPhases(prev => ({...prev, [p]: !prev[p]}))}>
+                  {phases[p] ? <Icons.Check size={10}/> : null} {PHASE_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            {providers.length > 0 && (
+              <select className="form-input" style={{height: 28, fontSize: 12, maxWidth: 180}} value={provider} onChange={e => setProvider(e.target.value)}>
+                {providers.map(p => <option key={p.id} value={p.key || p.id}>{p.name || p.id}</option>)}
+              </select>
+            )}
+            <button className="btn btn-sm" style={{background: "#8b5cf6", color: "#fff", borderColor: "#8b5cf6"}}
+                    disabled={starting || providers.length === 0 || !Object.values(phases).some(Boolean)}
+                    onClick={start}>
+              {starting ? <><Icons.Refresh size={11} className="spin"/> Starting…</> : <><Icons.Play size={11}/> Run Pentest</>}
+            </button>
+          </div>
+          {/* Optional web auth for greybox/whitebox testing */}
+          <div style={{marginTop: 10}}>
+            <button className="btn btn-sm btn-ghost" style={{fontSize: 11, color: "var(--text-2)", gap: 4}}
+                    onClick={() => setShowAuth(!showAuth)}>
+              <Icons.Key size={10}/> Web Authentication (optional) {showAuth ? "▴" : "▾"}
+            </button>
+            {showAuth && (
+              <div style={{marginTop: 8, padding: 12, background: "var(--surface-1)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 8}}>
+                <select className="form-input" style={{height: 28, fontSize: 12}} value={authMethod}
+                        onChange={e => { setAuthMethod(e.target.value); setAuthFields({}); }}>
+                  <option value="none">No authentication</option>
+                  <option value="form">Form login (POST username/password)</option>
+                  <option value="bearer">Bearer token</option>
+                  <option value="cookie">Static cookie</option>
+                  <option value="header">Custom header</option>
+                  <option value="basic">HTTP Basic Auth</option>
+                </select>
+                {authMethod === "form" && <>
+                  <input className="form-input" style={{height: 28, fontSize: 12}} placeholder="Login URL, e.g. /login or /api/auth/login"
+                         value={authFields.login_url || ""} onChange={e => setAuthFields(f => ({...f, login_url: e.target.value}))}/>
+                  <div style={{display: "flex", gap: 6}}>
+                    <input className="form-input" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Username field (default: username)"
+                           value={authFields.username_field || ""} onChange={e => setAuthFields(f => ({...f, username_field: e.target.value}))}/>
+                    <input className="form-input" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Password field (default: password)"
+                           value={authFields.password_field || ""} onChange={e => setAuthFields(f => ({...f, password_field: e.target.value}))}/>
+                  </div>
+                  <div style={{display: "flex", gap: 6}}>
+                    <input className="form-input" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Username"
+                           value={authFields.username || ""} onChange={e => setAuthFields(f => ({...f, username: e.target.value}))}/>
+                    <input className="form-input" type="password" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Password"
+                           value={authFields.password || ""} onChange={e => setAuthFields(f => ({...f, password: e.target.value}))}/>
+                  </div>
+                </>}
+                {authMethod === "bearer" && (
+                  <input className="form-input" type="password" style={{height: 28, fontSize: 12}} placeholder="Bearer token"
+                         value={authFields.token || ""} onChange={e => setAuthFields(f => ({...f, token: e.target.value}))}/>
+                )}
+                {authMethod === "cookie" && (
+                  <div style={{display: "flex", gap: 6}}>
+                    <input className="form-input" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Cookie name"
+                           value={authFields.cookie_name || ""} onChange={e => setAuthFields(f => ({...f, cookie_name: e.target.value}))}/>
+                    <input className="form-input" type="password" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Cookie value"
+                           value={authFields.cookie_value || ""} onChange={e => setAuthFields(f => ({...f, cookie_value: e.target.value}))}/>
+                  </div>
+                )}
+                {authMethod === "header" && (
+                  <div style={{display: "flex", gap: 6}}>
+                    <input className="form-input" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Header name, e.g. X-API-Key"
+                           value={authFields.header_name || ""} onChange={e => setAuthFields(f => ({...f, header_name: e.target.value}))}/>
+                    <input className="form-input" type="password" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Header value"
+                           value={authFields.header_value || ""} onChange={e => setAuthFields(f => ({...f, header_value: e.target.value}))}/>
+                  </div>
+                )}
+                {authMethod === "basic" && (
+                  <div style={{display: "flex", gap: 6}}>
+                    <input className="form-input" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Username"
+                           value={authFields.username || ""} onChange={e => setAuthFields(f => ({...f, username: e.target.value}))}/>
+                    <input className="form-input" type="password" style={{height: 28, fontSize: 12, flex: 1}} placeholder="Password"
+                           value={authFields.password || ""} onChange={e => setAuthFields(f => ({...f, password: e.target.value}))}/>
+                  </div>
+                )}
+                {authMethod !== "none" && (
+                  <div style={{fontSize: 11, color: "var(--text-2)"}}>
+                    Credentials are sent to the target only, never stored in the database.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {err && <div style={{color: "var(--err)", fontSize: 12, marginTop: 6}}><Icons.AlertTriangle size={12}/> {err}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (!isPentest()) return null;
+  if (!info) return null;
+
+  const p = info.pending;
+  const a = (p && p.action) || {};
+  const qs = a.query && Object.keys(a.query).length
+    ? "?" + Object.entries(a.query).map(([k, v]) => `${k}=${v}`).join("&") : "";
+
+  return (
+    <div className="card" style={{marginBottom: 16, border: "1px solid rgba(139,92,246,0.4)"}}>
+      <div style={{padding: "14px 16px"}}>
+        <div style={{display: "flex", alignItems: "center", gap: 8, marginBottom: 12}}>
+          <div style={{width: 28, height: 28, borderRadius: 7, background: "rgba(139,92,246,0.15)", display: "grid", placeItems: "center", color: "#8b5cf6"}}>
+            <Icons.Shield size={14}/>
+          </div>
+          <div style={{fontSize: 14, fontWeight: 600, color: "var(--text-0)"}}>VAPT Automation Pipeline</div>
+          <div style={{display: "flex", gap: 4, marginLeft: 8}}>
+            {(info.phases || PHASE_ORDER).map((ph, i) => {
+              const allLabels = {...WF_LABELS, ...LEGACY_LABELS};
+              const phaseList = info.phases || PHASE_ORDER;
+              const isCurrent = info.phase === ph;
+              const isDone = phaseList.indexOf(ph) < phaseList.indexOf(info.phase || phaseList[0]);
+              const isEnd = info.phase === "done" || info.phase === "killed";
+              return (
+                <React.Fragment key={ph}>
+                  {i > 0 && <span style={{color: "var(--text-3)", fontSize: 11}}>→</span>}
+                  <span className="tag" style={{
+                    fontSize: 10,
+                    ...(isCurrent && !isEnd ? {background: "rgba(139,92,246,0.15)", color: "#8b5cf6", borderColor: "rgba(139,92,246,0.3)"} : {}),
+                    ...(isDone || isEnd ? {background: "rgba(34,197,94,0.1)", color: "#16a34a"} : {}),
+                  }}>
+                    {(isDone || isEnd) && <Icons.Check size={8}/>} {allLabels[ph] || ph}
+                  </span>
+                </React.Fragment>
+              );
+            })}
+            {info.phase === "done" && <><span style={{color: "var(--text-3)", fontSize: 11}}>→</span><span className="tag" style={{fontSize: 10, background: "rgba(34,197,94,0.1)", color: "#16a34a"}}><Icons.Check size={8}/> Done</span></>}
+          </div>
+          <span style={{marginLeft: "auto", fontSize: 11, color: "var(--text-3)"}}>
+            Actions: {info.action_count} | Findings: {info.finding_count}
+          </span>
+          {job.status !== "done" && job.status !== "killed" && job.status !== "failed" && (
+            <button className="btn btn-sm" disabled={busy} onClick={kill}
+                    style={{color: "var(--err)", borderColor: "var(--err)"}}>
+              <Icons.X size={12}/> Kill
+            </button>
+          )}
+        </div>
+
+        {info.summary && (
+          <div style={{fontSize: 12.5, color: "var(--text-1)", padding: "8px 10px", background: "var(--surface-1)", borderRadius: 7, marginBottom: 10}}>
+            {info.summary}
+          </div>
+        )}
+
+        {p && job.status === "awaiting_action" && (
+          <>
+            <div style={{fontSize: 12, fontWeight: 600, color: "var(--text-1)", marginBottom: 6}}>
+              Action awaiting approval (#{info.action_count + 1})
+            </div>
+            {p.rationale && <div style={{fontSize: 12.5, color: "var(--text-1)", marginBottom: 8}}>{p.rationale}</div>}
+            <pre style={{background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 7, padding: "10px 12px", fontSize: 11.5, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word"}}>
+{`${a.method || "GET"} ${a.path || "/"}${qs}`}
+{a.headers && Object.keys(a.headers).length ? "\n" + Object.entries(a.headers).map(([k, v]) => `${k}: ${v}`).join("\n") : ""}
+{a.body ? "\n\n" + a.body : ""}
+            </pre>
+            <input className="form-input" placeholder="Reason (optional, for reject)"
+                   value={reason} onChange={e => setReason(e.target.value)} style={{marginTop: 8}}/>
+            {err && <div style={{color: "var(--err)", fontSize: 12, margin: "6px 0"}}><Icons.AlertTriangle size={12}/> {err}</div>}
+            <div style={{display: "flex", gap: 8, marginTop: 10}}>
+              <button className="btn btn-sm" disabled={busy} onClick={approve}
+                      style={{background: "#8b5cf6", color: "#fff", borderColor: "#8b5cf6"}}>
+                <Icons.Check size={13}/> Setujui &amp; jalankan
+              </button>
+              <button className="btn btn-sm" disabled={busy} onClick={reject}><Icons.X size={13}/> Tolak</button>
+            </div>
+          </>
+        )}
+
+        {(info.verified || []).length > 0 && (
+          <div style={{marginTop: 12}}>
+            <div style={{fontSize: 11, fontWeight: 600, color: "var(--text-2)", marginBottom: 6}}>Confirmed findings ({info.verified.length})</div>
+            <div style={{display: "flex", flexDirection: "column", gap: 4}}>
+              {info.verified.map((v, i) => (
+                <div key={i} style={{fontSize: 11, padding: "6px 8px", background: "rgba(34,197,94,0.06)", borderRadius: 6, display: "flex", gap: 8, alignItems: "baseline"}}>
+                  <span className={`sev sev-${v.severity}`} style={{fontSize: 9}}>{v.severity}</span>
+                  <span style={{flex: 1, color: "var(--text-1)"}}>{v.title}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(info.chain_results || []).length > 0 && (
+          <div style={{marginTop: 12}}>
+            <div style={{fontSize: 11, fontWeight: 600, color: "var(--text-2)", marginBottom: 6}}>Attack chains ({info.chain_results.length})</div>
+            <div style={{display: "flex", flexDirection: "column", gap: 4}}>
+              {info.chain_results.map((c, i) => (
+                <div key={i} style={{fontSize: 11, padding: "6px 8px", background: "rgba(139,92,246,0.06)", borderRadius: 6}}>
+                  <div style={{display: "flex", gap: 8, alignItems: "baseline"}}>
+                    <span className={`sev sev-${c.severity}`} style={{fontSize: 9}}>{c.severity}</span>
+                    <span style={{flex: 1, color: "var(--text-1)", fontWeight: 600}}>{c.title}</span>
+                  </div>
+                  {c.impact && <div style={{fontSize: 10.5, color: "var(--text-2)", marginTop: 2}}>{c.impact}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {actions.length > 0 && (
+          <div style={{marginTop: 12}}>
+            <div style={{fontSize: 11, fontWeight: 600, color: "var(--text-2)", marginBottom: 6}}>Action history ({actions.length})</div>
+            <div style={{display: "flex", flexDirection: "column", gap: 4}}>
+              {actions.map(ac => (
+                <div key={ac.seq} style={{fontSize: 11, padding: "6px 8px", background: "var(--surface-1)", borderRadius: 6, display: "flex", gap: 8, alignItems: "baseline"}}>
+                  <span className="mono" style={{color: "var(--text-3)"}}>#{ac.seq}</span>
+                  <span className="tag" style={{fontSize: 9}}>{ac.decision}</span>
+                  <span style={{flex: 1, color: "var(--text-1)"}} className="mono">{(ac.payload?.method || "")} {(ac.payload?.path || "")}</span>
+                  <span style={{color: "var(--text-3)"}}>{ac.response_summary || ac.validation_reason || ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 // ── Mode B: approve/reject each agent-crafted exploit action; kill switch ────
 function ExploitActionCard({ job, onChange }) {

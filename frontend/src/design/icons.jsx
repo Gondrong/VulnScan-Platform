@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 
 const ICON = (path, fill = false) => ({ size = 16, color = "currentColor", ...rest } = {}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? color : "none"} stroke={fill ? "none" : color}
@@ -91,7 +91,7 @@ export function Status({ s }) {
   return <span className={`status ${s}`}>{s}</span>;
 }
 
-export function Donut({ size = 120, thickness = 16, segments }) {
+export function Donut({ size = 120, thickness = 16, segments, animate = false }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   const r = (size - thickness) / 2;
   const c = 2 * Math.PI * r;
@@ -106,7 +106,10 @@ export function Donut({ size = 120, thickness = 16, segments }) {
         return (
           <circle key={i} cx={size/2} cy={size/2} r={r} fill="none"
                   stroke={s.color} strokeWidth={thickness}
-                  strokeDasharray={`${len} ${c}`} strokeDashoffset={0}
+                  strokeDasharray={`${len} ${c}`}
+                  strokeDashoffset={animate ? len : 0}
+                  className={animate ? "donut-arc-anim" : undefined}
+                  style={animate ? { animationDelay: `${0.3 + i * 0.12}s` } : undefined}
                   transform={`rotate(${rot} ${size/2} ${size/2})`}
                   strokeLinecap="butt" />
         );
@@ -153,6 +156,68 @@ export function Empty({ icon, title, body, action }) {
       <div className="empty-title">{title}</div>
       <div className="empty-body">{body}</div>
       {action}
+    </div>
+  );
+}
+
+let _toasts = [];
+let _toastId = 0;
+let _listeners = [];
+function _notify() { _listeners.forEach(fn => fn([..._toasts])); }
+function _add(type, title, body) {
+  const id = ++_toastId;
+  _toasts.push({ id, type, title, body, leaving: false });
+  if (_toasts.length > 4) _toasts.shift();
+  _notify();
+  setTimeout(() => {
+    _toasts = _toasts.map(t => t.id === id ? { ...t, leaving: true } : t);
+    _notify();
+    setTimeout(() => { _toasts = _toasts.filter(t => t.id !== id); _notify(); }, 300);
+  }, 4000);
+}
+
+export const toast = {
+  success: (title, body) => _add("ok", title, body),
+  error:   (title, body) => _add("err", title, body),
+  warn:    (title, body) => _add("warn", title, body),
+  info:    (title, body) => _add("info", title, body),
+};
+
+const TOAST_ICONS = {
+  ok:   <><path d="M20 6 9 17l-5-5"/></>,
+  err:  <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  warn: <><path d="M12 9v4M12 17h.01"/></>,
+  info: <><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></>,
+};
+
+const TYPE_CSS = { ok: "success", err: "error", warn: "warning", info: "info" };
+
+export function ToastContainer() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    _listeners.push(setItems);
+    return () => { _listeners = _listeners.filter(l => l !== setItems); };
+  }, []);
+  if (items.length === 0) return null;
+  return (
+    <div className="toast-container">
+      {items.map(t => {
+        const cls = TYPE_CSS[t.type] || "info";
+        return (
+          <div key={t.id} className={`toast${t.leaving ? " toast-exit" : ""}`}>
+            <div className={`toast-icon ${cls}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {TOAST_ICONS[t.type]}
+              </svg>
+            </div>
+            <div className="toast-body">
+              <div className="toast-title">{t.title}</div>
+              {t.body && <div className="toast-msg">{t.body}</div>}
+            </div>
+            <div className={`toast-bar ${cls}`}/>
+          </div>
+        );
+      })}
     </div>
   );
 }

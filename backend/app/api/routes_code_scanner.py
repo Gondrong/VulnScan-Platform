@@ -29,13 +29,13 @@ router = APIRouter(prefix="/scan/code", tags=["code-scanner"])
 
 _MAX_UPLOAD_BYTES = int(os.environ.get("CODE_SCAN_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))  # 50 MB
 _CODE_ROOT = os.environ.get("CODE_SCAN_ROOT", "/data/code")
-_VALID_TRACKS = {"sca", "agent"}
+_VALID_TRACKS = {"sca", "agent", "verify"}
 
 
 def _parse_tracks(raw: str) -> list[str]:
     tracks = [t.strip().lower() for t in (raw or "").split(",") if t.strip()]
     tracks = [t for t in tracks if t in _VALID_TRACKS]
-    return tracks or ["sca", "agent"]
+    return tracks or ["sca", "agent", "verify"]
 
 
 def _resolve_auth(db: Session, ws_id: int, credential_id):
@@ -71,7 +71,8 @@ async def create_code_scan_job(
     git_url: str = Form(""),
     credential_id: int | None = Form(None),
     provider: str = Form(""),                   # agentic track, e.g. "db:7"
-    tracks: str = Form("sca,agent"),
+    verify_provider: str = Form(""),             # verification track (falls back to provider)
+    tracks: str = Form("sca,agent,verify"),
     config_json: str = Form("{}"),
     upload: UploadFile | None = File(None),
     user=Depends(require_role("admin", "analyst")),
@@ -130,6 +131,7 @@ async def create_code_scan_job(
             "code_scanner_config": {
                 "source": source,
                 "provider": provider or None,
+                "verify_provider": verify_provider or None,
                 "tracks": track_list,
                 **({k: v for k, v in extra_config.items() if k not in ("source", "tracks")}),
             },

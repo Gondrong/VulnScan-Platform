@@ -298,6 +298,17 @@ export const exploitApi = {
   kill:        (id)       => api(`/scan/jobs/${id}/kill`,           { method: "POST" }),
 };
 
+// ── VAPT Pentest Pipeline ────────────────────────────────────────────
+export const pentestApi = {
+  start:         (id, body) => api(`/pentest/jobs/${id}/start`,          { method: "POST", body }),
+  status:        (id)       => api(`/pentest/jobs/${id}/status`),
+  approveAction: (id)       => api(`/pentest/jobs/${id}/approve-action`, { method: "POST" }),
+  rejectAction:  (id, body) => api(`/pentest/jobs/${id}/reject-action`,  { method: "POST", body }),
+  kill:          (id)       => api(`/pentest/jobs/${id}/kill`,           { method: "POST" }),
+  actions:       (id)       => api(`/pentest/jobs/${id}/actions`),
+  report:        (id)       => api(`/pentest/jobs/${id}/report`),
+};
+
 // ── Graph ────────────────────────────────────────────────────────────
 export const graphApi = {
   attackMap:       ()       => api("/graph/attack-map"),

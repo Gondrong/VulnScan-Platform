@@ -185,6 +185,47 @@ For **every** finding provided, classify it as:
    (e.g. info-leak rated critical, or a KEV CVE rated medium), include an
    `adjusted_severity`.
 
+### Steps to reproduce
+
+For every finding you classify as **true_positive** or **needs_manual** with
+severity critical, high, or medium: produce `steps_to_reproduce` as an array
+of **structured action objects** that an automated runner can execute directly.
+
+Each action object:
+```json
+{
+  "step": 1,
+  "description": "Human-readable description of what this step does",
+  "action": {
+    "method": "GET|POST|HEAD|OPTIONS",
+    "path": "/api/endpoint",
+    "query": {"param": "payload_value"},
+    "headers": {},
+    "body": ""
+  },
+  "expected": {
+    "vulnerable": {
+      "body_match": ["error pattern", "SQL syntax"],
+      "status_in": [500],
+      "elapsed_ms_gt": null
+    },
+    "safe": {
+      "status_in": [200, 400],
+      "body_absent": ["error pattern"]
+    }
+  }
+}
+```
+
+Rules:
+- `action.path` is relative to the target (e.g. `/api/users`, not full URL)
+- `action.query` holds query-string parameters as key-value pairs
+- `expected.vulnerable.body_match` — array of substrings/patterns that confirm the vuln
+- `expected.vulnerable.elapsed_ms_gt` — for time-blind, the response time threshold in ms
+- `expected.safe` — what a patched/normal response looks like
+- Use proof-only payloads (read, not write)
+- For low/info findings or false_positives, omit steps_to_reproduce
+
 ### Output format
 
 You MUST respond with ONLY a valid JSON object:
@@ -194,7 +235,15 @@ You MUST respond with ONLY a valid JSON object:
       "verdict": "true_positive" | "false_positive" | "needs_manual",
       "reasoning": "1-3 sentences: what evidence you checked, what confirmed or refuted the finding",
       "confidence": 0.0-1.0,
-      "adjusted_severity": "critical|high|medium|low|info"  // ONLY if severity should change
+      "adjusted_severity": "critical|high|medium|low|info",  // ONLY if severity should change
+      "steps_to_reproduce": [  // ONLY for true_positive/needs_manual with severity >= medium
+        {
+          "step": 1,
+          "description": "Send SQLi error-based probe",
+          "action": {"method": "GET", "path": "/api/users", "query": {"id": "1'"}, "headers": {}, "body": ""},
+          "expected": {"vulnerable": {"body_match": ["SQL syntax", "mysql_"], "status_in": [500]}, "safe": {"status_in": [200]}}
+        }
+      ]
     }
   }
 }"""
@@ -273,6 +322,14 @@ Rank remediation actions by combining these factors:
 - **Chain disruption** — fixing one link that breaks multiple attack chains
   is high-value; include a rationale explaining the prioritisation
 
+### Steps to reproduce
+
+For every finding you classify as **true_positive** or **needs_manual** with
+severity critical, high, or medium: produce `steps_to_reproduce` as an array
+of **structured action objects** (same format as validate mode — each object
+has `step`, `description`, `action` with method/path/query/headers/body, and
+`expected` with vulnerable/safe detection criteria). Use proof-only payloads.
+
 ### Output format
 
 You MUST respond with ONLY a valid JSON object:
@@ -292,7 +349,10 @@ You MUST respond with ONLY a valid JSON object:
       "verdict": "true_positive" | "false_positive" | "needs_manual",
       "reasoning": "1-3 sentences with evidence-based justification",
       "confidence": 0.0-1.0,
-      "adjusted_severity": "critical|high|medium|low|info"  // only if changed
+      "adjusted_severity": "critical|high|medium|low|info",  // only if changed
+      "steps_to_reproduce": [  // structured action objects for true_positive/needs_manual, severity >= medium
+        {"step": 1, "description": "...", "action": {"method": "GET", "path": "/...", "query": {}, "headers": {}, "body": ""}, "expected": {"vulnerable": {"body_match": [], "status_in": [], "elapsed_ms_gt": null}, "safe": {"status_in": []}}}
+      ]
     }
   },
   "remediation_priority": [
@@ -393,6 +453,14 @@ Generate a PoC script ONLY for findings you classify as **true_positive** with
 - **TLS/crypto** (`tls.*`): negotiate and show the weak protocol/cipher.
 - **SSRF**: demonstrate access to an internal resource via the external endpoint.
 
+### Steps to reproduce
+
+For every finding you classify as **true_positive** or **needs_manual** with
+severity critical, high, or medium: produce `steps_to_reproduce` as an array
+of **structured action objects** (same format as validate mode — each object
+has `step`, `description`, `action` with method/path/query/headers/body, and
+`expected` with vulnerable/safe detection criteria). Use proof-only payloads.
+
 ### Output format
 
 You MUST respond with ONLY a valid JSON object:
@@ -412,7 +480,10 @@ You MUST respond with ONLY a valid JSON object:
       "verdict": "true_positive" | "false_positive" | "needs_manual",
       "reasoning": "Evidence-based justification",
       "confidence": 0.0-1.0,
-      "adjusted_severity": "critical|high|medium|low|info"  // only if changed
+      "adjusted_severity": "critical|high|medium|low|info",  // only if changed
+      "steps_to_reproduce": [  // structured action objects for true_positive/needs_manual, severity >= medium
+        {"step": 1, "description": "...", "action": {"method": "GET", "path": "/...", "query": {}, "headers": {}, "body": ""}, "expected": {"vulnerable": {"body_match": [], "status_in": [], "elapsed_ms_gt": null}, "safe": {"status_in": []}}}
+      ]
     }
   },
   "remediation_priority": [
@@ -693,8 +764,37 @@ Your final message must be ONLY a valid JSON object:
   "verdict": "true_positive" | "false_positive" | "needs_manual",
   "confidence": 0.0-1.0,
   "reasoning": "2-4 sentences: what you checked, which tool results decided it (cite finding ids), why",
-  "adjusted_severity": "critical|high|medium|low|info"  // ONLY if severity should change
-}"""
+  "adjusted_severity": "critical|high|medium|low|info",  // ONLY if severity should change
+  "steps_to_reproduce": [  // for true_positive/needs_manual with severity >= medium
+    {
+      "step": 1,
+      "description": "Human-readable description of what this step does",
+      "action": {
+        "method": "GET|POST|HEAD|OPTIONS",
+        "path": "/api/endpoint",
+        "query": {"param": "payload_value"},
+        "headers": {},
+        "body": ""
+      },
+      "expected": {
+        "vulnerable": {
+          "body_match": ["error pattern"],
+          "status_in": [500],
+          "elapsed_ms_gt": null
+        },
+        "safe": {
+          "status_in": [200, 400],
+          "body_absent": ["error pattern"]
+        }
+      }
+    }
+  ]
+}
+
+For steps_to_reproduce: be SPECIFIC. Each action must be directly executable
+as an HTTP request — relative path (no full URL), exact parameter names and
+payloads, concrete detection patterns. The `expected` object tells the
+automated runner how to decide pass/fail without AI."""
 )
 
 

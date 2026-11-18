@@ -60,6 +60,18 @@ class Settings(BaseModel):
     EXPLOIT_MIN_SECONDS_BETWEEN_ACTIONS: float = float(os.getenv("EXPLOIT_MIN_SECONDS_BETWEEN_ACTIONS", "1.0"))
     EXPLOIT_MAX_RESPONSE_BYTES: int = int(os.getenv("EXPLOIT_MAX_RESPONSE_BYTES", str(64 * 1024)))
 
+    # ── VAPT Pentest Pipeline ───────────────────────────────────────────────
+    # Master switch for the full VAPT pipeline (auto-verify → post-exploit →
+    # chain execution). OFF by default — requires editing .env. Even when on,
+    # every action still needs per-action human approval, the target must be
+    # in the exploit allowlist, and exploit_guard validates everything.
+    ENABLE_PENTEST: bool = os.getenv("ENABLE_PENTEST", "false").strip().lower() in ("1", "true", "yes", "on")
+    PENTEST_MAX_ACTIONS: int = int(os.getenv("PENTEST_MAX_ACTIONS", "100"))
+    PENTEST_MAX_TURNS_PER_RUN: int = int(os.getenv("PENTEST_MAX_TURNS_PER_RUN", "15"))
+    PENTEST_SESSION_DEADLINE: int = int(os.getenv("PENTEST_SESSION_DEADLINE", "14400"))  # 4h
+    PENTEST_MIN_SECONDS_BETWEEN_ACTIONS: float = float(os.getenv("PENTEST_MIN_SECONDS_BETWEEN_ACTIONS", "1.0"))
+    PENTEST_AUTO_APPROVE_SAFE: bool = os.getenv("PENTEST_AUTO_APPROVE_SAFE", "false").strip().lower() in ("1", "true", "yes", "on")
+
     SCAN_TIMEOUT_SECONDS: int = int(os.getenv("SCAN_TIMEOUT_SECONDS", "15"))
     # Global scan budget: maximum wall-clock time for the entire scan (all plugins).
     # Must be LESS than RQ job_timeout to allow graceful completion.

@@ -4,7 +4,7 @@
 
 <h1 align="center">VulnScan Platform</h1>
 <p align="center">
-  <strong>Risk-Based Vulnerability Management — self-hosted, AI-augmented, MIT-licensed</strong>
+  <strong>VAPT Platform — self-hosted, AI-augmented, MIT-licensed</strong>
 </p>
 <p align="center">
   <a href="#features">Features</a> &bull;
@@ -21,20 +21,24 @@
 
 ## Overview
 
-VulnScan is a self-hosted Risk-Based Vulnerability Management (RBVM) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and infrastructure-as-code.
+VulnScan is a self-hosted VAPT (Vulnerability Assessment & Penetration Testing) platform built for security teams. It combines automated scanning with multi-provider AI analysis to **find**, **validate**, **prioritize**, **exploit-verify**, and **remediate** vulnerabilities across networks, web apps, APIs, IoT, cloud infrastructure, and source code.
 
-**v3.3.1 highlights** *(2026-11-15)* — see [Changelog](#changelog) for full notes.
+**v3.4.0 highlights** *(2026-11-18)* — see [Changelog](#changelog) for full notes.
 
 | | |
 |---|---|
+| 🔬 **VAPT automation pipeline** | Three-phase pentest: auto-verify findings via structured steps-to-reproduce, post-exploit enumeration on confirmed vulns, then chain them into multi-step attack paths. Same safety as Mode B — target-pinning, per-action approval, full audit trail. Off by default (`ENABLE_PENTEST`) |
+| 🎯 **Structured steps-to-reproduce** | AI analysis now produces executable HTTP steps (method, path, headers, expected response) for every finding — displayed in the UI, included in exports, and directly replayable by the VAPT pipeline |
 | 🤖 **Agentic analysis** | After batch validation, a read-only agent investigates each doubtful finding with tools (sibling findings, local CVE intel, attack-graph blast radius). On a production scan it independently ruled out six "SQLi" findings as Cloudflare 403s, not injection |
 | 🧭 **Agentic scan — plugin mode** | The AI reads recon and proposes which active plugins to run; the scan pauses until you approve the plan. The payloads are still VulnScan's own vetted plugins |
 | ⚔️ **Agentic exploitation — off by default** | Opt-in and server-gated (`ENABLE_AGENTIC_EXPLOIT`), the agent crafts proof-only payloads with **per-action human approval**, a fail-closed target allowlist, structural target-pinning, a destructive deny-list enforced in code, a kill switch and a full audit trail |
 | 🧬 **Source-code scanner** | Scan a zip or git repo: deterministic SCA against OSV advisories for vulnerable dependencies, plus an AI agent that reads the source for logic, secret, injection and auth issues |
 | 🛡️ **Non-intrusive scan mode** | Choose observation-only per scan — attacking, credential-guessing and brute-force plugins are skipped, and the report lists exactly what was not run |
+| ✨ **UI/UX overhaul** | Animated dashboard (count-up numbers, donut stroke-draw, staggered cards, KEV pulse), skeleton loading, login particle background, page transitions, sidebar sliding indicator, toast notifications, progress rings — all with reduced-motion support |
 
 **Key capabilities:**
 - **71 scanner plugins** (64 built-in + 7 external tools) spanning network / web / infrastructure / IoT / cloud / API / recon / audit
+- **VAPT automation** — three-phase pentest pipeline (verify → post-exploit → chain) with structured steps-to-reproduce, per-action human approval, and full audit trail
 - **Multi-provider AI analysis** (Azure OpenAI, Claude CLI, Gemini) for finding validation, attack-chain analysis, and PoC generation — optionally two-staged, so exploit work is spent only on findings that survived validation
 - **6 threat intelligence feeds** (NVD, CVE.org, CISA KEV, EPSS, CMS-CVE, Compliance) with one-click refresh
 - **Composite threat-score prioritization** beyond CVSS-only — uses EPSS percentile, KEV listing, and ransomware status
@@ -147,6 +151,7 @@ cd VulnScan-Platform
 |  | Scan Jobs | Live + historical jobs with progress tracking |
 |  | Profiles | Reusable scanner configurations (plugins + SSH credentials) |
 |  | Reports | Generated reports + report templates |
+| **Pentest** *(v3.4)* | VAPT Pipeline | Automated verify → post-exploit → chain execution on scan findings |
 | **Intelligence** *(v3.0)* | Threat Intel | Fused NVD+EPSS+KEV CVE view with threat scoring |
 |  | Analytics *(v3.0.5)* | Executive dashboard, vulnerability trending, scan diff, asset discovery, re-verification |
 | **Configuration** | Credentials | Encrypted storage for SSH keys, passwords, API tokens |
@@ -581,6 +586,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
 ### Recent releases
 
+- **v3.4.0 — 2026-11-18** — VAPT automation pipeline (verify → post-exploit → chain, reuses Mode B harness, off by default), structured steps-to-reproduce in all AI modes + exports + frontend, UI/UX overhaul (dashboard animations, skeleton loading, login particle background, page transitions, sidebar indicator, toast notifications, progress rings, reduced-motion support)
 - **v3.3.1 — 2026-11-15** — Patch: fix job-delete 500 for Mode B exploit jobs (missing `agentic_actions` FK cleanup), source-code scan timeout extended to 2 hours with partial-result save, agentic code-review severity rubric & data-flow tracing, Dart/pub SCA (`pubspec.lock` parser + Pub ecosystem), Mode B exploit prompt strengthened for business-logic vulns, agent max turns 14→20
 - **v3.3.0 — 2026-11-15** — Agentic scanning & analysis, source-code scanner (SCA + AI agent), non-intrusive scan mode, agentic exploitation with per-action human approval (off by default), dataset auto-prune, provider editing
 - **v3.2.1 — 2026-10-26** — CVE-2026-111497 (Brotli decoder OOB write, CVSS 9.2): patched libbrotli1 and moved off end-of-life Node.js 20 to 24.22.1. Dataset refresh fixes: NVD paging no longer completes at 2000 items/page, `IncompleteRead` escaped the retry loop (28 pages recovered in one refresh), a partial fetch was installed as if complete (49,794 of 52,760 CVEs), and a refresh that outlasts the job timeout now resumes instead of restarting. Adds scheduled refresh, off by default. Also fixes the Neo4j healthcheck, which called `curl` — absent from the `neo4j:5` image — so the service reported `unhealthy` from first boot and `depends_on: condition: service_healthy` could never resolve
