@@ -8,7 +8,8 @@ Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 ## v3.4.0 — 2026-11-18
 
 Feature release: **VAPT automation pipeline**, **structured steps-to-reproduce**,
-and a **UI/UX overhaul** with animations and polish across every screen.
+**IaC scanner frontend**, and a **UI/UX overhaul** with animations and polish
+across every screen.
 
 ### Added
 
@@ -43,6 +44,20 @@ and a **UI/UX overhaul** with animations and polish across every screen.
 - Included in all 3 export formats (CSV, HTML, PDF).
 - The VAPT verify phase can directly execute structured steps instead of relying
   on the methodology playbook.
+
+**IaC Scanner frontend**
+
+- IaC (Infrastructure-as-Code) scanner now accessible from the UI via
+  New scan → IaC tab. Backend routes existed since v3.3.0 but had no frontend.
+- `iacScannerApi` client in `api.js` (kinds, parse, createJob endpoints).
+- Upload single config files or `.zip` archives (up to 5 MB) with a drag-and-drop
+  zone.
+- **Preview** button calls `/scan/iac/parse` to show file inventory (kind × count)
+  before launching the scan.
+- Checkbox grid for 6 supported IaC formats: Terraform / HCL, Dockerfile,
+  Kubernetes manifests, docker-compose, AWS CloudFormation, Helm values.
+- Scan type icons for `iac` (Layers) and `source_code` (FileText) in the Jobs
+  table.
 
 **Source-code scan verification runner**
 
