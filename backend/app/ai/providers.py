@@ -327,15 +327,16 @@ class ClaudeAPIProvider(AiProvider):
                  max_tokens: int = 8192) -> AiResponse:
         logger.info("Claude API: sending request (model=%s)", self.model)
 
-        # Anthropic API requires max_tokens; cap at model limit.
-        # Opus / Sonnet 4.x support up to 64K-128K output tokens but 8K is plenty for our prompts.
-        msg = self.client.messages.create(
+        kwargs = dict(
             model=self.model,
             max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
-            temperature=0.2,
         )
+        try:
+            msg = self.client.messages.create(**kwargs, temperature=0.2)
+        except TypeError:
+            msg = self.client.messages.create(**kwargs)
 
         # Concatenate all text blocks (Anthropic returns a list of content blocks)
         content = "".join(
