@@ -5,10 +5,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
-## v3.5.0 — 2026-11-26
+## v3.4.1 — 2026-11-26
 
-Feature release: **parallel multi-target scanning**, **network internal/external
-toggle**, and **scanner plugin improvements**.
+Bugfix + minor feature: **parallel multi-target scanning**, **network
+internal/external toggle**, and **scanner plugin improvements**.
 
 ### Added
 
