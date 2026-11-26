@@ -405,6 +405,7 @@ function NewFolderModal({ assets, close, onCreated }) {
 
 export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const [scanKind, setScanKind] = useState("network");
+  const [networkExternal, setNetworkExternal] = useState(false);
   const [target, setTarget] = useState("");
   const [profiles, setProfiles] = useState([]);
   const [profileId, setProfileId] = useState(null);
@@ -713,7 +714,8 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
   const activeKind = SCAN_KINDS.find(k => k.id === scanKind) || SCAN_KINDS[0];
 
   // Map design scan-kind to backend scan_type ("internal" | "external")
-  const scanTypeFor = (k) => (k === "web" || k === "api" || k === "cloud") ? "external" : "internal";
+  const scanTypeFor = (k) => (k === "web" || k === "api" || k === "cloud") ? "external"
+    : (k === "network" && networkExternal) ? "external" : "internal";
 
   const runCodePreflight = async () => {
     if (!codeGitUrl.trim()) return;
@@ -1346,6 +1348,20 @@ export function NewScanModal({ close, preselectedAsset, onCreated }) {
                 {scanKind === "iot"     && "Broker URI or gateway address. Supports MQTT, CoAP, AMQP"}
                 {scanKind === "cloud"   && "Cloud account identifier — credential needed to enumerate resources"}
               </div>
+
+              {scanKind === "network" && (
+              <div style={{display:"flex", gap:6, marginTop:8, alignItems:"center"}}>
+                {["internal","external"].map(t => (
+                  <button key={t} type="button"
+                    className={`btn btn-sm ${(t === "external") === networkExternal ? "" : "btn-ghost"}`}
+                    style={{textTransform:"capitalize", background: (t === "external") === networkExternal ? "var(--surface-2)" : "transparent", border:"none"}}
+                    onClick={() => setNetworkExternal(t === "external")}>{t}</button>
+                ))}
+                <span className="form-help" style={{margin:0}}>
+                  {networkExternal ? "Public target — allowlist bypassed" : "Private network — checked against allowlist"}
+                </span>
+              </div>
+              )}
             </div>
           )}
 

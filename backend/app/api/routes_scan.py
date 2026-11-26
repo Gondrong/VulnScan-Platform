@@ -304,41 +304,54 @@ def create_job(
         meta_payload["intrusive"] = body["intrusive"]
     job_meta = json.dumps(meta_payload) if meta_payload else None
 
-    job = models.ScanJob(
-        workspace_id=user["ws"],
-        target=target,
-        profile_id=prof.id,
-        asset_id=asset_id,
-        status="queued",
-        scan_type=scan_type,
-        meta_json=job_meta,
-        created_by_user_id=user.get("uid") or _resolve_user_id(db, user),
-    )
-    db.add(job)
+    # Split comma-separated targets into individual jobs so each target
+    # runs as its own RQ job in parallel across the worker pool.
+    targets = [t.strip() for t in target.split(",") if t.strip()]
+    if not targets:
+        raise HTTPException(400, "target is required")
+
+    uid = user.get("uid") or _resolve_user_id(db, user)
+    jobs = []
+    for t in targets:
+        job = models.ScanJob(
+            workspace_id=user["ws"],
+            target=t,
+            profile_id=prof.id,
+            asset_id=asset_id,
+            status="queued",
+            scan_type=scan_type,
+            meta_json=job_meta,
+            created_by_user_id=uid,
+        )
+        db.add(job)
+        jobs.append(job)
     db.commit()
-    db.refresh(job)
+    for job in jobs:
+        db.refresh(job)
 
     try:
         q = Queue("scans", connection=_redis())
-        # RQ timeout = scan budget + 300s headroom for post-processing & DB writes
         rq_timeout = settings.SCAN_JOB_TIMEOUT
-        q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
-        logger.info("Enqueued scan job #%d target=%s type=%s timeout=%ds", job.id, target, scan_type, rq_timeout)
+        for job in jobs:
+            q.enqueue(run_scan_job, job.id, job_timeout=rq_timeout)
+            logger.info("Enqueued scan job #%d target=%s type=%s timeout=%ds", job.id, job.target, scan_type, rq_timeout)
     except Exception as e:
-        job.status = "failed"
-        job.meta_json = json.dumps({
-            "error": f"Failed to enqueue: {e}",
-            "error_type": "queue",
-            "error_detail": (
-                "Could not submit the scan job to the task queue. "
-                "The Redis worker may be down or unreachable. "
-                "Check that the 'worker' container is running."
-            ),
-        })
+        for job in jobs:
+            if job.status == "queued":
+                job.status = "failed"
+                job.meta_json = json.dumps({
+                    "error": f"Failed to enqueue: {e}",
+                    "error_type": "queue",
+                    "error_detail": (
+                        "Could not submit the scan job to the task queue. "
+                        "The Redis worker may be down or unreachable. "
+                        "Check that the 'worker' container is running."
+                    ),
+                })
         db.commit()
         raise HTTPException(503, f"Could not enqueue job: {e}")
 
-    return {
+    result = [{
         "id": job.id,
         "target": job.target,
         "status": job.status,
@@ -346,7 +359,9 @@ def create_job(
         "profile_id": job.profile_id,
         "asset_id": job.asset_id,
         "created_at": job.created_at.isoformat() if job.created_at else None,
-    }
+    } for job in jobs]
+    # Backward compat: single target returns a single object
+    return result[0] if len(result) == 1 else result
 
 
 @router.get("/jobs")

@@ -47,31 +47,8 @@ def _parse_target(raw: str) -> tuple[str, str]:
     return host, scheme
 
 
-def _allowlisted(target: str, scan_type: str = "internal") -> bool:
-    """
-    Returns True if the target is allowed to be scanned.
-
-    For EXTERNAL scans: always allowed — the allowlist is for internal
-    network boundaries, not for restricting public web scans.
-
-    For INTERNAL scans: checks against ALLOWLIST env var (CIDRs and domain suffixes).
-    If ALLOWLIST is empty, '*', or not set, ALL targets are allowed.
-    """
-    # External scans bypass the internal allowlist
-    if scan_type == "external":
-        return True
-
-    raw_allowlist = (settings.ALLOWLIST or "").strip()
-
-    if not raw_allowlist or raw_allowlist == "*":
-        return True
-
-    allow_entries = [x.strip() for x in raw_allowlist.split(",") if x.strip()]
-
-    if not allow_entries:
-        return True
-
-    host, _ = _parse_target(target)
+def _allowlisted_single(host: str, allow_entries: list[str]) -> bool:
+    """Check a single host (IP or domain) against allow_entries."""
     if not host:
         return False
 
@@ -108,6 +85,37 @@ def _allowlisted(target: str, scan_type: str = "internal") -> bool:
                 return True
 
     return False
+
+
+def _allowlisted(target: str, scan_type: str = "internal") -> bool:
+    """
+    Returns True if the target is allowed to be scanned.
+
+    For EXTERNAL scans: always allowed — the allowlist is for internal
+    network boundaries, not for restricting public web scans.
+
+    For INTERNAL scans: checks against ALLOWLIST env var (CIDRs and domain suffixes).
+    If ALLOWLIST is empty, '*', or not set, ALL targets are allowed.
+    Handles comma-separated multi-targets by checking each individually.
+    """
+    if scan_type == "external":
+        return True
+
+    raw_allowlist = (settings.ALLOWLIST or "").strip()
+    if not raw_allowlist or raw_allowlist == "*":
+        return True
+
+    allow_entries = [x.strip() for x in raw_allowlist.split(",") if x.strip()]
+    if not allow_entries:
+        return True
+
+    # Split comma-separated multi-targets and check each
+    targets = [t.strip() for t in target.split(",") if t.strip()]
+    for single_target in targets:
+        host, _ = _parse_target(single_target)
+        if not _allowlisted_single(host, allow_entries):
+            return False
+    return True
 
 
 def _enabled(selection_json: str) -> list[str]:

@@ -29,8 +29,8 @@ META = PluginMeta(
     name="CIS Benchmark Audit",
     category="audit",
     depends_on=["net.port.discovery.v2"],
-    soft_depends_on=["auth.ssh.inventory"],
-    consumes=["net.open_ports", "inventory.ssh"],
+    soft_depends_on=["auth.ssh.inventory", "ext.nmap"],
+    consumes=["net.open_ports", "inventory.ssh", "net.service_banners"],
     provides=["audit.cis_benchmark"],
     enabled_by_default=False,
     timeout_seconds=120.0,
@@ -639,7 +639,17 @@ class Check(Plugin):
 
         # ── 1. Check if SSH port is open ──────────────────────────────
         open_ports = ctx.get("net.open_ports", []) or []
-        if 22 not in open_ports and 2222 not in open_ports:
+        _WELL_KNOWN_SSH = {22, 2222}
+        service_banners = ctx.get("net.service_banners", {}) or {}
+        nmap_ssh_ports = {
+            int(p) for p, b in service_banners.items()
+            if "ssh" in str(b).lower() or "openssh" in str(b).lower()
+        }
+        detected_ssh_ports = sorted(
+            p for p in open_ports
+            if p in _WELL_KNOWN_SSH or p in nmap_ssh_ports
+        )
+        if not detected_ssh_ports:
             return PluginResult(
                 findings=[
                     Finding(
@@ -647,8 +657,8 @@ class Check(Plugin):
                         plugin_id=META.plugin_id,
                         title="CIS Benchmark skipped - no SSH port detected",
                         description=(
-                            "The CIS Benchmark audit requires SSH access (port 22 or 2222) "
-                            "but no SSH port was found open on the target."
+                            "The CIS Benchmark audit requires SSH access but no SSH port "
+                            "was found open on the target."
                         ),
                         evidence=f"open_ports={open_ports}",
                         affected=target,
@@ -661,7 +671,8 @@ class Check(Plugin):
         # ── 2. Get SSH credentials ────────────────────────────────────
         ssh_data = ctx.get("inventory.ssh", {}) or {}
         ssh_host = ssh_data.get("host") or target
-        ssh_port = int(ssh_data.get("port", 22))
+        _default_ssh_port = detected_ssh_ports[0] if detected_ssh_ports else 22
+        ssh_port = int(ssh_data.get("port", _default_ssh_port))
         ssh_user = ssh_data.get("username")
         ssh_password = ssh_data.get("password")
         ssh_key_text = ssh_data.get("key_text")

@@ -85,6 +85,8 @@ services:
     build: ./backend
     env_file:
       - .env
+    mem_limit: 2g
+    memswap_limit: 2g
     depends_on:
       db:
         condition: service_healthy

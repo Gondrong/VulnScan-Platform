@@ -5,6 +5,35 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 Earlier versions (v1.0.0 – v2.1.3) are also documented in `README.md`.
 
 ---
+## v3.5.0 — 2026-11-26
+
+Feature release: **parallel multi-target scanning**, **network internal/external
+toggle**, and **scanner plugin improvements**.
+
+### Added
+
+- **Multi-target parallel scanning** — comma-separated targets (e.g.
+  `10.0.0.1,10.0.0.2,10.0.0.3`) are now split into individual jobs, each
+  enqueued independently to the RQ `scans` queue. Workers process them in
+  parallel. Scale with `--scale worker-scan=N`.
+- **Network Internal/External toggle** — the New Scan modal now shows an
+  Internal / External toggle when "Network" scan kind is selected. External
+  bypasses the allowlist, same as Web App / API / Cloud scans.
+- **CIS Benchmark: dynamic SSH port detection** — no longer limited to ports
+  22/2222; discovers SSH on any port via nmap service banners.
+- **SSH Audit plugin improvements** — better service banner consumption and
+  non-standard port handling.
+
+### Fixed
+
+- **Multi-target allowlist bug** — `_allowlisted()` failed on comma-separated
+  targets because `_parse_target()` received the entire string as one host.
+  Refactored into `_allowlisted_single()` per host with a wrapper that splits
+  and checks each target individually.
+- **worker-scan memory limit** — added `mem_limit: 2g` to prevent OOM on large
+  scans.
+
+---
 ## v3.4.0 — 2026-11-18
 
 Feature release: **VAPT automation pipeline**, **structured steps-to-reproduce**,

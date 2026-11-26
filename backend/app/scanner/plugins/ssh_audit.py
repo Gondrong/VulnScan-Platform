@@ -28,7 +28,8 @@ META = PluginMeta(
     name="SSH Configuration Audit",
     category="network",
     depends_on=["net.port.discovery.v2"],
-    consumes=["net.open_ports", "fingerprint.banners"],
+    soft_depends_on=["ext.nmap"],
+    consumes=["net.open_ports", "fingerprint.banners", "net.service_banners"],
     provides=["infra.ssh.audit"],
     enabled_by_default=True,
     timeout_seconds=10.0,
@@ -232,8 +233,17 @@ class Check(Plugin):
         open_ports = ctx.get("net.open_ports", []) or []
         findings: list[Finding] = []
 
-        # Find SSH ports (22 is standard, also check common alternatives)
-        ssh_ports = [p for p in open_ports if p in (22, 2222, 2200, 22222)]
+        # Find SSH ports: well-known ports + any port nmap identified as SSH
+        _WELL_KNOWN_SSH = {22, 2222, 2200, 22222}
+        service_banners = ctx.get("net.service_banners", {}) or {}
+        nmap_ssh_ports = {
+            int(p) for p, b in service_banners.items()
+            if "ssh" in str(b).lower() or "openssh" in str(b).lower()
+        }
+        ssh_ports = sorted(
+            p for p in open_ports
+            if p in _WELL_KNOWN_SSH or p in nmap_ssh_ports
+        )
         if not ssh_ports:
             return PluginResult(
                 findings=[],
